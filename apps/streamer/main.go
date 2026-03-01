@@ -17,62 +17,65 @@ import (
 
 // --- Configuration ---
 const (
-	tokenAPIURL      = "http://localhost:3000/api/session"
-	websocketURL     = "wss://stream.stockbit.com/stream"
-	databaseURL      = "postgresql://admin:password@localhost:5433/dellmology?sslmode=disable"
-	httpListenAddr   = ":8080"
-	reconnectWait    = 5 * time.Second
+	tokenAPIURL         = "http://localhost:3000/api/session"
+	websocketURL        = "wss://stream.stockbit.com/stream"
+	databaseURL         = "postgresql://admin:password@localhost:5433/dellmology?sslmode=disable"
+	httpListenAddr      = ":8080"
+	reconnectWait       = 5 * time.Second
+	// Risk Mitigation Config
+	rocInterval         = 5 * time.Minute // 5 minute window for RoC check
+	rocPriceDrop        = -0.10           // -10% price drop threshold
+	rocCooldownDuration = 15 * time.Minute // Cooldown period for a flagged symbol
 )
 
 // --- Structs ---
-
-// TokenResponse matches the JSON structure of the /api/session endpoint
 type TokenResponse struct {
 	Token string `json:"token"`
 }
-
-// WebSocketMessage defines the generic structure of incoming messages
 type WebSocketMessage struct {
-	Type string          `json:"t"`    // e.g., "trade", "quote"
+	Type string          `json:"t"`
 	Data json.RawMessage `json:"d"`
 }
-
-// TradeData represents a single trade event
 type TradeData struct {
 	Symbol    string  `json:"s"`
 	Price     float64 `json:"p"`
 	Volume    int64   `json:"v"`
-	Timestamp int64   `json:"dt"` // Unix timestamp
-}
-
-// QuoteData represents a bid/offer update
-type QuoteData struct {
-	Symbol    string  `json:"s"`
-	Bid       float64 `json:"b"`
-	Offer     float64 `json:"o"`
 	Timestamp int64   `json:"dt"`
 }
-
-// ProcessedTrade is the enriched data we send to the frontend and DB
+type QuoteData struct {
+	Symbol string  `json:"s"`
+	Bid    float64 `json:"b"`
+	Offer  float64 `json:"o"`
+}
 type ProcessedTrade struct {
 	Symbol    string    `json:"symbol"`
 	Price     float64   `json:"price"`
 	Volume    int64     `json:"volume"`
-	TradeType string    `json:"trade_type"` // "HAKA", "HAKI", or "NORMAL"
+	TradeType string    `json:"trade_type"`
 	Timestamp time.Time `json:"timestamp"`
+}
+
+// --- Risk Mitigation Structs ---
+type PriceHistory struct {
+	Price     float64
+	Timestamp time.Time
+}
+type CooldownInfo struct {
+	EndTime time.Time
 }
 
 // --- Global State ---
 var (
-	db           *sql.DB
-	latestQuotes = make(map[string]QuoteData)
-	quotesMutex  = &sync.RWMutex{}
-	sseBroker    *Broker
+	db               *sql.DB
+	latestQuotes     = make(map[string]QuoteData)
+	priceHistory     = make(map[string]PriceHistory) // For RoC Kill-Switch
+	cooldownSymbols  = make(map[string]CooldownInfo) // For RoC Kill-Switch
+	quotesMutex      = &sync.RWMutex{}
+	priceHistoryMutex = &sync.Mutex{}
+	sseBroker        *Broker
 )
 
 // --- SSE Broker ---
-
-// Broker manages SSE client connections and broadcasts messages.
 type Broker struct {
 	clients      map[chan []byte]bool
 	newClients   chan chan []byte
@@ -80,25 +83,19 @@ type Broker struct {
 	messages     chan []byte
 	mutex        sync.Mutex
 }
-
 func (b *Broker) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
-	
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		http.Error(w, "Streaming unsupported!", http.StatusInternalServerError)
 		return
 	}
-
 	messageChan := make(chan []byte)
 	b.newClients <- messageChan
-	defer func() {
-		b.defunctClients <- messageChan
-	}()
-
+	defer func() { b.defunctClients <- messageChan }()
 	ctx := r.Context()
 	for {
 		select {
@@ -110,7 +107,6 @@ func (b *Broker) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 }
-
 func (b *Broker) run() {
 	for {
 		select {
@@ -133,13 +129,12 @@ func (b *Broker) run() {
 		}
 	}
 }
-
 func newBroker() *Broker {
 	return &Broker{
 		clients:      make(map[chan []byte]bool),
 		newClients:   make(chan (chan []byte)),
 		defunctClients: make(chan (chan []byte)),
-		messages:     make(chan []byte, 100), // Buffered channel
+		messages:     make(chan []byte, 100),
 	}
 }
 
@@ -149,11 +144,9 @@ func main() {
 	var err error
 	log.Println("Initializing Dellmology Pro Data Streamer...")
 
-	// Initialize SSE Broker
 	sseBroker = newBroker()
 	go sseBroker.run()
 
-	// Initialize Database
 	db, err = initDB()
 	if err != nil {
 		log.Fatalf("FATAL: Could not connect to database. Error: %v", err)
@@ -161,10 +154,7 @@ func main() {
 	defer db.Close()
 	log.Println("Successfully connected to the database.")
 
-	// Start HTTP server for SSE
 	go startHTTPServer()
-
-	// Main application loop
 	runStreamer()
 }
 
@@ -176,7 +166,7 @@ func runStreamer() {
 			time.Sleep(reconnectWait)
 			continue
 		}
-		log.Printf("Successfully retrieved auth token: ...%s", token[len(token)-4:])
+		log.Printf("Successfully retrieved auth token.")
 
 		conn, err := connectWebSocket(token)
 		if err != nil {
@@ -186,7 +176,7 @@ func runStreamer() {
 		}
 
 		log.Println("Successfully connected to WebSocket. Listening for messages...")
-		messageLoop(conn) // This loop will run until a disconnect
+		messageLoop(conn)
 		
 		conn.Close()
 		log.Println("WebSocket disconnected. Attempting to reconnect...")
@@ -199,7 +189,7 @@ func messageLoop(conn *websocket.Conn) {
 		_, message, err := conn.ReadMessage()
 		if err != nil {
 			log.Printf("ERROR: Failed to read message: %v", err)
-			return // Exit to trigger reconnection
+			return
 		}
 		go processMessage(message)
 	}
@@ -219,20 +209,29 @@ func processMessage(rawMsg []byte) {
 			log.Printf("WARN: Failed to parse trade data: %v", err)
 			return
 		}
+
+		// --- RoC Kill-Switch Mitigation ---
+		if isSymbolInCooldown(trade.Symbol) {
+			return // Skip processing for this symbol
+		}
+		if checkAndApplyRoCKillSwitch(trade) {
+			return // Skip further processing if the kill switch was activated
+		}
+		// --- End Mitigation ---
 		
 		quotesMutex.RLock()
 		quote, ok := latestQuotes[trade.Symbol]
 		quotesMutex.RUnlock()
 
 		if !ok {
-			return // Cannot determine HAKA/HAKI without a quote
+			return
 		}
 
 		tradeType := "NORMAL"
 		if trade.Price >= quote.Offer {
-			tradeType = "HAKA" // Aggressive Buy
+			tradeType = "HAKA"
 		} else if trade.Price <= quote.Bid {
-			tradeType = "HAKI" // Aggressive Sell
+			tradeType = "HAKI"
 		}
 		
 		processed := ProcessedTrade{
@@ -243,12 +242,10 @@ func processMessage(rawMsg []byte) {
 			Timestamp: time.Unix(trade.Timestamp, 0),
 		}
 
-		// Insert into DB
 		if err := insertTrade(processed); err != nil {
 			log.Printf("ERROR: Failed to insert trade into DB: %v", err)
 		}
 
-		// Broadcast to SSE clients
 		jsonData, err := json.Marshal(processed)
 		if err == nil {
 			sseBroker.messages <- jsonData
@@ -260,40 +257,73 @@ func processMessage(rawMsg []byte) {
 			log.Printf("WARN: Failed to parse quote data: %v", err)
 			return
 		}
-
 		quotesMutex.Lock()
 		latestQuotes[quote.Symbol] = quote
 		quotesMutex.Unlock()
 	}
 }
 
-// --- Database Functions ---
+
+// --- Risk Mitigation Functions ---
+
+func isSymbolInCooldown(symbol string) bool {
+	priceHistoryMutex.Lock()
+	defer priceHistoryMutex.Unlock()
+	
+	cooldown, exists := cooldownSymbols[symbol]
+	if exists && time.Now().Before(cooldown.EndTime) {
+		return true // Still in cooldown
+	} else if exists {
+		// Cooldown expired, remove it
+		delete(cooldownSymbols, symbol)
+	}
+	return false
+}
+
+func checkAndApplyRoCKillSwitch(trade TradeData) bool {
+	priceHistoryMutex.Lock()
+	defer priceHistoryMutex.Unlock()
+
+	now := time.Now()
+	last, exists := priceHistory[trade.Symbol]
+
+	// Update history regardless, but only if the entry is old enough to be a new reference point
+	if !exists || now.Sub(last.Timestamp) > rocInterval {
+		priceHistory[trade.Symbol] = PriceHistory{Price: trade.Price, Timestamp: now}
+		return false
+	}
+	
+	// Check for price drop
+	if now.Sub(last.Timestamp) <= rocInterval {
+		priceChange := (trade.Price - last.Price) / last.Price
+		if priceChange < rocPriceDrop {
+			log.Printf("CRITICAL: VOLATILITY SPIKE (RoC Kill-Switch) triggered for %s. Price dropped %.2f%% in %v. Symbol on cooldown for %v.",
+				trade.Symbol, priceChange*100, now.Sub(last.Timestamp).Round(time.Second), rocCooldownDuration)
+			
+			// Put symbol on cooldown
+			cooldownSymbols[trade.Symbol] = CooldownInfo{EndTime: now.Add(rocCooldownDuration)}
+			// Reset history for this symbol
+			delete(priceHistory, trade.Symbol)
+			return true // Kill switch activated
+		}
+	}
+	return false
+}
+
+
+// --- Database & HTTP Functions ---
 
 func initDB() (*sql.DB, error) {
 	d, err := sql.Open("postgres", databaseURL)
-	if err != nil {
-		return nil, err
-	}
-	if err = d.Ping(); err != nil {
-		return nil, err
-	}
-	d.SetMaxOpenConns(10)
-	d.SetMaxIdleConns(5)
-	d.SetConnMaxLifetime(5 * time.Minute)
+	if err != nil { return nil, err }
+	if err = d.Ping(); err != nil { return nil, err }
 	return d, nil
 }
 
 func insertTrade(t ProcessedTrade) error {
-	query := `
-		INSERT INTO trades (symbol, price, volume, trade_type, timestamp)
-		VALUES ($1, $2, $3, $4, $5)
-	`
-	_, err := db.Exec(query, t.Symbol, t.Price, t.Volume, t.TradeType, t.Timestamp)
+	_, err := db.Exec(`INSERT INTO trades (symbol, price, volume, trade_type, timestamp) VALUES ($1, $2, $3, $4, $5)`, t.Symbol, t.Price, t.Volume, t.TradeType, t.Timestamp)
 	return err
 }
-
-
-// --- HTTP & WebSocket Functions ---
 
 func startHTTPServer() {
 	mux := http.NewServeMux()
@@ -302,7 +332,6 @@ func startHTTPServer() {
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprintln(w, "OK")
 	})
-
 	log.Printf("SSE and Health server listening on %s", httpListenAddr)
 	if err := http.ListenAndServe(httpListenAddr, mux); err != nil {
 		log.Fatalf("FATAL: HTTP server failed: %v", err)
@@ -310,49 +339,21 @@ func startHTTPServer() {
 }
 
 func connectWebSocket(token string) (*websocket.Conn, error) {
-	headers := http.Header{}
-	headers.Add("Authorization", "Bearer "+token)
-
+	headers := http.Header{"Authorization": {"Bearer " + token}}
 	conn, _, err := websocket.DefaultDialer.Dial(websocketURL, headers)
-	if err != nil {
-		return nil, fmt.Errorf("failed to dial websocket: %w", err)
-	}
-	return conn, nil
+	return conn, err
 }
 
 func getAuthToken() (string, error) {
-	client := &http.Client{
-		Timeout: 10 * time.Second,
-	}
-	req, err := http.NewRequest("GET", tokenAPIURL, nil)
-	if err != nil {
-		return "", fmt.Errorf("failed to create request: %w", err)
-	}
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("failed to fetch token from api: %w", err)
-	}
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Get(tokenAPIURL)
+	if err != nil { return "", err }
 	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("api returned non-200 status: %s - %s", resp.Status, string(body))
-	}
-
+	if resp.StatusCode != http.StatusOK { return "", fmt.Errorf("api returned non-200 status: %s", resp.Status) }
 	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("failed to read response body: %w", err)
-	}
-
+	if err != nil { return "", err }
 	var tokenResp TokenResponse
-	if err := json.Unmarshal(body, &tokenResp); err != nil {
-		return "", fmt.Errorf("failed to parse json response: %w - %s", err, string(body))
-	}
-
-	if tokenResp.Token == "" {
-		return "", fmt.Errorf("token not found in api response")
-	}
-
+	if err := json.Unmarshal(body, &tokenResp); err != nil { return "", err }
+	if tokenResp.Token == "" { return "", fmt.Errorf("token not found in api response") }
 	return tokenResp.Token, nil
 }

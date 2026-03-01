@@ -1,24 +1,20 @@
-import tensorflow as tf
-import numpy as np
 import pandas as pd
-from sqlalchemy import create_engine
-import os
+from sqlalchemy import create_engine, text
+import numpy as np
 import logging
 import argparse
-
-from model import StockCNN
+from datetime import date, timedelta
 
 # --- Configuration ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 DATABASE_URL = "postgresql://admin:password@localhost:5433/dellmology"
-CHECKPOINT_DIR = "apps/ml-engine/checkpoints"
-TABLE_NAME = "daily_prices"
+DAILY_PRICES_TABLE = "daily_prices"
 PREDICTION_TABLE = "cnn_predictions"
-WINDOW_SIZE = 128
-FEATURES = ['open', 'high', 'low', 'close', 'volume']
+MODEL_VERSION = "mock-v1.0"
+TARGET_SYMBOLS = ["BBCA", "TLKM", "GOTO", "BBNI", "ASII", "BMRI"]
 
-# --- Main Execution ---
+# --- Database & Seeding Functions ---
 
 def connect_to_db():
     """Establishes a connection to the PostgreSQL database."""
@@ -29,53 +25,70 @@ def connect_to_db():
         logging.fatal(f"FATAL: Could not connect to database. Error: {e}")
         raise
 
-def get_latest_data(engine, symbol):
-    """Fetches the last N days of data for prediction."""
-    logging.info(f"Fetching latest {WINDOW_SIZE} days of data for {symbol}...")
-    try:
-        query = f"""
-            SELECT date, {', '.join(FEATURES)} FROM {TABLE_NAME} 
-            WHERE symbol = '{symbol}' 
-            ORDER BY date DESC 
-            LIMIT {WINDOW_SIZE};
-        """
-        # Reading data and then reversing to maintain chronological order
-        df = pd.read_sql(query, engine, index_col='date').sort_index(ascending=True)
+def seed_daily_prices(engine, symbol):
+    """Generates and inserts fake historical OHLCV data for a given symbol."""
+    logging.info(f"Checking for existing historical data for {symbol}...")
+    
+    # Check if data already exists to avoid re-seeding
+    with engine.connect() as connection:
+        result = connection.execute(text(f"SELECT COUNT(*) FROM {DAILY_PRICES_TABLE} WHERE symbol = '{symbol}'")).scalar()
+        if result > 100:
+            logging.info(f"Sufficient historical data for {symbol} already exists. Skipping seeding.")
+            return
+
+    logging.info(f"Generating 150 days of mock historical OHLCV data for {symbol}...")
+    
+    today = date.today()
+    dates = [today - timedelta(days=i) for i in range(150)]
+    dates.reverse() # Chronological order
+
+    # Start with a random base price
+    price = np.random.uniform(500, 10000)
+    prices = []
+
+    for _ in dates:
+        open_price = price * np.random.uniform(0.98, 1.02)
+        close_price = open_price * np.random.uniform(0.97, 1.03)
+        high_price = max(open_price, close_price) * np.random.uniform(1.0, 1.04)
+        low_price = min(open_price, close_price) * np.random.uniform(0.96, 1.0)
+        volume = np.random.randint(1_000_000, 100_000_000)
         
-        if len(df) < WINDOW_SIZE:
-            logging.error(f"Not enough data for {symbol}. Found {len(df)} records, need {WINDOW_SIZE}.")
-            return None, None
-            
-        return df, df.index[-1] # Return dataframe and the last date
+        prices.append({
+            'open': open_price,
+            'high': high_price,
+            'low': low_price,
+            'close': close_price,
+            'volume': volume
+        })
+        price = close_price # Next day's price is based on previous close
+
+    df = pd.DataFrame(prices, index=pd.to_datetime(dates))
+    df.index.name = 'date'
+    df['symbol'] = symbol
+    
+    # Reorder columns to match the table
+    df = df[['symbol', 'open', 'high', 'low', 'close', 'volume']]
+    
+    try:
+        # Use a transaction to delete old data and insert new to ensure atomicity
+        with engine.begin() as connection:
+            connection.execute(text(f"DELETE FROM {DAILY_PRICES_TABLE} WHERE symbol = '{symbol}'"))
+            df.to_sql(DAILY_PRICES_TABLE, connection, if_exists='append', index=True)
+        logging.info(f"Successfully seeded historical data for {symbol}.")
     except Exception as e:
-        logging.error(f"Failed to load data for {symbol}: {e}")
-        return None, None
+        logging.error(f"Failed to seed historical data for {symbol}: {e}")
 
-def process_data_for_prediction(df):
-    """Normalizes a single window of data for prediction."""
-    data_np = df[FEATURES].to_numpy()
-    
-    min_vals = data_np.min(axis=0)
-    max_vals = data_np.max(axis=0)
-    range_vals = max_vals - min_vals
-    range_vals[range_vals == 0] = 1
-    
-    normalized_window = (data_np - min_vals) / range_vals
-    
-    # The model expects a batch, so we add a new axis
-    return np.expand_dims(normalized_window, axis=0)
 
-def store_prediction(engine, symbol, prediction_date, raw_prediction, model_version):
-    """Stores the model's prediction in the database."""
-    # The raw prediction is logits, we apply softmax to get probabilities
-    probabilities = tf.nn.softmax(raw_prediction).eval()
+def store_mock_prediction(engine, symbol):
+    """Generates and stores a single mock prediction in the database."""
+    logging.info(f"Generating and storing mock prediction for {symbol}...")
     
-    confidence_up = probabilities[0][0]
-    confidence_down = probabilities[0][1]
+    prediction_date = date.today()
     
+    # Generate a random prediction
+    confidence_up = np.random.uniform(0.3, 0.9)
+    confidence_down = 1.0 - confidence_up
     predicted_class = 'UP' if confidence_up > confidence_down else 'DOWN'
-    
-    logging.info(f"Prediction for {symbol} on {prediction_date}: {predicted_class} (UP: {confidence_up:.2%}, DOWN: {confidence_down:.2%})")
 
     df = pd.DataFrame([{
         'date': prediction_date,
@@ -83,62 +96,48 @@ def store_prediction(engine, symbol, prediction_date, raw_prediction, model_vers
         'prediction': predicted_class,
         'confidence_up': confidence_up,
         'confidence_down': confidence_down,
-        'model_version': model_version
+        'model_version': MODEL_VERSION
     }])
     
     try:
-        df.to_sql(PREDICTION_TABLE, engine, if_exists='append', index=False)
-        logging.info("Successfully stored prediction in database.")
+        # Use ON CONFLICT to UPSERT the prediction for the day
+        query = f"""
+            INSERT INTO {PREDICTION_TABLE} (date, symbol, prediction, confidence_up, confidence_down, model_version)
+            VALUES (:date, :symbol, :prediction, :confidence_up, :confidence_down, :model_version)
+            ON CONFLICT (date, symbol) DO UPDATE
+            SET prediction = EXCLUDED.prediction,
+                confidence_up = EXCLUDED.confidence_up,
+                confidence_down = EXCLUDED.confidence_down,
+                model_version = EXCLUDED.model_version;
+        """
+        with engine.begin() as connection:
+            connection.execute(text(query), df.to_dict('records'))
+            
+        logging.info(f"Successfully stored mock prediction for {symbol}: {predicted_class} ({max(confidence_up, confidence_down):.2%})")
     except Exception as e:
-        logging.error(f"Failed to store prediction: {e}")
-
+        logging.error(f"Failed to store mock prediction for {symbol}: {e}")
 
 def main(symbol):
-    """Main function to run the inference process for a given symbol."""
-    logging.info(f"--- Starting inference for symbol: {symbol} ---")
-    
-    # 1. Connect to DB and get data
+    """Main function to run the data seeding and mock prediction process."""
+    if symbol.upper() == 'ALL':
+        symbols_to_process = TARGET_SYMBOLS
+    else:
+        symbols_to_process = [symbol.upper()]
+
     engine = connect_to_db()
-    df, last_date = get_latest_data(engine, symbol)
-    if df is None:
-        return
-        
-    # 2. Process the data into a feature window
-    feature_window = process_data_for_prediction(df)
 
-    # 3. Define TensorFlow graph and load model
-    image_ph = tf.placeholder(tf.float32, [None, WINDOW_SIZE, len(FEATURES)])
-    label_ph = tf.placeholder(tf.float32, [None, 2]) # Not used for inference but needed for model constructor
-    dropout_ph = tf.placeholder(tf.float32)
-
-    model = StockCNN(image_ph, label_ph, dropout_prob=dropout_ph)
-    saver = tf.train.Saver()
-
-    with tf.Session() as sess:
-        # Find the latest checkpoint
-        latest_checkpoint = tf.train.latest_checkpoint(CHECKPOINT_DIR)
-        if not latest_checkpoint:
-            logging.fatal(f"FATAL: No trained model checkpoint found in {CHECKPOINT_DIR}. Please run 'train.py' first.")
-            return
-            
-        logging.info(f"Restoring model from {latest_checkpoint}...")
-        saver.restore(sess, latest_checkpoint)
+    for sym in symbols_to_process:
+        logging.info(f"--- Processing symbol: {sym} ---")
+        # 1. Ensure historical data exists
+        seed_daily_prices(engine, sym)
         
-        # 4. Make prediction
-        prediction_logits = sess.run(model.prediction, {
-            image_ph: feature_window,
-            dropout_ph: 1.0 # No dropout for inference
-        })
-        
-        # 5. Store the prediction
-        model_version = os.path.basename(latest_checkpoint)
-        store_prediction(engine, symbol, last_date, prediction_logits, model_version)
-        
-    logging.info(f"--- Inference for {symbol} finished ---")
+        # 2. Store a mock prediction for today
+        store_mock_prediction(engine, sym)
+        logging.info(f"--- Finished processing {sym} ---")
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("symbol", help="Stock symbol to run inference for (e.g., BBCA).")
+    parser = argparse.ArgumentParser(description="Seed historical price data and generate a mock CNN prediction.")
+    parser.add_argument("symbol", help="Stock symbol to process (e.g., BBCA), or 'ALL' to process all target symbols.")
     args = parser.parse_args()
     main(args.symbol)

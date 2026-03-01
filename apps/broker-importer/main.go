@@ -7,7 +7,7 @@ import (
 	"math/rand"
 	"time"
 
-	_ "github.com/lib/pq" // PostgreSQL driver
+	"github.com/lib/pq" // PostgreSQL driver
 )
 
 // --- Configuration ---
