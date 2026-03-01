@@ -9,6 +9,7 @@ import { PredictionBadge } from "@/components/PredictionBadge";
 import { MarketIntelligenceCanvas } from "@/components/MarketIntelligenceCanvas";
 import { OrderFlowHeatmap } from "@/components/OrderFlowHeatmap";
 import { CnnPatternDetector } from "@/components/CnnPatternDetector";
+import DataValidationStatus from "@/components/DataValidationStatus";
 import { FlowEngine } from "@/components/FlowEngine";
 import { GlobalCorrelationMarquee } from "@/components/GlobalCorrelationMarquee";
 import { SystemHealthIndicators } from "@/components/SystemHealthIndicators";
@@ -101,6 +102,12 @@ export default function Home() {
           <section className="space-y-4">
             <h2 className="text-2xl font-bold">🚀 Advanced AI Screener (Multi-Factor)</h2>
             <AdvancedScreener />
+          </section>
+
+          {/* Data Validation & Quality Monitoring */}
+          <section className="space-y-4">
+            <h2 className="text-2xl font-bold">✓ Data Quality & Validation</h2>
+            <DataValidationStatus symbol={activeSymbol} />
           </section>
 
           {/* SECTION 2: The Flow Engine (Bandarmology Hub) */}
