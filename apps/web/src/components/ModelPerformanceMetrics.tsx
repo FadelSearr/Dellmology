@@ -47,7 +47,7 @@ export default function ModelPerformanceMetrics() {
   if (!metrics) return null
 
   return (
-    <div className="bg-gradient-to-br from-green-900/20 to-gray-900/30 border border-green-700/40 rounded-lg p-4 space-y-4">
+    <div className="bg-linear-to-br from-green-900/20 to-gray-900/30 border border-green-700/40 rounded-lg p-4 space-y-4">
       {/* Header */}
       <div className="flex items-center gap-2">
         <Zap size={18} className="text-green-400" />
@@ -114,7 +114,7 @@ export default function ModelPerformanceMetrics() {
           {[0.82, 0.84, 0.86, 0.85, 0.88, 0.87, 0.8756].map((val, i) => (
             <div
               key={i}
-              className="flex-1 bg-gradient-to-t from-green-500/50 to-green-400 rounded-t opacity-70 hover:opacity-100 transition-opacity"
+              className="flex-1 bg-linear-to-t from-green-500/50 to-green-400 rounded-t opacity-70 hover:opacity-100 transition-opacity"
               style={{ height: `${val * 100}%` }}
               title={`Day ${i - 6}: ${(val * 100).toFixed(1)}%`}
             />

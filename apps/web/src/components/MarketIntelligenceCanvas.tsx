@@ -148,7 +148,7 @@ export const MarketIntelligenceCanvas = ({ symbol, timeframe = '1h' }: { symbol:
   };
 
   return (
-    <div className="bg-gradient-to-br from-gray-800/60 to-gray-900/60 border border-gray-700 rounded-lg p-6 space-y-6">
+    <div className="bg-linear-to-br from-gray-800/60 to-gray-900/60 border border-gray-700 rounded-lg p-6 space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>

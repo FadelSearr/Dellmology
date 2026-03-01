@@ -145,7 +145,7 @@ export const AIScreener = ({ mode = 'DAYTRADE' }: { mode?: 'DAYTRADE' | 'SWING' 
           {results.map((result, idx) => (
             <div
               key={result.symbol}
-              className="bg-gradient-to-r from-gray-800/60 to-gray-800/30 border border-gray-700 rounded-lg p-3 hover:border-cyan-500/50 transition-colors cursor-pointer"
+              className="bg-linear-to-r from-gray-800/60 to-gray-800/30 border border-gray-700 rounded-lg p-3 hover:border-cyan-500/50 transition-colors cursor-pointer"
             >
               <div className="flex items-start justify-between gap-3">
                 {/* Left: Stock Info */}
@@ -182,7 +182,7 @@ export const AIScreener = ({ mode = 'DAYTRADE' }: { mode?: 'DAYTRADE' | 'SWING' 
                 </div>
 
                 {/* Right: Signal Score & Recommendation */}
-                <div className="flex-shrink-0 text-right">
+                <div className="shrink-0 text-right">
                   <div
                     className={`text-2xl font-bold rounded-lg px-3 py-2 ${
                       result.signal_score > 75

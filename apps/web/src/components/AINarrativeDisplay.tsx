@@ -100,7 +100,7 @@ export const AINarrativeDisplay = ({
   }
 
   return (
-    <div className="bg-gradient-to-r from-purple-900/20 to-indigo-900/20 border border-purple-700/50 rounded-lg p-4">
+    <div className="bg-linear-to-r from-purple-900/20 to-indigo-900/20 border border-purple-700/50 rounded-lg p-4">
       <div className="flex items-start justify-between mb-2">
         <h4 className="text-sm font-semibold text-purple-300 flex items-center gap-2">
           🤖 AI Analysis

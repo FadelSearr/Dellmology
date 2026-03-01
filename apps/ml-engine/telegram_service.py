@@ -7,6 +7,7 @@ from typing import Optional, List
 from datetime import datetime, timedelta
 from telegram_notifier import TelegramNotifier, TelegramAlertManager
 from model_retrain_scheduler import start_scheduler, stop_scheduler, get_scheduler
+from sqlalchemy import text
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -274,24 +275,54 @@ async def ingest_metrics(
     payload: dict,
     authorization: Optional[str] = Header(None)
 ):
-    """Ingest model training metrics (can be called by training job)."""
+    """Ingest model training metrics (can be called by training job).
+    Accepts either a single metric dict or a dict with 'history' list for epoch-level records.
+    """
     if not await verify_auth(authorization):
         raise HTTPException(status_code=401, detail="Unauthorized")
-
-    symbol = payload.get('symbol')
-    trained_at = payload.get('trained_at')
-    training_loss = payload.get('training_loss')
-    validation_accuracy = payload.get('validation_accuracy')
-    training_time_seconds = payload.get('training_time_seconds')
-    model_size_mb = payload.get('model_size_mb')
-    notes = payload.get('notes', '')
-
-    if not symbol:
-        raise HTTPException(status_code=400, detail="symbol is required")
 
     try:
         from predict import connect_to_db
         engine = connect_to_db()
+
+        # If payload contains 'history' (list of epoch dicts), insert each as an epoch record
+        if isinstance(payload, dict) and 'history' in payload and isinstance(payload['history'], list):
+            symbol = payload.get('symbol')
+            inserted = 0
+            insert_sql = """
+            INSERT INTO model_metrics (symbol, trained_at, training_loss, validation_accuracy, training_time_seconds, model_size_mb, notes)
+            VALUES (:symbol, COALESCE(:trained_at, now()), :training_loss, :validation_accuracy, :training_time_seconds, :model_size_mb, :notes);
+            """
+            with engine.begin() as conn:
+                for item in payload['history']:
+                    trained_at = item.get('timestamp') or payload.get('trained_at')
+                    training_loss = item.get('loss')
+                    validation_accuracy = item.get('accuracy')
+                    params = {
+                        'symbol': symbol,
+                        'trained_at': trained_at,
+                        'training_loss': training_loss,
+                        'validation_accuracy': validation_accuracy,
+                        'training_time_seconds': None,
+                        'model_size_mb': None,
+                        'notes': 'epoch'
+                    }
+                    conn.execute(text(insert_sql), params)
+                    inserted += 1
+            return JSONResponse({'success': True, 'inserted': inserted})
+
+        # Otherwise expect a single metric dict
+        symbol = payload.get('symbol')
+        trained_at = payload.get('trained_at')
+        training_loss = payload.get('training_loss')
+        validation_accuracy = payload.get('validation_accuracy')
+        training_time_seconds = payload.get('training_time_seconds')
+        model_size_mb = payload.get('model_size_mb')
+        notes = payload.get('notes', '')
+
+        if not symbol:
+            raise HTTPException(status_code=400, detail="symbol is required")
+
         insert_sql = """
         INSERT INTO model_metrics (symbol, trained_at, training_loss, validation_accuracy, training_time_seconds, model_size_mb, notes)
         VALUES (:symbol, COALESCE(:trained_at, now()), :training_loss, :validation_accuracy, :training_time_seconds, :model_size_mb, :notes);

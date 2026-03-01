@@ -126,7 +126,7 @@ export const GlobalCorrelationMarquee = () => {
   }
 
   return (
-    <div className="relative flex overflow-hidden h-6 bg-gradient-to-r from-gray-900/50 to-gray-800/50 rounded px-2 items-center border border-gray-700/30">
+    <div className="relative flex overflow-hidden h-6 bg-linear-to-r from-gray-900/50 to-gray-800/50 rounded px-2 items-center border border-gray-700/30">
       <style>{`
         @keyframes scroll-left {
           0% { transform: translateX(100%); }
@@ -171,8 +171,8 @@ export const GlobalCorrelationMarquee = () => {
       </div>
 
       {/* Gradient overlays for fade effect */}
-      <div className="absolute left-0 top-0 bottom-0 w-8 bg-gradient-to-r from-gray-900/50 to-transparent pointer-events-none"></div>
-      <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-gray-900/50 to-transparent pointer-events-none"></div>
+      <div className="absolute left-0 top-0 bottom-0 w-8 bg-linear-to-r from-gray-900/50 to-transparent pointer-events-none"></div>
+      <div className="absolute right-0 top-0 bottom-0 w-8 bg-linear-to-l from-gray-900/50 to-transparent pointer-events-none"></div>
 
       {/* Sentiment badge */}
       {data && (

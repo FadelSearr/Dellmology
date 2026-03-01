@@ -13,4 +13,5 @@ python-dotenv
 pydantic
 scikit-learn
 ta
-scipyapscheduler
+scipy
+apscheduler

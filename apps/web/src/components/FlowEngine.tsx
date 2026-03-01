@@ -156,22 +156,22 @@ export const FlowEngine = ({ symbol = 'BBCA' }: { symbol?: string }) => {
         <>
           {/* Stats Summary */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="bg-gradient-to-br from-blue-900/40 to-blue-900/20 border border-blue-700/50 rounded-lg p-4">
+            <div className="bg-linear-to-br from-blue-900/40 to-blue-900/20 border border-blue-700/50 rounded-lg p-4">
               <div className="text-xs text-gray-400 mb-2">Total Brokers</div>
               <div className="text-2xl font-bold text-blue-400">{data.stats.total_brokers}</div>
             </div>
 
-            <div className="bg-gradient-to-br from-yellow-900/40 to-yellow-900/20 border border-yellow-700/50 rounded-lg p-4">
+            <div className="bg-linear-to-br from-yellow-900/40 to-yellow-900/20 border border-yellow-700/50 rounded-lg p-4">
               <div className="text-xs text-gray-400 mb-2">🐋 Whales</div>
               <div className="text-2xl font-bold text-yellow-400">{data.stats.whales}</div>
             </div>
 
-            <div className="bg-gradient-to-br from-green-900/40 to-green-900/20 border border-green-700/50 rounded-lg p-4">
+            <div className="bg-linear-to-br from-green-900/40 to-green-900/20 border border-green-700/50 rounded-lg p-4">
               <div className="text-xs text-gray-400 mb-2">👥 Retail</div>
               <div className="text-2xl font-bold text-green-400">{data.stats.retail}</div>
             </div>
 
-            <div className={`bg-gradient-to-br ${data.stats.wash_sale_score > 60 ? 'from-red-900/40 to-red-900/20 border border-red-700/50' : 'from-orange-900/40 to-orange-900/20 border border-orange-700/50'} rounded-lg p-4`}>
+            <div className={`bg-linear-to-br ${data.stats.wash_sale_score > 60 ? 'from-red-900/40 to-red-900/20 border border-red-700/50' : 'from-orange-900/40 to-orange-900/20 border border-orange-700/50'} rounded-lg p-4`}>
               <div className="text-xs text-gray-400 mb-2">⚠️ Wash Sale</div>
               <div className={`text-2xl font-bold ${data.stats.wash_sale_score > 60 ? 'text-red-400' : 'text-orange-400'}`}>
                 {data.stats.wash_sale_score.toFixed(0)}%

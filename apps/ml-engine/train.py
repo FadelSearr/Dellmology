@@ -128,7 +128,15 @@ def main(symbol: str):
                     label_ph: y_test,
                     dropout_ph: 1.0 # No dropout during testing
                 })
-                logging.info(f"Step {i}, Test Accuracy: {accuracy:.4f}")
+                # compute loss as well
+                loss_val = sess.run(tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(labels=label_ph, logits=model.prediction)), {
+                    image_ph: x_test,
+                    label_ph: y_test,
+                    dropout_ph: 1.0
+                })
+                logging.info(f"Step {i}, Test Accuracy: {accuracy:.4f}, Loss: {loss_val:.6f}")
+                # append to history
+                running_losses.append({'step': i, 'accuracy': float(accuracy), 'loss': float(loss_val), 'timestamp': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())})
                 
                 # Save checkpoint
                 save_path = saver.save(sess, os.path.join(CHECKPOINT_DIR, MODEL_NAME), global_step=i)
@@ -166,14 +174,15 @@ def main(symbol: str):
 
     logging.info("Training finished.")
 
-    # print JSON metrics to stdout for scheduler to consume
+    # print JSON metrics to stdout for scheduler to consume (include history)
     metrics = {
         'symbol': symbol,
         'trained_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
         'training_loss': float(final_loss) if final_loss is not None else None,
         'validation_accuracy': float(final_accuracy) if final_accuracy is not None else None,
         'training_time_seconds': int(elapsed),
-        'model_size_mb': round(float(model_size_mb), 3)
+        'model_size_mb': round(float(model_size_mb), 3),
+        'history': running_losses
     }
     print(json.dumps({'training_metrics': metrics}))
     # flush

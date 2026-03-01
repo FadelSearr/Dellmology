@@ -13,6 +13,7 @@ import { AINarrativeDisplay } from "@/components/AINarrativeDisplay";
 import { TelegramSettings } from "@/components/TelegramSettings";
 import RetrainStatusWidget from "@/components/RetrainStatusWidget";
 import ModelPerformanceMetrics from "@/components/ModelPerformanceMetrics";
+import ModelMetricsHistory from "@/components/ModelMetricsHistory";
 import { ProcessedTrade } from "@/types/global";
 import { useEffect, useState } from "react";
 
@@ -99,7 +100,7 @@ export default function Home() {
           </section>
 
           {/* SECTION 4: Risk & Tactical Dock */}
-          <section className="bg-gradient-to-r from-orange-900/20 to-red-900/20 border border-orange-700/50 rounded-lg p-6 space-y-4">
+          <section className="bg-linear-to-r from-orange-900/20 to-red-900/20 border border-orange-700/50 rounded-lg p-6 space-y-4">
             <div>
               <h2 className="text-2xl font-bold mb-4">🛡️ Risk & Tactical Dock</h2>
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -167,6 +168,9 @@ export default function Home() {
             <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-4">
               <RetrainStatusWidget />
               <ModelPerformanceMetrics />
+            </div>
+            <div className="mt-4">
+              <ModelMetricsHistory symbol={activeSymbol} limit={30} />
             </div>
             
             {/* Telegram Settings Component */}
