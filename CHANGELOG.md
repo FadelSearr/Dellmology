@@ -1,8 +1,162 @@
-# 📝 Implementation Changelog - Phase 1
+# 📝 Implementation Changelog - Phase 1+
 
-## Session: [March 1, 2026]
+## Session: [March 1, 2026 - Phase 2 Extensions]
 
 ### Summary
+Extended Dellmology Pro with explainable AI (XAI), enhanced order-flow visualization, and automated model retraining pipeline. Improved model transparency and operational reliability for continuous learning.
+
+---
+
+## ✅ Latest Implementations (Phase 2)
+
+### 1. **Explainable AI (XAI) Module**
+
+**Components**:
+- `apps/ml-engine/xai_explainer.py`: Ablation-based feature importance analyzer
+- `apps/web/src/app/api/xai/route.ts`: Next.js API route for proxy
+- `apps/web/src/components/XAIReport.tsx`: React component for display
+- `apps/web/src/components/MarketIntelligenceCanvas.tsx`: Integrated "🧭 Explain" button
+
+**Features**:
+- Ablation-based importance scoring (single-feature perturbation)
+- Per-feature and per-day contribution analysis
+- Top-K important features ranking
+- Base probability (UP) calculation
+- Aggregate feature importance by (open/high/low/close/volume)
+- Hover-based feature inspection
+
+**API Endpoint**:
+```
+POST /xai/explain
+Authorization: Bearer ML_ENGINE_KEY
+Body: { "symbol": "BBCA", "top_k": 10 }
+Response: { "explanation": { "base_prob_up": 0.65, "top_features": [...], "aggregate_feature_importance": {...} } }
+```
+
+**Frontend Integration**:
+- Click "🧭 Explain" button on market intelligence panel
+- Displays top contributors and aggregate importance
+- Inline rendering in MarketIntelligenceCanvas
+
+---
+
+### 2. **Enhanced Order-Flow Heatmap Rendering**
+
+**Improvements** (`apps/web/src/components/FlowEngine.tsx`):
+- **Smooth gradient coloring**: Intensity scales with magnitude (no fixed opacity buckets)
+- **Interactive tooltips**: Hover reveals exact daily values, formatted dates, and amounts
+- **Visual summary**: Per-broker daily totals (↑ X.XB buy, ↓ X.XB sell)
+- **Heatmap legend**: Color reference card (light/strong buy/sell)
+- **Responsive design**: Cells animate on hover, shadows enhance depth
+- **Fallback UI**: Graceful handling when heatmap data unavailable
+
+**Heatmap Legend Added**:
+- Light buy (green, low intensity)
+- Strong buy (green, full intensity)
+- Light sell (red, low intensity)
+- Strong sell (red, full intensity)
+
+---
+
+### 3. **Periodic Model Retrain Scheduler**
+
+**Components**:
+- `apps/ml-engine/model_retrain_scheduler.py`: APScheduler-based background job service
+- `apps/ml-engine/telegram_service.py`: Integrated startup/shutdown + API endpoints
+- `.env` configuration: RETRAIN_SCHEDULE, RETRAIN_HOUR, RETRAIN_DAY, RETRAIN_CRON
+- `RETRAIN_SCHEDULER.md`: Complete documentation and troubleshooting guide
+
+**Features**:
+- **Flexible scheduling**:
+  - Daily retrain at specified UTC hour (default 22:00 UTC / 05:00 WIB)
+  - Weekly retrain on specified day + hour
+  - Custom cron expressions (e.g., "0 22 * * 0,3" = Sun & Wed at 22:00)
+- **Per-symbol tracking**: Individual success/failure status for all target symbols
+- **Error resilience**: Continues through failures; logs issues per-symbol
+- **Manual override**: Trigger retrain immediately via API
+- **Status monitoring**: Get scheduler state and per-symbol history
+
+**API Endpoints**:
+```
+POST /retrain/trigger
+  Body: { "symbol": "BBCA" } (or {} for all symbols)
+  Response: { "retrain_result": { "triggered_symbols": [...], "results": {...} } }
+
+GET /retrain/status
+  Response: { "status": { "running": true, "schedule_type": "daily", "symbol_status": {...} } }
+```
+
+**Configuration Examples**:
+```dotenv
+# Daily at 22:00 UTC
+RETRAIN_SCHEDULE=daily
+RETRAIN_HOUR=22
+
+# Weekly on Sundays at 22:00 UTC
+RETRAIN_SCHEDULE=weekly
+RETRAIN_HOUR=22
+RETRAIN_DAY=sun
+
+# Custom: every 6 hours
+RETRAIN_SCHEDULE=cron
+RETRAIN_CRON=0 */6 * * *
+```
+
+**Data Pipeline**:
+1. Load 128-day historical data for symbol
+2. Generate features (5 OHLCV columns)
+3. Train CNN for 50 epochs
+4. Save checkpoint to `checkpoints/` directory
+5. Log result per-symbol
+
+---
+
+## Environment Configuration Updates
+
+Added to `.env.example`:
+```dotenv
+# === MODEL RETRAINING SCHEDULER ===
+RETRAIN_SCHEDULE=daily              # 'daily', 'weekly', or 'cron'
+RETRAIN_HOUR=22                      # UTC hour (0-23)
+RETRAIN_DAY=sun                      # for weekly: sun, mon, ..., sat
+RETRAIN_CRON=                        # custom cron if RETRAIN_SCHEDULE=cron
+```
+
+---
+
+## Documentation
+
+- **`RETRAIN_SCHEDULER.md`**: Retrain scheduler setup, API usage, and troubleshooting
+- **`CNN_TRAINING.md`**: CNN model training pipeline (existing)
+- **`QUICK_START.md`**: Updated with new XAI and retrain scheduler info
+- **`.env.example`**: Added retrain scheduler configuration
+
+---
+
+## Technical Improvements
+
+| Aspect | Improvement |
+|--------|-------------|
+| **Model Transparency** | XAI ablation-based explanations show which features drive predictions |
+| **Data Visualization** | Heatmap now uses smooth gradients + tooltips for better insight |
+| **Automation** | Models no longer stale; retrain on schedule without manual intervention |
+| **Robustness** | Per-symbol error tracking ensures one failure doesn't block others |
+| **Flexibility** | Support daily, weekly, or custom cron schedules with environment config |
+
+---
+
+## Next Steps (Phase 3 Candidates)
+
+- [ ] Dashboard widget for retrain status + manual trigger button
+- [ ] Enhanced XAI with SHAP or KernelExplainer (more accurate, heavier computation)
+- [ ] Model performance tracking (retrain success rate, training time)
+- [ ] Backtesting improvements (more indicators, walk-forward validation)
+- [ ] Mobile-friendly dashboard layout
+- [ ] Real-time model performance monitoring
+
+---
+
+# 📝 Implementation Changelog - Phase 1
 Implemented complete Phase 1 backend infrastructure and frontend UI for Dellmology Pro bandarmology platform. All 5 sections of the dashboard now have functional components with real-time data integration.
 
 ---

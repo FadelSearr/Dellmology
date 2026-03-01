@@ -6,6 +6,7 @@ from fastapi.responses import JSONResponse
 from typing import Optional, List
 from datetime import datetime, timedelta
 from telegram_notifier import TelegramNotifier, TelegramAlertManager
+from model_retrain_scheduler import start_scheduler, stop_scheduler, get_scheduler
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -18,6 +19,28 @@ alert_manager = TelegramAlertManager(notifier)
 # In-memory history (replace with database in production)
 alert_history: List[dict] = []
 MAX_HISTORY = 100
+
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize scheduler on app startup."""
+    logger.info("Starting model retrain scheduler...")
+    try:
+        start_scheduler()
+        logger.info("Model retrain scheduler started successfully")
+    except Exception as e:
+        logger.error(f"Failed to start retrain scheduler: {e}")
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Clean up scheduler on app shutdown."""
+    logger.info("Stopping model retrain scheduler...")
+    try:
+        stop_scheduler()
+        logger.info("Model retrain scheduler stopped")
+    except Exception as e:
+        logger.error(f"Error stopping scheduler: {e}")
 
 
 async def verify_auth(authorization: Optional[str] = Header(None)) -> bool:
@@ -207,6 +230,42 @@ async def api_xai_explain(
         raise HTTPException(status_code=500, detail=str(fe))
     except Exception as e:
         logger.error(f"XAI explanation error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# --- Model Retrain Scheduler Endpoints ---
+
+@app.post("/retrain/trigger")
+async def trigger_retrain(
+    payload: dict,
+    authorization: Optional[str] = Header(None)
+):
+    """Manually trigger model retrain for a symbol (or all symbols if not specified)."""
+    if not await verify_auth(authorization):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    symbol = payload.get('symbol')
+    try:
+        scheduler = get_scheduler()
+        result = scheduler.trigger_retrain_now(symbol)
+        return JSONResponse({'success': True, 'retrain_result': result})
+    except Exception as e:
+        logger.error(f"Retrain trigger error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/retrain/status")
+async def get_retrain_status(authorization: Optional[str] = Header(None)):
+    """Get model retrain scheduler status and history."""
+    if not await verify_auth(authorization):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    try:
+        scheduler = get_scheduler()
+        status = scheduler.get_status()
+        return JSONResponse({'success': True, 'status': status})
+    except Exception as e:
+        logger.error(f"Retrain status error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
