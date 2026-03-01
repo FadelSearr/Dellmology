@@ -404,6 +404,96 @@ async def get_config(authorization: Optional[str] = Header(None)):
     }
 
 
+# --- Model Alert Thresholds ---
+
+@app.post("/model-alerts/thresholds")
+async def set_alert_thresholds(
+    payload: dict,
+    authorization: Optional[str] = Header(None)
+):
+    """Set or update alert thresholds for a symbol."""
+    if not await verify_auth(authorization):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    symbol = payload.get('symbol')
+    min_accuracy = payload.get('min_accuracy', 80)
+    max_loss = payload.get('max_loss', 0.15)
+    alert_on_retrain_failure = payload.get('alert_on_retrain_failure', True)
+    notify_telegram = payload.get('notify_telegram', True)
+    notify_email = payload.get('notify_email')
+
+    if not symbol:
+        raise HTTPException(status_code=400, detail="symbol is required")
+
+    try:
+        from predict import connect_to_db
+        engine = connect_to_db()
+        upsert_sql = """
+        INSERT INTO model_alert_thresholds (symbol, min_accuracy, max_loss, alert_on_retrain_failure, notify_telegram, notify_email, updated_at)
+        VALUES (:symbol, :min_accuracy, :max_loss, :alert_on_retrain_failure, :notify_telegram, :notify_email, now())
+        ON CONFLICT (symbol) DO UPDATE SET
+            min_accuracy = :min_accuracy,
+            max_loss = :max_loss,
+            alert_on_retrain_failure = :alert_on_retrain_failure,
+            notify_telegram = :notify_telegram,
+            notify_email = :notify_email,
+            updated_at = now();
+        """
+        params = {
+            'symbol': symbol,
+            'min_accuracy': min_accuracy,
+            'max_loss': max_loss,
+            'alert_on_retrain_failure': alert_on_retrain_failure,
+            'notify_telegram': notify_telegram,
+            'notify_email': notify_email,
+        }
+        with engine.begin() as conn:
+            conn.execute(text(upsert_sql), params)
+
+        logger.info(f"Alert thresholds saved for {symbol}")
+        return JSONResponse({'success': True, 'message': f'Thresholds saved for {symbol}'})
+    except Exception as e:
+        logger.error(f"Failed to save alert thresholds: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/model-alerts/thresholds")
+async def get_alert_thresholds(
+    symbol: str,
+    authorization: Optional[str] = Header(None)
+):
+    """Get alert thresholds for a symbol."""
+    if not await verify_auth(authorization):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    try:
+        from predict import connect_to_db
+        engine = connect_to_db()
+        with engine.connect() as conn:
+            row = conn.execute(
+                text("SELECT * FROM model_alert_thresholds WHERE symbol = :sym"),
+                {'sym': symbol}
+            ).fetchone()
+
+        if row:
+            return JSONResponse({'success': True, 'thresholds': dict(row)})
+        else:
+            # Return defaults
+            return JSONResponse({
+                'success': True,
+                'thresholds': {
+                    'symbol': symbol,
+                    'min_accuracy': 80,
+                    'max_loss': 0.15,
+                    'alert_on_retrain_failure': True,
+                    'notify_telegram': True,
+                }
+            })
+    except Exception as e:
+        logger.error(f"Failed to query alert thresholds: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/health")
 async def health():
     """Health check"""

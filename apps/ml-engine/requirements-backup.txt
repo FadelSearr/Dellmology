@@ -3,6 +3,8 @@ numpy
 yfinance
 psycopg2-binary
 sqlalchemy
+# tensorflow 2.10+ for Python 3.10 compatibility (training legacy TF1.x models may need conversion)
+tensorflow>=2.10
 google-generativeai
 requests
 httpx

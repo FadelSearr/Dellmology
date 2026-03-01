@@ -12,8 +12,9 @@ import { SystemHealthIndicators } from "@/components/SystemHealthIndicators";
 import { AINarrativeDisplay } from "@/components/AINarrativeDisplay";
 import { TelegramSettings } from "@/components/TelegramSettings";
 import RetrainStatusWidget from "@/components/RetrainStatusWidget";
-import ModelPerformanceMetrics from "@/components/ModelPerformanceMetrics";
+import EnhancedModelPerformanceMetrics from "@/components/EnhancedModelPerformanceMetrics";
 import ModelMetricsHistory from "@/components/ModelMetricsHistory";
+import ModelAlertThresholds from "@/components/ModelAlertThresholds";
 import { ProcessedTrade } from "@/types/global";
 import { useEffect, useState } from "react";
 
@@ -167,10 +168,11 @@ export default function Home() {
             {/* Model Status & Performance */}
             <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-4">
               <RetrainStatusWidget />
-              <ModelPerformanceMetrics />
+              <EnhancedModelPerformanceMetrics symbol={activeSymbol} limit={30} />
             </div>
-            <div className="mt-4">
+            <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
               <ModelMetricsHistory symbol={activeSymbol} limit={30} />
+              <ModelAlertThresholds symbol={activeSymbol} />
             </div>
             
             {/* Telegram Settings Component */}

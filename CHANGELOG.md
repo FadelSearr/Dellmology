@@ -1,5 +1,110 @@
 # 📝 Implementation Changelog - Phase 1+
 
+## Session: [March 1, 2026 - Phase 5 Enhancements]
+
+### Summary
+Implemented enhanced model performance dashboard with real-time metrics trending, loss/accuracy visualization, and configurable alert thresholds. Added comprehensive monitoring UI for ops teams to track model health and trigger alerts on performance degradation.
+
+---
+
+## ✅ Latest Implementations (Phase 5)
+
+### 1. **Enhanced Model Performance Metrics Component**
+
+**Components**:
+- `apps/web/src/components/EnhancedModelPerformanceMetrics.tsx`: Advanced metrics dashboard with trending
+- Real-time data fetching from `/api/metrics`
+- Calculates trend indicators (accuracy % change, loss % change)
+- Alert system based on threshold violations
+
+**Features**:
+- **Latest Accuracy**: Displays current validation accuracy with visual alert if below threshold
+- **Training Loss**: Shows latest training loss with trend indicator
+- **Trend Analysis**: 
+  - Accuracy trend: % change from oldest to newest metric
+  - Loss trend: % change from oldest to newest
+  - Visual indicators (↑ green for good, ↓ red for bad)
+- **Interactive Threshold Slider**: Users adjust alert threshold (50-95%) in real-time
+- **Recent Training Runs Table**: Displays last 8 training runs with date, loss, and accuracy
+- **Dynamic Alert Banner**: Shows when accuracy drops below threshold
+- **Health Indicator**: Pulses green when healthy, red when alerts active
+
+**Data Source**: Queries `/api/metrics?symbol=...&limit=30` with 60-second auto-refresh
+
+---
+
+### 2. **Model Alert Thresholds Configuration UI**
+
+**Components**:
+- `apps/web/src/components/ModelAlertThresholds.tsx`: Alert threshold management panel
+- `apps/web/src/app/api/model-alerts/thresholds/route.ts`: Next.js proxy endpoints
+
+**Features**:
+- **Minimum Accuracy Threshold**: Configurable 50-99% range (default 80%)
+- **Maximum Loss Threshold**: Configurable 0.01-1.00 range (default 0.15)
+- **Retrain Failure Alerts**: Toggle monitoring for retrain job failures
+- **Notification Methods**: 
+  - Telegram alerts (checkbox enabled)
+  - Email alerts (optional)
+- **Save & Persist**: Saves configuration to `model_alert_thresholds` DB table
+- **Real-time Summary**: Shows active configuration for quick reference
+
+**API Endpoints**:
+```
+POST /model-alerts/thresholds
+  Body: { symbol, min_accuracy, max_loss, alert_on_retrain_failure, notify_telegram, notify_email }
+  Returns: { success: true, message: "..." }
+
+GET /model-alerts/thresholds?symbol=BBCA
+  Returns: { success: true, thresholds: {...} }
+```
+
+**Backend**: Added endpoints to `apps/ml-engine/telegram_service.py` with DB upsert logic
+
+---
+
+### 3. **Database Schema for Alert Thresholds**
+
+**Migration file**: `db/init/03-alert-thresholds.sql`
+
+**Table structure**:
+```sql
+CREATE TABLE model_alert_thresholds (
+    id SERIAL PRIMARY KEY,
+    symbol VARCHAR(10) NOT NULL UNIQUE,
+    min_accuracy NUMERIC(5, 2) DEFAULT 80,
+    max_loss NUMERIC(10, 6) DEFAULT 0.15,
+    alert_on_retrain_failure BOOLEAN DEFAULT true,
+    notify_email VARCHAR(255),
+    notify_telegram BOOLEAN DEFAULT true,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+```
+
+- Per-symbol thresholds (unique index on symbol)
+- Configurable notification channels
+- Auto-timestamps for audit trail
+
+---
+
+### 4. **Dashboard Integration**
+
+**Changes** (`apps/web/src/app/page.tsx`):
+- Replaced old `ModelPerformanceMetrics` with `EnhancedModelPerformanceMetrics`
+- Added `ModelAlertThresholds` component in 2-column grid layout below metrics history
+- Components receive `activeSymbol` for symbol-specific configuration and trending
+- Responsive: responsive layout (1 col mobile, 2 col desktop)
+
+**Component layout**:
+```
+┌─ RetrainStatusWidget ─────────┬─ EnhancedModelPerformanceMetrics ─┐
+├─ ModelMetricsHistory ────────────┬─ ModelAlertThresholds ──────────┤
+└───────────────────────────────────────────────────────────────────┘
+```
+
+---
+
 ## Session: [March 1, 2026 - Phase 3 Enhancements]
 
 ### Summary
