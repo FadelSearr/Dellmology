@@ -11,6 +11,7 @@ interface BrokerData {
   is_retail: boolean;
   is_anomalous: boolean;
   z_score: number;
+  daily_heatmap?: number[]; // array of daily net values for visualization
 }
 
 interface BrokerFlowData {
@@ -178,10 +179,32 @@ export const FlowEngine = ({ symbol = 'BBCA' }: { symbol?: string }) => {
             </div>
           </div>
 
+          {/* Heatmap Legend */}
+          <div className="flex items-center gap-4 text-xs text-gray-400 bg-gray-900/30 border border-gray-700 rounded-lg p-3">
+            <div>📊 Heatmap:</div>
+            <div className="flex items-center gap-1">
+              <div className="w-3 h-3 rounded-sm" style={{ background: 'rgba(16, 185, 129, 0.2)' }}></div>
+              <span>Light buy</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <div className="w-3 h-3 rounded-sm" style={{ background: 'rgba(16, 185, 129, 1)' }}></div>
+              <span>Strong buy</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <div className="w-3 h-3 rounded-sm" style={{ background: 'rgba(239, 68, 68, 0.2)' }}></div>
+              <span>Light sell</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <div className="w-3 h-3 rounded-sm" style={{ background: 'rgba(239, 68, 68, 1)' }}></div>
+              <span>Strong sell</span>
+            </div>
+          </div>
+
           {/* Broker List - Deep Broker Flow Table */}
           <div className="bg-gray-800/50 border border-gray-700 rounded-lg overflow-hidden">
             <div className="bg-gray-900/50 border-b border-gray-700 px-6 py-4">
               <h3 className="text-sm font-semibold text-white">Deep Broker Flow Analysis</h3>
+              <p className="text-xs text-gray-400 mt-1">Hover over heatmap cells for daily details</p>
             </div>
 
             <div className="divide-y divide-gray-700">
@@ -225,38 +248,50 @@ export const FlowEngine = ({ symbol = 'BBCA' }: { symbol?: string }) => {
                       </div>
                     </div>
 
-                    {/* Mini Heatmap (daily data) */}
-                    <div className="flex gap-1">
-                      {broker.daily_heatmap && broker.daily_heatmap.length > 0 ? (
-                        (() => {
-                          // scale opacity by maximum magnitude present
-                          const mags = broker.daily_heatmap.map((v: number) => Math.abs(v));
-                          const maxMag = Math.max(...mags, 1);
-                          return broker.daily_heatmap.map((val: number, i: number) => {
-                            const intensity = Math.min(1, Math.abs(val) / maxMag);
+                    {/* Enhanced Mini Heatmap (daily data) */}
+                    <div className="space-y-2">
+                      <div className="flex gap-1 items-end">
+                        {broker.daily_heatmap && broker.daily_heatmap.length > 0 ? (
+                          (() => {
+                            const mags = broker.daily_heatmap.map((v: number) => Math.abs(v));
+                            const maxMag = Math.max(...mags, 1);
+                            const totalBuy = broker.daily_heatmap.reduce((s: number, v: number) => s + Math.max(0, v), 0);
+                            const totalSell = broker.daily_heatmap.reduce((s: number, v: number) => s + Math.abs(Math.min(0, v)), 0);
                             return (
-                              <div
-                                key={i}
-                                className="flex-1 h-6 rounded-sm transition-opacity"
-                                title={`Day ${i - days + 1}: ${val.toLocaleString()}`}
-                                style={{
-                                  background: val > 0 ? '#10b981' : '#ef4444',
-                                  opacity: 0.2 + 0.8 * intensity,
-                                }}
-                              ></div>
+                              <>
+                                {broker.daily_heatmap.map((val: number, i: number) => {
+                                  const intensity = Math.min(1, Math.abs(val) / maxMag);
+                                  const baseColor = val > 0 ? { r: 16, g: 185, b: 129 } : { r: 239, g: 68, b: 68 };
+                                  const color = `rgba(${baseColor.r}, ${baseColor.g}, ${baseColor.b}, ${0.15 + 0.85 * intensity})`;
+                                  const dayLabel = new Date(new Date().setDate(new Date().getDate() - days + i)).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                                  return (
+                                    <div key={i} className="flex-1 group relative">
+                                      <div
+                                        className="h-8 rounded-sm transition-all hover:h-10 shadow-sm hover:shadow-md cursor-pointer"
+                                        style={{ background: color }}
+                                      ></div>
+                                      <div className="absolute z-10 hidden group-hover:flex bottom-full mb-2 left-1/2 -translate-x-1/2 bg-gray-900 border border-gray-600 rounded px-2 py-1 text-xs text-gray-300 whitespace-nowrap">
+                                        {dayLabel}: {val > 0 ? '+' : ''}{(val / 1e9).toFixed(2)}B
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                                <div className="flex gap-2 ml-2 text-xs text-gray-400 pl-2 border-l border-gray-700">
+                                  <span className="text-green-400">↑ {(totalBuy / 1e9).toFixed(1)}B</span>
+                                  <span className="text-red-400">↓ {(totalSell / 1e9).toFixed(1)}B</span>
+                                </div>
+                              </>
                             );
-                          });
-                        })()
-                      ) : (
-                        // fallback empty boxes when no heatmap data
-                        [...Array(days)].map((_, i) => (
-                          <div
-                            key={i}
-                            className="flex-1 h-6 bg-gray-700 rounded-sm opacity-60 hover:opacity-100 transition-opacity"
-                            title={`Day ${i - days + 1}`}
-                          ></div>
-                        ))
-                      )}
+                          })()
+                        ) : (
+                          [...Array(Math.min(days, 7))].map((_, i) => (
+                            <div
+                              key={i}
+                              className="flex-1 h-6 bg-gray-700 rounded-sm opacity-40 hover:opacity-60 transition-opacity"
+                            ></div>
+                          ))
+                        )}
+                      </div>
                     </div>
                   </div>
                 ))
