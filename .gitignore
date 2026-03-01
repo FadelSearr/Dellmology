@@ -1,31 +1,36 @@
-# IDE & Editor files
+# IDE and OS files
 .vscode/
 .idea/
 *.swp
-*.swo
-
-# OS-generated files
+*~
 .DS_Store
-Thumbs.db
 
-# Log files
+# Logs
+logs
 *.log
-*.log*
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 lerna-debug.log*
 
-# Dependency directories
+# Node
 node_modules/
-
-# Build & compilation output
-.next/
 dist/
-build/
-out/
+.next/
+*.tsbuildinfo
+next-env.d.ts
 
-# Python cache and virtual environments
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+vendor/
+
+# Python
 __pycache__/
 *.pyc
 *.pyo
@@ -35,32 +40,14 @@ env/
 venv/
 pip-wheel-metadata/
 .pytest_cache/
+.ruff_cache/
 .mypy_cache/
 
-# Go binaries and test files
-*.exe
-*.exe~
-*.dll
-*.so
-*.dylib
-*.test
-# Binaries created by 'go build'
-/apps/broker-importer/broker-importer
-/apps/streamer/streamer
-
-# Environment variables - IMPORTANT
-.env
-.env.*
-!.env.example
-
-# Temporary files
-*.tmp
-*.temp
-pids/
-*.pid
-*.seed
-*.pid.lock
-
-# Project specific
-/references/
+# Project Specific
+references/
 GEMINI.md
+stockbit-extension/
+c/IDX_Analyst/apps/web/node_modules/
+c/IDX_Analyst/apps/web/.next/
+c:/IDX_Analyst/apps/web/node_modules/
+c:/IDX_Analyst/apps/web/.next/

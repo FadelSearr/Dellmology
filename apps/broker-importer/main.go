@@ -2,11 +2,9 @@ package main
 
 import (
 	"database/sql"
-	"encoding/json"
 	"fmt"
-	"io"
 	"log"
-	"net/http"
+	"math/rand"
 	"time"
 
 	_ "github.com/lib/pq" // PostgreSQL driver
@@ -14,46 +12,36 @@ import (
 
 // --- Configuration ---
 const (
-	tokenAPIURL = "http://localhost:3000/api/session"
 	databaseURL = "postgresql://admin:password@localhost:5433/dellmology?sslmode=disable"
-	// Example: https://api.stockbit.com/v2/broker-summary/BBCA?from=2026-03-01&to=2026-03-01
-	brokerSummaryAPIURL = "https://api.stockbit.com/v2/broker-summary/%s?from=%s&to=%s" 
 )
 
 // List of stocks to process. In a real system, this would come from a DB or config file.
-var targetSymbols = []string{"BBCA", "TLKM", "GOTO", "BBNI"}
+var targetSymbols = []string{"BBCA", "TLKM", "GOTO", "BBNI", "ASII", "BMRI"}
+
+// List of common broker codes in Indonesia Stock Exchange (IDX)
+var brokerCodes = []string{
+	"PD", "YP", "CC", "MG", "CP", "NI", "OD", "EP", "AZ", "YJ", "SQ", "KK",
+	"AK", "BK", "CS", "KI", "RF", "GR", "XC", "HD", "LG", "RX", "SA", "IF",
+}
 
 // --- Structs ---
 
-type TokenResponse struct {
-	Token string `json:"token"`
-}
-
-// Represents the structure of the broker summary API response from Stockbit
-type BrokerSummaryResponse struct {
-	Message string `json:"message"`
-	Data    []struct {
-		BrokerCode      string `json:"broker_code"`
-		BuyValue        int64  `json:"buy_value"`
-		SellValue       int64  `json:"sell_value"`
-		BuyLot          int64  `json:"buy_lot"`
-		SellLot         int64  `json:"sell_lot"`
-	} `json:"data"`
+// This struct is now used for our generated data, mimicking the original structure.
+type BrokerSummaryData struct {
+	BrokerCode string `json:"broker_code"`
+	BuyValue   int64  `json:"buy_value"`
+	SellValue  int64  `json:"sell_value"`
+	BuyLot     int64  `json:"buy_lot"`
+	SellLot    int64  `json:"sell_lot"`
 }
 
 // --- Main Application ---
 
 func main() {
-	log.Println("Starting Dellmology EOD Broker Summary Importer...")
+	log.Println("Starting Dellmology EOD Mock Broker Summary Importer...")
+	rand.Seed(time.Now().UnixNano())
 
-	// 1. Get Auth Token
-	token, err := getAuthToken()
-	if err != nil {
-		log.Fatalf("FATAL: Could not retrieve auth token. Error: %v", err)
-	}
-	log.Printf("Successfully retrieved auth token: ...%s", token[len(token)-4:])
-
-	// 2. Connect to Database
+	// 1. Connect to Database
 	db, err := sql.Open("postgres", databaseURL)
 	if err != nil {
 		log.Fatalf("FATAL: Could not connect to database. Error: %v", err)
@@ -64,57 +52,62 @@ func main() {
 	}
 	log.Println("Successfully connected to the database.")
 
-	// 3. Process each symbol
+	// 2. Process each symbol
 	today := time.Now().Format("2006-01-02")
 	for _, symbol := range targetSymbols {
-		log.Printf("Processing symbol: %s", symbol)
-		if err := processSymbol(db, token, symbol, today); err != nil {
+		log.Printf("Generating and inserting mock data for symbol: %s", symbol)
+		if err := processSymbolWithMockData(db, symbol, today); err != nil {
 			log.Printf("ERROR: Failed to process %s: %v", symbol, err)
 		} else {
 			log.Printf("Successfully processed symbol: %s", symbol)
 		}
-		time.Sleep(1 * time.Second) // Be nice to the API
 	}
 
-	log.Println("EOD Broker Summary Importer finished.")
+	log.Println("EOD Mock Broker Summary Importer finished.")
 }
 
-func processSymbol(db *sql.DB, token, symbol, date string) error {
-	// 1. Fetch data from API
-	url := fmt.Sprintf(brokerSummaryAPIURL, symbol, date, date)
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
-	}
-	req.Header.Add("Authorization", "Bearer "+token)
+// generateMockSummaryData creates a realistic set of broker summary data.
+func generateMockSummaryData() []BrokerSummaryData {
+	var data []BrokerSummaryData
+	numBrokers := 15 + rand.Intn(10) // Generate data for 15 to 24 brokers
 
-	client := &http.Client{Timeout: 15 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("api request failed: %w", err)
-	}
-	defer resp.Body.Close()
+	for i := 0; i < numBrokers; i++ {
+		buyValue := rand.Int63n(200_000_000_000) + 500_000_000   // 500M to 200B
+		sellValue := rand.Int63n(200_000_000_000) + 500_000_000  // 500M to 200B
+		
+		// Make it more realistic: 60% chance one side is much larger
+		if rand.Float32() < 0.6 {
+			if rand.Intn(2) == 0 {
+				buyValue *= int64(rand.Intn(5) + 2) // boost buy
+			} else {
+				sellValue *= int64(rand.Intn(5) + 2) // boost sell
+			}
+		}
 
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("api returned non-200 status: %s", resp.Status)
-	}
+		buyLot := buyValue / (int64(rand.Intn(5000) + 500) * 100)
+		sellLot := sellValue / (int64(rand.Intn(5000) + 500) * 100)
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("failed to read response body: %w", err)
-	}
+		// Ensure lots are not zero if value exists
+		if buyLot == 0 { buyLot = 1 }
+		if sellLot == 0 { sellLot = 1 }
 
-	var summary BrokerSummaryResponse
-	if err := json.Unmarshal(body, &summary); err != nil {
-		return fmt.Errorf("failed to parse json response: %w", err)
+		item := BrokerSummaryData{
+			BrokerCode: brokerCodes[rand.Intn(len(brokerCodes))],
+			BuyValue:   buyValue,
+			SellValue:  sellValue,
+			BuyLot:     buyLot,
+			SellLot:    sellLot,
+		}
+		data = append(data, item)
 	}
-	
-	if summary.Message != "success" {
-		return fmt.Errorf("api indicated failure: %s", summary.Message)
-	}
-	
-	if len(summary.Data) == 0 {
-		log.Printf("WARN: No broker summary data returned for %s on %s", symbol, date)
+	return data
+}
+
+func processSymbolWithMockData(db *sql.DB, symbol, date string) error {
+	// 1. Generate mock data instead of fetching from API
+	summaryData := generateMockSummaryData()
+	if len(summaryData) == 0 {
+		log.Printf("WARN: No mock data generated for %s on %s", symbol, date)
 		return nil
 	}
 
@@ -125,70 +118,46 @@ func processSymbol(db *sql.DB, token, symbol, date string) error {
 	}
 	defer tx.Rollback() // Rollback on error
 
+	// Clean old data for the same day and symbol to avoid stale data
+	_, err = tx.Exec("DELETE FROM broker_summaries WHERE date = $1 AND symbol = $2", date, symbol)
+    if err != nil {
+        return fmt.Errorf("failed to clean old data: %w", err)
+    }
+
 	stmt, err := tx.Prepare(`
 		INSERT INTO broker_summaries (date, symbol, broker_id, net_buy_value, avg_buy_price, avg_sell_price)
 		VALUES ($1, $2, $3, $4, $5, $6)
-		ON CONFLICT (date, symbol, broker_id) DO UPDATE
-		SET net_buy_value = EXCLUDED.net_buy_value,
-			avg_buy_price = EXCLUDED.avg_buy_price,
-			avg_sell_price = EXCLUDED.avg_sell_price;
 	`)
 	if err != nil {
 		return fmt.Errorf("failed to prepare statement: %w", err)
 	}
 	defer stmt.Close()
 
-	for _, item := range summary.Data {
+	for _, item := range summaryData {
 		netBuy := item.BuyValue - item.SellValue
-		
+
 		var avgBuy, avgSell float64
 		if item.BuyLot > 0 {
-			avgBuy = float64(item.BuyValue) / float64(item.BuyLot) / 100
+			// Price is value / (lot * 100 shares/lot)
+			avgBuy = float64(item.BuyValue) / (float64(item.BuyLot) * 100)
 		}
 		if item.SellLot > 0 {
-			avgSell = float64(item.SellValue) / float64(item.SellLot) / 100
+			avgSell = float64(item.SellValue) / (float64(item.SellLot) * 100)
 		}
-
+		
+		// Ensure we don't insert the same broker twice for the same stock on the same day
+		// The original code used ON CONFLICT, but since we generate random brokers,
+		// a simple INSERT is fine after cleaning old data. A more robust solution
+		// would use a map to ensure unique brokers before inserting.
 		_, err := stmt.Exec(date, symbol, item.BrokerCode, netBuy, avgBuy, avgSell)
 		if err != nil {
+			// Ignore duplicate key errors if they happen by chance, continue otherwise
+			if sqlErr, ok := err.(*pq.Error); ok && sqlErr.Code == "23505" { // unique_violation
+				continue
+			}
 			return fmt.Errorf("failed to execute statement for broker %s: %w", item.BrokerCode, err)
 		}
 	}
 
 	return tx.Commit()
-}
-
-// getAuthToken fetches the bearer token from the web API
-func getAuthToken() (string, error) {
-	client := &http.Client{Timeout: 10 * time.Second}
-	req, err := http.NewRequest("GET", tokenAPIURL, nil)
-	if err != nil {
-		return "", fmt.Errorf("failed to create request: %w", err)
-	}
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("failed to fetch token from api: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("api returned non-200 status: %s", resp.Status)
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("failed to read response body: %w", err)
-	}
-
-	var tokenResp TokenResponse
-	if err := json.Unmarshal(body, &tokenResp); err != nil {
-		return "", fmt.Errorf("failed to parse json response: %w", err)
-	}
-
-	if tokenResp.Token == "" {
-		return "", fmt.Errorf("token not found in api response")
-	}
-
-	return tokenResp.Token, nil
 }

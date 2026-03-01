@@ -1,86 +1,107 @@
-console.log("Stockbit Token Syncer: Background script starting...");
+// The backend endpoint where the token will be sent.
+const UPDATE_TOKEN_ENDPOINT = 'http://localhost:3000/api/update-token';
 
-// Configuration: This URL should point to your backend endpoint for updating the token.
-const APP_API_URL = "http://localhost:3000/api/update-token";
+// --- Helper Functions ---
 
-console.log("Target API URL:", APP_API_URL);
+/**
+ * A simple in-memory store to avoid sending the same token repeatedly.
+ */
+const SyncedTokenStore = {
+  lastToken: null,
+  isSameAsLast(token) {
+    return this.lastToken === token;
+  },
+  update(token) {
+    this.lastToken = token;
+  },
+};
 
-let lastSyncedToken = null;
-
-// Helper to decode JWT payload
-function parseJwt(token) {
+/**
+ * Decodes a JWT token to extract its payload, including the expiration time.
+ * @param {string} token The JWT token.
+ * @returns {object|null} The decoded payload or null if decoding fails.
+ */
+function decodeJwt(token) {
   try {
+    // A JWT is composed of three parts separated by dots. The middle part is the payload.
     const base64Url = token.split('.')[1];
+    // Replace characters to make it a valid base64 string
     const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-    const jsonPayload = decodeURIComponent(atob(base64).split('').map(function(c) {
-        return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
-    }).join(''));
-
+    // Decode the base64 string and parse it as JSON
+    const jsonPayload = decodeURIComponent(
+      atob(base64)
+        .split('')
+        .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+        .join('')
+    );
     return JSON.parse(jsonPayload);
   } catch (e) {
-    console.warn("Failed to parse JWT. It might be an opaque token.", e);
+    console.error('Dellmology Auth Helper: Failed to decode JWT', e);
     return null;
   }
 }
 
+/**
+ * Sends the captured token to the Dellmology backend.
+ * @param {string} token The bearer token.
+ */
+async function sendTokenToBackend(token) {
+  if (SyncedTokenStore.isSameAsLast(token)) {
+    // console.log('Dellmology Auth Helper: Token is unchanged. No update sent.');
+    return;
+  }
+
+  console.log(`Dellmology Auth Helper: New token captured. Sending to backend...`);
+
+  const payload = decodeJwt(token);
+  // The 'exp' claim in JWT is in seconds since epoch. We convert it to an ISO string for the backend.
+  const expires_at = payload && payload.exp ? new Date(payload.exp * 1000).toISOString() : null;
+
+  try {
+    const response = await fetch(UPDATE_TOKEN_ENDPOINT, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ token, expires_at }),
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.json();
+      throw new Error(`Server responded with ${response.status}: ${errorBody.error}`);
+    }
+
+    console.log('Dellmology Auth Helper: Token successfully updated on the backend.');
+    SyncedTokenStore.update(token);
+  } catch (error) {
+    console.error('Dellmology Auth Helper: Failed to send token to backend.', error);
+    // If sending fails, we don't update the local store, so it will retry on the next capture.
+  }
+}
+
+// --- Main Logic ---
+
+/**
+ * The core listener that intercepts network requests before headers are sent.
+ */
 chrome.webRequest.onBeforeSendHeaders.addListener(
   (details) => {
-    // Look for the Authorization header
+    // Find the 'Authorization' header in the request.
     const authHeader = details.requestHeaders.find(
-      (header) => header.name.toLowerCase() === "authorization"
+      (header) => header.name.toLowerCase() === 'authorization'
     );
 
-    if (authHeader && authHeader.value && authHeader.value.startsWith("Bearer ")) {
-      const token = authHeader.value.substring(7); // Remove "Bearer " prefix
-
-      // Only sync if the token has changed to avoid spamming the API
-      if (token !== lastSyncedToken) {
-        console.log("New token candidate detected from:", details.url);
-        
-        const decoded = parseJwt(token);
-        
-        // Ensure it's a valid JWT with an expiry date before syncing
-        if (!decoded || !decoded.exp) {
-          console.log("Skipping non-JWT or invalid token.");
-          return;
-        }
-
-        const expiresAt = decoded.exp;
-        
-        console.log("Valid JWT detected. Expiry:", new Date(expiresAt * 1000));
-        
-        syncToken(token, expiresAt);
-      }
+    if (authHeader && authHeader.value && authHeader.value.startsWith('Bearer ')) {
+      // Extract the token string by removing "Bearer ".
+      const token = authHeader.value.substring(7);
+      // Asynchronously send the token to the backend without blocking the request.
+      sendTokenToBackend(token);
     }
   },
-  { urls: ["https://*.stockbit.com/*"] },
-  ["requestHeaders"]
+  // Filter for requests to Stockbit API endpoints.
+  { urls: ['*://api.stockbit.com/*', '*://stream.stockbit.com/*'] },
+  // We need 'requestHeaders' to read the headers.
+  ['requestHeaders']
 );
 
-function syncToken(token, expiresAt) {
-  const payload = {
-    token: token,
-    expires_at: expiresAt
-  };
-
-  fetch(APP_API_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify(payload)
-  })
-    .then((response) => {
-      if (response.ok) {
-        console.log("Token successfully synced to API.");
-        lastSyncedToken = token; // Update cache only on success
-      } else {
-        response.text().then(text => {
-          console.error("Failed to sync token. Status:", response.status, "Response:", text);
-        });
-      }
-    })
-    .catch((error) => {
-      console.error("Error syncing token:", error);
-    });
-}
+console.log('Dellmology Auth Helper service worker started.');
