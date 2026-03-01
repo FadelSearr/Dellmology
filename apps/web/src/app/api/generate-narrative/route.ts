@@ -15,12 +15,10 @@ Data Overview:
 - Total Brokers Analyzed: ${summary.length}
 
 Top 5 Brokers with Strongest Accumulation (Net Buy):
-${topAccumulation.map(s => `- ${s.broker_id}: Net Buy Value of ${s.net_buy_value.toLocaleString()}`).join('
-')}
+${topAccumulation.map(s => `- ${s.broker_id}: Net Buy Value of ${s.net_buy_value.toLocaleString()}`).join('\n')}
 
 Top 5 Brokers with Strongest Distribution (Net Sell):
-${topDistribution.map(s => `- ${s.broker_id}: Net Sell Value of ${Math.abs(s.net_buy_value).toLocaleString()}`).join('
-')}
+${topDistribution.map(s => `- ${s.broker_id}: Net Sell Value of ${Math.abs(s.net_buy_value).toLocaleString()}`).join('\n')}
 
 Based on this data, please answer the following:
 1.  **Main Conclusion**: Is there a clear sign of large-scale accumulation or distribution by institutional players?

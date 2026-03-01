@@ -353,15 +353,14 @@ const (
 - Verify GEMINI_API_KEY is set
 - Check API quota hasn't been exceeded
 
----
+----
 
 ## 🚧 Known Limitations
 
 - Frontend chart rendering now embeds live TradingView widget
-- Backtesting engine not yet implemented
- - Order flow heatmap visualization now implemented with real data
-- Telegram integration pending
-- Deep CNN model training pending
+- Order flow heatmap visualization now implemented with real data
+- Telegram integration implemented (see TelegramSettings component)
+- Deep CNN model training pending (planned future work)
 
 ---
 

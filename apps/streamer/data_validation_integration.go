@@ -154,7 +154,7 @@ func GetDataQualityReport() map[string]interface{} {
 // BroadcastDataQualityUpdate sends data quality status to connected clients via SSE
 func BroadcastDataQualityUpdate() {
 	report := GetDataQualityReport()
-	data, _ := json.Marshal(report)
+	_, _ = json.Marshal(report) // unused, just ensure serialization works
 
 	updateMessage := map[string]interface{}{
 		"type":      "data_quality",

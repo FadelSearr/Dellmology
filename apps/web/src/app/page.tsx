@@ -14,7 +14,7 @@ import { FlowEngine } from "@/components/FlowEngine";
 import { GlobalCorrelationMarquee } from "@/components/GlobalCorrelationMarquee";
 import { SystemHealthIndicators } from "@/components/SystemHealthIndicators";
 import { AINarrativeDisplay } from "@/components/AINarrativeDisplay";
-import { TelegramSettings } from "@/components/TelegramSettings";
+import TelegramSettings from "@/components/TelegramSettings";
 import RetrainStatusWidget from "@/components/RetrainStatusWidget";
 import EnhancedModelPerformanceMetrics from "@/components/EnhancedModelPerformanceMetrics";
 import ModelMetricsHistory from "@/components/ModelMetricsHistory";
@@ -22,6 +22,7 @@ import ModelAlertThresholds from "@/components/ModelAlertThresholds";
 import CompareModelMetrics from "@/components/CompareModelMetrics";
 import { ProcessedTrade } from "@/types/global";
 import { useEffect, useState } from "react";
+import BacktestRunner from "@/components/BacktestRunner";  // new component import
 
 const MAX_TRADES_IN_LIST = 50;
 const STREAM_URL = "http://localhost:8080/stream";
@@ -212,7 +213,13 @@ export default function Home() {
             {/* Telegram Settings Component */}
             <div className="mt-8">
               <TelegramSettings />
-            </div>          </section>
+            </div>
+
+            {/* Backtest Runner Panel */}
+            <div className="mt-8">
+              <BacktestRunner />
+            </div>
+          </section>
         </div>
       </main>
     </div>

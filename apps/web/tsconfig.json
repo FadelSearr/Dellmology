@@ -18,7 +18,7 @@
         "name": "next"
       }
     ],
-    "types": ["jest"]
+    "types": ["jest"],
     "paths": {
       "@/*": ["./src/*"]
     }

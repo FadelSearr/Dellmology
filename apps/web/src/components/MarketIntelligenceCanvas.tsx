@@ -210,9 +210,9 @@ export const MarketIntelligenceCanvas = ({ symbol, timeframe = '1h' }: { symbol:
                   body: JSON.stringify({ symbol, top_k: 8 }),
                 })
                 if (!r.ok) throw new Error('XAI request failed')
-                const j = await r.json()
+                const j = await r.json();
                 // attach the explanation to data so we can render XAIReport inline
-                (data as any).xai = j.explanation
+                (data as any).xai = j.explanation;
                 setData({ ...(data as any) })
               } catch (e) {
                 console.error('XAI fetch failed', e)

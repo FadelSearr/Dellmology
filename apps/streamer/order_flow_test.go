@@ -1,9 +1,9 @@
 package main
 
 import (
-    "reflect"
-    "testing"
-    "time"
+	"reflect"
+	"testing"
+	"time"
 )
 
 func TestDetectAnomalies_Spoofing(t *testing.T) {

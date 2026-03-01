@@ -262,7 +262,7 @@ func (dv *DataValidator) ValidateDataPoint(dp DataPoint) ValidationResult {
 	}
 
 	stats.DataPointCount++
-	stats.ValidatedAt = time.Now()
+	stats.LastValidatedAt = time.Now()
 	stats.ValidationScore = math.Max(0, result.Score)
 
 	if result.Score < 80 {

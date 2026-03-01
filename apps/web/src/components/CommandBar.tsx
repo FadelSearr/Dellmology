@@ -61,9 +61,9 @@ export const CommandBar = () => {
             <Marquee text={correlationText.repeat(2)} />
           </div>
           <div className="flex items-center gap-3">
-            <ShieldCheck size={18} className="text-green-500" title="Data Integrity OK" />
-            <Database size={18} className="text-green-500" title="DB Connection OK" />
-            <Share2 size={18} className="text-red-500" title="SSE Disconnected" />
+            <ShieldCheck size={18} className="text-green-500" aria-label="Data Integrity OK" />
+            <Database size={18} className="text-green-500" aria-label="DB Connection OK" />
+            <Share2 size={18} className="text-red-500" aria-label="SSE Disconnected" />
           </div>
           <div className="flex items-center gap-2 text-sm" title="API Rate Limit">
             <Gauge size={16} className="text-gray-400" />
