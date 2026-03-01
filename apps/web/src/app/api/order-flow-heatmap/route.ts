@@ -1,6 +1,7 @@
 import { db } from '@/lib/db';
 import { NextRequest, NextResponse } from 'next/server';
 
+export const runtime = 'edge';
 export const dynamic = 'force-dynamic';
 
 interface OrderFlowHeatmapData {
@@ -34,16 +35,30 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const symbol = searchParams.get('symbol') || 'BBCA';
     const limit = parseInt(searchParams.get('limit') || '50', 10);
+    const aggregate = searchParams.get('aggregate') === 'true'; // use 1min continuous aggregate
 
-    // Get heatmap data
-    const heatmapResult = await db.query(
-      `SELECT timestamp, price, bid_volume, ask_volume, net_volume, bid_ask_ratio, intensity
-       FROM order_flow_heatmap
-       WHERE symbol = $1
-       ORDER BY timestamp DESC, price ASC
-       LIMIT $2`,
-      [symbol, limit]
-    );
+    // Get heatmap data (optionally from aggregated view)
+    let heatmapResult;
+    if (aggregate) {
+      heatmapResult = await db.query(
+        `SELECT bucket as timestamp, price, avg_bid_vol as bid_volume, avg_ask_vol as ask_volume,
+                avg_net_vol as net_volume, avg_ratio as bid_ask_ratio, avg_intensity as intensity
+         FROM order_flow_heatmap_1min
+         WHERE symbol = $1
+         ORDER BY bucket DESC, price ASC
+         LIMIT $2`,
+        [symbol, limit]
+      );
+    } else {
+      heatmapResult = await db.query(
+        `SELECT timestamp, price, bid_volume, ask_volume, net_volume, bid_ask_ratio, intensity
+         FROM order_flow_heatmap
+         WHERE symbol = $1
+         ORDER BY timestamp DESC, price ASC
+         LIMIT $2`,
+        [symbol, limit]
+      );
+    }
 
     const heatmapData: OrderFlowHeatmapData = {
       timestamp: new Date().toISOString(),
@@ -130,6 +145,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       success: true,
       symbol,
+      aggregate,
       heatmap: heatmapData,
       marketDepth,
       anomalies: anomaliesResult.rows.map((row) => ({
@@ -141,7 +157,7 @@ export async function GET(request: NextRequest) {
         description: row.description,
       })),
       timestamp: new Date().toISOString(),
-    });
+    }, { headers: { 'Cache-Control': 'public, max-age=15, stale-while-revalidate=60' } });
   } catch (error) {
     console.error('Error fetching order flow heatmap:', error);
     return NextResponse.json(

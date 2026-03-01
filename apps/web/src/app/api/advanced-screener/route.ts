@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+export const runtime = 'edge';
 export const dynamic = 'force-dynamic';
 
 const ML_ENGINE_URL = process.env.ML_ENGINE_URL || 'http://localhost:8003';
@@ -51,7 +52,7 @@ export async function POST(request: NextRequest) {
     const mode = body.mode || 'DAYTRADE';
     const minScore = body.minScore || 0.6;
 
-    // Call ML engine screener API
+    // Call ML engine screener API (cache request for 15 seconds)
     const response = await fetch(`${ML_ENGINE_URL}/api/screen`, {
       method: 'POST',
       headers: {
@@ -63,6 +64,8 @@ export async function POST(request: NextRequest) {
         min_score: minScore,
         include_analysis: true,
       }),
+      cache: 'force-cache',
+      next: { revalidate: 15 },
     });
 
     if (!response.ok) {
@@ -101,13 +104,15 @@ export async function GET(request: NextRequest) {
     const mode = searchParams.get('mode') || 'DAYTRADE';
     const minScore = parseFloat(searchParams.get('minScore') || '0.6');
 
-    // Call ML engine
+    // Call ML engine (edge cache for 15 seconds)
     const response = await fetch(
       `${ML_ENGINE_URL}/api/screen?mode=${mode}&min_score=${minScore}`,
       {
         headers: {
           'accept': 'application/json',
         },
+        cache: 'force-cache',
+        next: { revalidate: 15 },
       }
     );
 

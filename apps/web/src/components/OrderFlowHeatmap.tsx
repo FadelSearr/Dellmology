@@ -62,13 +62,14 @@ export const OrderFlowHeatmap = ({ symbol = 'BBCA' }: { symbol: string }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedPrice, setSelectedPrice] = useState<number | null>(null);
+  const [aggregate, setAggregate] = useState(false);
 
   useEffect(() => {
     const fetchOrderFlowData = async () => {
       try {
         setLoading(true);
         const response = await fetch(
-          `/api/order-flow-heatmap?symbol=${symbol}&limit=100`
+          `/api/order-flow-heatmap?symbol=${symbol}&limit=100&aggregate=${aggregate}`
         );
 
         if (!response.ok) {

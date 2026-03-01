@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
+export const runtime = 'edge';
+
 interface ValidationStatistics {
   symbol: string;
   min_price: number;
@@ -137,7 +139,7 @@ export async function GET(request: NextRequest) {
       timestamp: new Date().toISOString(),
     };
 
-    return NextResponse.json(response);
+    return NextResponse.json(response, { headers: { 'Cache-Control': 'public, max-age=15, stale-while-revalidate=60' } });
   } catch (error) {
     console.error("Data validation API error:", error);
     return NextResponse.json(

@@ -12,6 +12,8 @@ import (
 
 	"github.com/gorilla/websocket"
 	_ "github.com/lib/pq" // PostgreSQL driver
+	"github.com/go-redis/redis/v8"
+	"context"
 )
 
 // --- Configuration ---
@@ -59,6 +61,36 @@ type PriceHistory struct {
 	Price     float64
 	Timestamp time.Time
 }
+
+// --- Redis Cache Helpers ---
+
+func cacheSet(key string, value interface{}, ttl time.Duration) {
+	if redisClient == nil {
+		return
+	}
+	bytes, err := json.Marshal(value)
+	if err != nil {
+		log.Printf("Cache set marshal error: %v", err)
+		return
+	}
+	redisClient.Set(ctx, key, string(bytes), ttl)
+}
+
+func cacheGet(key string, dest interface{}) bool {
+	if redisClient == nil {
+		return false
+	}
+	str, err := redisClient.Get(ctx, key).Result()
+	if err != nil {
+		return false
+	}
+	if json.Unmarshal([]byte(str), dest) == nil {
+		return true
+	}
+	return false
+}
+
+// --- End Redis Cache Helpers ---
 type CooldownInfo struct {
 	EndTime time.Time
 }
@@ -66,6 +98,8 @@ type CooldownInfo struct {
 // --- Global State ---
 var (
 	db               *sql.DB
+	redisClient      *redis.Client
+	ctx              = context.Background()
 	latestQuotes     = make(map[string]QuoteData)
 	priceHistory     = make(map[string]PriceHistory) // For RoC Kill-Switch
 	cooldownSymbols  = make(map[string]CooldownInfo) // For RoC Kill-Switch
@@ -142,6 +176,18 @@ func newBroker() *Broker {
 func main() {
 	var err error
 	log.Println("Initializing Dellmology Pro Data Streamer...")
+
+	// initialize Redis client for caching
+	redisClient = redis.NewClient(&redis.Options{
+		Addr:     "localhost:6379",
+		Password: "",
+		DB:       0,
+	})
+	if _, err := redisClient.Ping(ctx).Result(); err != nil {
+		log.Printf("WARNING: Redis not reachable: %v", err)
+	} else {
+		log.Println("Redis cache connected.")
+	}
 
 	sseBroker = newBroker()
 	go sseBroker.run()

@@ -427,6 +427,14 @@ func insertDepthSnapshot(depth MarketDepthSnapshot) {
 // --- Exported Functions ---
 
 func GetOrderFlowHeatmap(symbol string, limit int) ([]OrderFlowHeatmapRow, error) {
+	// attempt redis cache first
+	if redisClient != nil {
+		cacheKey := fmt.Sprintf("heatmap:%s:%d", symbol, limit)
+		var cached []OrderFlowHeatmapRow
+		if cacheGet(cacheKey, &cached) {
+			return cached, nil
+		}
+	}
 	rows, err := db.Query(`
 		SELECT timestamp, symbol, price, bid_volume, ask_volume, net_volume, bid_ask_ratio, intensity
 		FROM order_flow_heatmap
@@ -448,6 +456,11 @@ func GetOrderFlowHeatmap(symbol string, limit int) ([]OrderFlowHeatmapRow, error
 			return nil, err
 		}
 		results = append(results, row)
+	}
+
+	if redisClient != nil {
+		cacheKey := fmt.Sprintf("heatmap:%s:%d", symbol, limit)
+		cacheSet(cacheKey, results, 15*time.Second)
 	}
 
 	return results, rows.Err()

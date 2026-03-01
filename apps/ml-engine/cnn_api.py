@@ -11,6 +11,8 @@ from cnn_pattern_detector import CNNPatternRecognizer, PatternDetection
 import pandas as pd
 import asyncio
 from pydantic import BaseModel
+import redis
+import json
 
 app = FastAPI(title="CNN Pattern Detection API", version="1.0.0")
 logger = logging.getLogger(__name__)
@@ -18,8 +20,30 @@ logger = logging.getLogger(__name__)
 # Initialize pattern recognizer
 pattern_recognizer = CNNPatternRecognizer(lookback_period=100)
 
-# Cache untuk mengurangi repeated computation
-pattern_cache: Dict[str, Dict] = {}
+# Redis cache client (optional)
+try:
+    redis_client = redis.Redis(host='localhost', port=6379, db=1)
+    redis_client.ping()
+    logging.info("Redis connected for CNN cache")
+except Exception as e:
+    redis_client = None
+    logging.warning(f"Redis not available: {e}")
+
+# helper functions
+
+def cache_get(key: str):
+    if not redis_client:
+        return None
+    val = redis_client.get(key)
+    if val:
+        return json.loads(val)
+    return None
+
+
+def cache_set(key: str, value, ttl: int = 30):
+    if not redis_client:
+        return
+    redis_client.setex(key, ttl, json.dumps(value))
 
 
 class PatternResponse(BaseModel):
@@ -71,6 +95,11 @@ async def detect_patterns(
     Returns patterns dengan confidence score dan entry/exit points
     """
     try:
+        cache_key = f"patterns:{symbol}:{lookback}:{min_confidence}"
+        cached = cache_get(cache_key)
+        if cached is not None:
+            return cached
+
         # TODO: Fetch actual price data dari database
         # For now, using mock data
         mock_data = generate_mock_ohlcv_data(symbol, lookback)
@@ -94,7 +123,7 @@ async def detect_patterns(
         bullish = sum(1 for p in filtered_patterns if p.pattern_type == "BULLISH")
         bearish = sum(1 for p in filtered_patterns if p.pattern_type == "BEARISH")
 
-        return PatternsDetectionResponse(
+        response_obj = PatternsDetectionResponse(
             symbol=symbol,
             timestamp=datetime.now().isoformat(),
             detected_patterns=[
@@ -117,6 +146,9 @@ async def detect_patterns(
             bullish_count=bullish,
             bearish_count=bearish,
         )
+        # cache result
+        cache_set(cache_key, response_obj, ttl=30)
+        return response_obj
 
     except Exception as e:
         logger.error(f"Error detecting patterns: {e}")

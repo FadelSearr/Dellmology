@@ -59,6 +59,9 @@
    TELEGRAM_BOT_TOKEN=...
    TELEGRAM_CHAT_ID=...
    ML_ENGINE_KEY=your-secret-key
+   # Redis configuration (optional, defaults to localhost:6379)
+   REDIS_HOST=localhost
+   REDIS_PORT=6379
    ```
 4. Start ML engine (`docker-compose up -d ml-engine` or run `python telegram_service.py`).
 5. Configure alert preferences in UI under **Settings → Telegram Alerts**.
@@ -78,7 +81,8 @@
 1. **Clone & Setup**
 ```bash
 cd c:\IDX_Analyst
-docker-compose up -d  # Start database & cache
+# bring up Postgres and Redis cache
+docker-compose up -d  # Start database & cache (includes Redis)
 ```
 
 2. **Setup Python Environment**

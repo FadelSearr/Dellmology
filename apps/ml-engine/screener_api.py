@@ -10,6 +10,8 @@ import logging
 import asyncio
 from advanced_screener import AdvancedScreener, ScreenerMode, StockScore
 from pydantic import BaseModel
+import redis
+import json
 
 app = FastAPI(title="Advanced Screener API", version="1.0.0")
 logger = logging.getLogger(__name__)
@@ -17,7 +19,32 @@ logger = logging.getLogger(__name__)
 # Initialize screener
 screener = AdvancedScreener()
 
-# Screening results cache
+# Redis cache client
+try:
+    redis_client = redis.Redis(host='localhost', port=6379, db=2)
+    redis_client.ping()
+    logging.info("Redis connected for screener cache")
+except Exception as e:
+    redis_client = None
+    logging.warning(f"Redis not available for screener: {e}")
+
+# helper functions
+
+def cache_get(key: str):
+    if not redis_client:
+        return None
+    val = redis_client.get(key)
+    if val:
+        return json.loads(val)
+    return None
+
+
+def cache_set(key: str, value, ttl: int = 30):
+    if not redis_client:
+        return
+    redis_client.setex(key, ttl, json.dumps(value))
+
+# Screening results cache (fallback if redis down)
 screening_cache = {}
 
 
@@ -79,6 +106,11 @@ async def run_screening(request: ScreeningRequest):
     - CUSTOM: User-defined parameters
     """
     try:
+        cache_key = f"screen:{request.mode}:{request.min_score}:{','.join(request.symbols or [])}"
+        cached = cache_get(cache_key)
+        if cached is not None:
+            return cached
+
         # Set screener mode
         mode = ScreenerMode[request.mode.upper()]
         screener.set_mode(mode)
@@ -117,6 +149,25 @@ async def run_screening(request: ScreeningRequest):
             )
             for r in results
         ]
+        # cache the response object
+        final_resp = ScreeningResponse(
+            mode=request.mode,
+            timestamp=datetime.now().isoformat(),
+            total_scanned=len(response_results),
+            results=response_results,
+            top_pick=response_results[0] if response_results else None,
+            statistics={
+                "avg_score": sum(r.score for r in response_results) / (len(response_results) or 1),
+                "max_score": max((r.score for r in response_results), default=0),
+                "min_score": min((r.score for r in response_results), default=0),
+                "bullish_count": sum(1 for r in response_results if r.recommendation.includes("BUY")),
+                "bearish_count": sum(1 for r in response_results if r.recommendation.includes("SELL")),
+                "avg_volatility": sum(r.volatility_percent for r in response_results) / (len(response_results) or 1),
+                "avg_rr_ratio": sum(r.risk_reward_ratio for r in response_results) / (len(response_results) or 1),
+            },
+        )
+        cache_set(cache_key, final_resp, ttl=30)
+        return final_resp
         
         # Calculate statistics
         if response_results:

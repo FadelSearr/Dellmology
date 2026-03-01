@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+export const runtime = 'edge';
 export const dynamic = 'force-dynamic';
 
 const ML_ENGINE_URL = process.env.ML_ENGINE_URL || 'http://localhost:8002';
@@ -45,13 +46,15 @@ export async function GET(request: NextRequest) {
       searchParams.get('min_confidence') || '0.6'
     );
 
-    // Call ML engine
+    // Call ML engine (edge cache for 30s)
     const response = await fetch(
       `${ML_ENGINE_URL}/api/detect-patterns?symbol=${symbol}&lookback=${lookback}&min_confidence=${minConfidence}`,
       {
         headers: {
           'accept': 'application/json',
         },
+        cache: 'force-cache',
+        next: { revalidate: 30 },
       }
     );
 
