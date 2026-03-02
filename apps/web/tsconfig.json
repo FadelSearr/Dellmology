@@ -19,6 +19,7 @@
       }
     ],
     "types": ["jest"],
+    "baseUrl": "./",
     "paths": {
       "@/*": ["./src/*"]
     }
