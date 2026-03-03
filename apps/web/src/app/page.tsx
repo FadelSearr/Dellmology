@@ -309,6 +309,20 @@ interface DataSanityState {
   checkedAt: string | null;
 }
 
+interface ChampionChallengerState {
+  warning: boolean;
+  reason: string | null;
+  winner: 'CHAMPION' | 'CHALLENGER' | 'UNKNOWN';
+  swapRecommended: boolean;
+  championVersion: string | null;
+  challengerVersion: string | null;
+  championAccuracyPct: number;
+  challengerAccuracyPct: number;
+  championAvgReturnPct: number;
+  challengerAvgReturnPct: number;
+  comparedAt: string | null;
+}
+
 const FALLBACK_MARKET_DATA: ChartPoint[] = [
   { time: '09:00', price: 9200, volume: 4000 },
   { time: '09:30', price: 9250, volume: 3000 },
@@ -378,6 +392,9 @@ const INCOMPLETE_DATA_MIN_GAPS = Math.max(1, Math.floor(envNumber('NEXT_PUBLIC_I
 const PRICE_CROSS_CHECK_THRESHOLD_PCT = envNumber('NEXT_PUBLIC_PRICE_CROSS_CHECK_THRESHOLD_PCT', 2);
 const DATA_SANITY_LOOKBACK_MINUTES = Math.max(5, Math.floor(envNumber('NEXT_PUBLIC_DATA_SANITY_LOOKBACK_MINUTES', 30)));
 const DATA_SANITY_MAX_JUMP_PCT = envNumber('NEXT_PUBLIC_DATA_SANITY_MAX_JUMP_PCT', 25);
+const CHAMPION_CHALLENGER_DAYS = Math.max(14, Math.floor(envNumber('NEXT_PUBLIC_CHAMPION_CHALLENGER_DAYS', 30)));
+const CHAMPION_CHALLENGER_HORIZON_DAYS = Math.max(1, Math.floor(envNumber('NEXT_PUBLIC_CHAMPION_CHALLENGER_HORIZON_DAYS', 1)));
+const CHAMPION_CHALLENGER_ALERT_GAP_PCT = envNumber('NEXT_PUBLIC_CHAMPION_CHALLENGER_ALERT_GAP_PCT', 5);
 
 const ROADMAP_DEFAULTS = {
   killSwitchIhsgDropPct: -1.5,
@@ -466,6 +483,7 @@ function bandarmologyVoteFromFlow(
   incompleteDataWarning = false,
   crossCheckWarning = false,
   dataSanityWarning = false,
+  championChallengerWarning = false,
 ): VoteSignal {
   if (brokers.length === 0) return 'NEUTRAL';
   if (artificialLiquidityWarning) return 'NEUTRAL';
@@ -475,6 +493,7 @@ function bandarmologyVoteFromFlow(
   if (incompleteDataWarning) return 'NEUTRAL';
   if (crossCheckWarning) return 'NEUTRAL';
   if (dataSanityWarning) return 'NEUTRAL';
+  if (championChallengerWarning) return 'NEUTRAL';
 
   const whaleNet = brokers.filter((row) => row.type === 'Whale').reduce((sum, row) => sum + row.net, 0);
   const marketNet = brokers.reduce((sum, row) => sum + row.net, 0);
@@ -1005,6 +1024,7 @@ function RightSidebar({
   incompleteData,
   priceCrossCheck,
   dataSanity,
+  championChallenger,
 }: {
   brokers: BrokerRow[];
   zData: ZScorePoint[];
@@ -1016,6 +1036,7 @@ function RightSidebar({
   incompleteData: IncompleteDataState;
   priceCrossCheck: PriceCrossCheckState;
   dataSanity: DataSanityState;
+  championChallenger: ChampionChallengerState;
 }) {
   const canRenderChart = typeof window !== 'undefined';
   const hasAlert = zData.some((item) => item.score > 2 || item.score < -2);
@@ -1167,6 +1188,21 @@ function RightSidebar({
             {`Issues ${dataSanity.issueCount} | Points ${dataSanity.checkedPoints} | Jump ${dataSanity.maxJumpPct.toFixed(1)}%`}
           </div>
           {dataSanity.reason ? <div className="text-[9px] text-slate-500 font-mono mt-1">{dataSanity.reason}</div> : null}
+          <div
+            className={cn(
+              'text-[9px] font-mono border rounded px-2 py-1 mt-2',
+              championChallenger.warning ? 'text-amber-300 border-amber-500/40 bg-amber-500/10' : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10',
+            )}
+          >
+            {championChallenger.warning ? 'Champion Drift Warning' : 'Champion-Challenger Stable'}
+          </div>
+          <div className="text-[9px] text-slate-500 font-mono mt-1">
+            {`Win ${championChallenger.winner} | ΔAcc ${(championChallenger.challengerAccuracyPct - championChallenger.championAccuracyPct).toFixed(2)}%`}
+          </div>
+          <div className="text-[9px] text-slate-500 font-mono mt-1">
+            {`Ch ${championChallenger.championVersion || '-'} vs Cl ${championChallenger.challengerVersion || '-'}`}
+          </div>
+          {championChallenger.reason ? <div className="text-[9px] text-slate-500 font-mono mt-1">{championChallenger.reason}</div> : null}
         </div>
         <div className="flex-1 px-2 pb-2">
           {canRenderChart ? (
@@ -1719,6 +1755,19 @@ export default function Home() {
     maxJumpPct: DATA_SANITY_MAX_JUMP_PCT,
     checkedAt: null,
   });
+  const [championChallenger, setChampionChallenger] = useState<ChampionChallengerState>({
+    warning: false,
+    reason: null,
+    winner: 'UNKNOWN',
+    swapRecommended: false,
+    championVersion: null,
+    challengerVersion: null,
+    championAccuracyPct: 0,
+    challengerAccuracyPct: 0,
+    championAvgReturnPct: 0,
+    challengerAvgReturnPct: 0,
+    comparedAt: null,
+  });
   const bidWallAgesRef = useRef<Map<number, number>>(new Map());
   const spoofingStreakRef = useRef(0);
 
@@ -1767,6 +1816,11 @@ export default function Home() {
         .then((response) => (response.ok ? response.json() : null))
         .catch(() => null),
       fetch(`/api/data-sanity?symbol=${activeSymbol}&lookbackMinutes=${DATA_SANITY_LOOKBACK_MINUTES}&maxJumpPct=${DATA_SANITY_MAX_JUMP_PCT}`)
+        .then((response) => (response.ok ? response.json() : null))
+        .catch(() => null),
+      fetch(
+        `/api/model-comparison/champion-challenger?symbol=${activeSymbol}&days=${CHAMPION_CHALLENGER_DAYS}&horizonDays=${CHAMPION_CHALLENGER_HORIZON_DAYS}`,
+      )
         .then((response) => (response.ok ? response.json() : null))
         .catch(() => null),
     ]);
@@ -1828,6 +1882,25 @@ export default function Home() {
       issues?: Array<{ type?: string; detail?: string }>;
       max_jump_pct?: number;
       checked_at?: string;
+    } | null;
+    const championComparison = requests[15] as {
+      success?: boolean;
+      champion?: {
+        model_version?: string;
+        accuracy_pct?: number;
+        avg_return_pct?: number;
+      };
+      challenger?: {
+        model_version?: string;
+        accuracy_pct?: number;
+        avg_return_pct?: number;
+      };
+      decision?: {
+        winner?: 'CHAMPION' | 'CHALLENGER';
+        swap_recommended?: boolean;
+        reason?: string;
+      };
+      compared_at?: string;
     } | null;
 
     const snapshotRows = (snapshots?.snapshots || [])
@@ -1998,6 +2071,28 @@ export default function Home() {
       issueCount: sanityIssueCount,
       maxJumpPct: Number(sanity?.max_jump_pct || DATA_SANITY_MAX_JUMP_PCT),
       checkedAt: sanity?.checked_at || null,
+    });
+
+    const championAccuracy = Number(championComparison?.champion?.accuracy_pct || 0);
+    const challengerAccuracy = Number(championComparison?.challenger?.accuracy_pct || 0);
+    const championAvgReturn = Number(championComparison?.champion?.avg_return_pct || 0);
+    const challengerAvgReturn = Number(championComparison?.challenger?.avg_return_pct || 0);
+    const championAccuracyGap = challengerAccuracy - championAccuracy;
+    const championDriftWarning =
+      Boolean(championComparison?.decision?.swap_recommended) || championAccuracyGap >= CHAMPION_CHALLENGER_ALERT_GAP_PCT;
+
+    setChampionChallenger({
+      warning: championDriftWarning,
+      reason: championComparison?.decision?.reason || (championDriftWarning ? 'Challenger outperform champion pada window evaluasi terbaru.' : null),
+      winner: championComparison?.decision?.winner || 'UNKNOWN',
+      swapRecommended: Boolean(championComparison?.decision?.swap_recommended),
+      championVersion: championComparison?.champion?.model_version || null,
+      challengerVersion: championComparison?.challenger?.model_version || null,
+      championAccuracyPct: championAccuracy,
+      challengerAccuracyPct: challengerAccuracy,
+      championAvgReturnPct: championAvgReturn,
+      challengerAvgReturnPct: challengerAvgReturn,
+      comparedAt: championComparison?.compared_at || null,
     });
 
     const ihsgChangePct = Number(global?.change_ihsg || 0);
@@ -2174,6 +2269,7 @@ export default function Home() {
       incompleteDataWarning,
       crossCheckWarning,
       sanityWarning,
+      championDriftWarning,
     );
     const preliminarySentimentVote = rocCritical
       ? 'NEUTRAL'
@@ -2206,12 +2302,13 @@ export default function Home() {
         `Data Integrity: ${incompleteDataWarning ? 'Incomplete Data' : 'Complete'}\n` +
         `Cross-Check: ${crossCheckWarning ? 'LOCK' : 'OK'}\n` +
         `Data Sanity: ${sanityWarning ? 'DATA CONTAMINATED' : 'PASS'}\n` +
+        `Champion-Challenger: ${championDriftWarning ? 'DRIFT WARNING' : 'STABLE'}\n` +
         `RoC Kill-Switch: ${rocCritical ? 'CRITICAL: VOLATILITY SPIKE' : 'Normal'}\n` +
         `Consensus: ${preliminaryConsensus.message}\n` +
         `Cooling-Off: ${coolingActive ? 'ACTIVE (Recommendation Locked)' : 'Clear'}\n` +
         `Whale Flow: ${topWhales || 'No dominant whale detected'}\n` +
         `Model Confidence: ${confLabel} (${Number(confidence?.accuracy_pct || 0).toFixed(1)}%)\n\n` +
-        `> Recommendation: ${coolingActive ? 'Cooling-off active. Stand down and review risk.' : sanityWarning ? 'Data contaminated. Lock sinyal hingga verifikasi ulang.' : crossCheckWarning ? 'Cross-check lock aktif. Tahan eksekusi sampai harga sinkron.' : incompleteDataWarning ? 'Data belum lengkap. Tunda aksi sampai stream normal.' : rocCritical ? 'CRITICAL volatility spike. Disable buy and wait stabilization.' : spoofingWarning ? 'Spoofing risk terdeteksi. Hindari entry impulsif.' : nextUps >= minUpsForLong ? 'Momentum entry on pullback.' : nextUps <= 40 ? 'Defensive mode, avoid aggressive entry.' : 'Wait for clearer confirmation.'}`,
+        `> Recommendation: ${coolingActive ? 'Cooling-off active. Stand down and review risk.' : sanityWarning ? 'Data contaminated. Lock sinyal hingga verifikasi ulang.' : crossCheckWarning ? 'Cross-check lock aktif. Tahan eksekusi sampai harga sinkron.' : incompleteDataWarning ? 'Data belum lengkap. Tunda aksi sampai stream normal.' : championDriftWarning ? 'Model drift warning. Gunakan mode defensif sampai champion dikaji ulang.' : rocCritical ? 'CRITICAL volatility spike. Disable buy and wait stabilization.' : spoofingWarning ? 'Spoofing risk terdeteksi. Hindari entry impulsif.' : nextUps >= minUpsForLong ? 'Momentum entry on pullback.' : nextUps <= 40 ? 'Defensive mode, avoid aggressive entry.' : 'Wait for clearer confirmation.'}`,
     );
 
     try {
@@ -2556,6 +2653,14 @@ export default function Home() {
       return;
     }
 
+    if (championChallenger.warning && championChallenger.swapRecommended && modelConsensus.status === 'CONSENSUS_BULL') {
+      setActionState({
+        busy: false,
+        message: `Alert blocked: champion drift (${championChallenger.championVersion || 'champion'} -> ${championChallenger.challengerVersion || 'challenger'})`,
+      });
+      return;
+    }
+
     if (priceCrossCheck.warning) {
       setActionState({
         busy: false,
@@ -2691,6 +2796,19 @@ export default function Home() {
         max_jump_pct: dataSanity.maxJumpPct,
         checked_at: dataSanity.checkedAt,
       },
+      champion_challenger: {
+        warning: championChallenger.warning,
+        reason: championChallenger.reason,
+        winner: championChallenger.winner,
+        swap_recommended: championChallenger.swapRecommended,
+        champion_version: championChallenger.championVersion,
+        challenger_version: championChallenger.challengerVersion,
+        champion_accuracy_pct: championChallenger.championAccuracyPct,
+        challenger_accuracy_pct: championChallenger.challengerAccuracyPct,
+        champion_avg_return_pct: championChallenger.championAvgReturnPct,
+        challenger_avg_return_pct: championChallenger.challengerAvgReturnPct,
+        compared_at: championChallenger.comparedAt,
+      },
     };
 
     try {
@@ -2807,6 +2925,17 @@ export default function Home() {
     dataSanity.issueCount,
     dataSanity.maxJumpPct,
     dataSanity.checkedAt,
+    championChallenger.warning,
+    championChallenger.reason,
+    championChallenger.winner,
+    championChallenger.swapRecommended,
+    championChallenger.championVersion,
+    championChallenger.challengerVersion,
+    championChallenger.championAccuracyPct,
+    championChallenger.challengerAccuracyPct,
+    championChallenger.championAvgReturnPct,
+    championChallenger.challengerAvgReturnPct,
+    championChallenger.comparedAt,
     priceCrossCheck.warning,
     priceCrossCheck.reason,
     priceCrossCheck.flaggedSymbols,
@@ -3090,6 +3219,7 @@ export default function Home() {
           incompleteData={incompleteData}
           priceCrossCheck={priceCrossCheck}
           dataSanity={dataSanity}
+          championChallenger={championChallenger}
         />
       </div>
       {!combatMode.active ? (
