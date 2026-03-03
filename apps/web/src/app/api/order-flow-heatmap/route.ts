@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { fallbackEmptyMeta, sourceMeta } from '@/lib/source-adapter';
+import { sourceMeta } from '@/lib/source-adapter';
 
 // Initialize Supabase client with fallbacks for build time
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co';
@@ -66,6 +66,7 @@ interface HAKAHAKIData {
  * Returns order flow heatmap data for visualization
  */
 export async function GET(request: NextRequest) {
+  const startedAt = Date.now();
   try {
     const searchParams = request.nextUrl.searchParams;
     const symbol = searchParams.get('symbol')?.toUpperCase();
@@ -102,6 +103,13 @@ export async function GET(request: NextRequest) {
             degraded: true,
             reason: 'Supabase is not configured; using graceful fallback payload',
             fallbackDelayMinutes: 15,
+            diagnostics: {
+              primary_latency_ms: Math.max(0, Date.now() - startedAt),
+              fallback_latency_ms: null,
+              primary_error: 'Supabase is not configured; using graceful fallback payload',
+              selected_source: 'FALLBACK_EMPTY',
+              checked_at: new Date().toISOString(),
+            },
           }),
         },
         {
@@ -140,7 +148,19 @@ export async function GET(request: NextRequest) {
             avgIntensity: 0,
             anomalyCount: 0,
           },
-          data_source: fallbackEmptyMeta('Heatmap query failed'),
+          data_source: sourceMeta({
+            provider: 'FALLBACK_EMPTY',
+            degraded: true,
+            reason: 'Heatmap query failed',
+            fallbackDelayMinutes: 15,
+            diagnostics: {
+              primary_latency_ms: Math.max(0, Date.now() - startedAt),
+              fallback_latency_ms: null,
+              primary_error: String(heatmapError?.message || 'Heatmap query failed'),
+              selected_source: 'FALLBACK_EMPTY',
+              checked_at: new Date().toISOString(),
+            },
+          }),
         },
         {
           headers: {
@@ -219,6 +239,13 @@ export async function GET(request: NextRequest) {
           degraded: false,
           reason: null,
           fallbackDelayMinutes: 0,
+          diagnostics: {
+            primary_latency_ms: Math.max(0, Date.now() - startedAt),
+            fallback_latency_ms: null,
+            primary_error: null,
+            selected_source: 'SUPABASE',
+            checked_at: new Date().toISOString(),
+          },
         }),
       },
       {
@@ -233,7 +260,19 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       {
         error: 'Internal server error',
-        data_source: fallbackEmptyMeta('Order flow heatmap internal error'),
+        data_source: sourceMeta({
+          provider: 'FALLBACK_EMPTY',
+          degraded: true,
+          reason: 'Order flow heatmap internal error',
+          fallbackDelayMinutes: 15,
+          diagnostics: {
+            primary_latency_ms: Math.max(0, Date.now() - startedAt),
+            fallback_latency_ms: null,
+            primary_error: error instanceof Error ? error.message : 'unknown error',
+            selected_source: 'FALLBACK_EMPTY',
+            checked_at: new Date().toISOString(),
+          },
+        }),
       },
       { status: 500 }
     );

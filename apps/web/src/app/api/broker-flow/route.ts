@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { fallbackEmptyMeta, primaryDbMeta } from '@/lib/source-adapter';
+import { sourceMeta } from '@/lib/source-adapter';
 
 export const dynamic = 'force-dynamic';
 
@@ -54,6 +54,7 @@ function classifyBrokerCharacter(dailyData: number[], activeDays: number): Broke
  * Days: 1, 7, 14, 21
  */
 export async function GET(request: Request) {
+  const startedAt = Date.now();
   try {
     const { searchParams } = new URL(request.url);
     const symbol = (searchParams.get('symbol') || 'BBCA').toUpperCase();
@@ -187,7 +188,19 @@ export async function GET(request: Request) {
       days,
       filter,
       brokers: filtered,
-      data_source: primaryDbMeta(),
+      data_source: sourceMeta({
+        provider: 'PRIMARY_DB',
+        degraded: false,
+        reason: null,
+        fallbackDelayMinutes: 0,
+        diagnostics: {
+          primary_latency_ms: Math.max(0, Date.now() - startedAt),
+          fallback_latency_ms: null,
+          primary_error: null,
+          selected_source: 'PRIMARY_DB',
+          checked_at: new Date().toISOString(),
+        },
+      }),
       stats: {
         total_brokers: brokersWithZScore.length,
         whales: brokersWithZScore.filter(b => b.is_whale).length,
@@ -213,7 +226,19 @@ export async function GET(request: Request) {
     return NextResponse.json(
       {
         error: 'Failed to fetch broker flow data',
-        data_source: fallbackEmptyMeta('Broker flow query failed'),
+        data_source: sourceMeta({
+          provider: 'FALLBACK_EMPTY',
+          degraded: true,
+          reason: 'Broker flow query failed',
+          fallbackDelayMinutes: 15,
+          diagnostics: {
+            primary_latency_ms: Math.max(0, Date.now() - startedAt),
+            fallback_latency_ms: null,
+            primary_error: error instanceof Error ? error.message : 'unknown error',
+            selected_source: 'FALLBACK_EMPTY',
+            checked_at: new Date().toISOString(),
+          },
+        }),
       },
       { status: 500 },
     );

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { fallbackEmptyMeta, primaryDbMeta } from '@/lib/source-adapter';
+import { sourceMeta } from '@/lib/source-adapter';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,6 +22,7 @@ interface ModelConfidenceSummary {
 }
 
 export async function GET(request: Request) {
+  const startedAt = Date.now();
   try {
     const { searchParams } = new URL(request.url);
 
@@ -116,14 +117,38 @@ export async function GET(request: Request) {
 
     return NextResponse.json({
       ...summary,
-      data_source: primaryDbMeta(),
+      data_source: sourceMeta({
+        provider: 'PRIMARY_DB',
+        degraded: false,
+        reason: null,
+        fallbackDelayMinutes: 0,
+        diagnostics: {
+          primary_latency_ms: Math.max(0, Date.now() - startedAt),
+          fallback_latency_ms: null,
+          primary_error: null,
+          selected_source: 'PRIMARY_DB',
+          checked_at: new Date().toISOString(),
+        },
+      }),
     });
   } catch (error) {
     console.error('model-confidence GET failed:', error);
     return NextResponse.json(
       {
         error: 'Failed to compute model confidence',
-        data_source: fallbackEmptyMeta('Model confidence query failed'),
+        data_source: sourceMeta({
+          provider: 'FALLBACK_EMPTY',
+          degraded: true,
+          reason: 'Model confidence query failed',
+          fallbackDelayMinutes: 15,
+          diagnostics: {
+            primary_latency_ms: Math.max(0, Date.now() - startedAt),
+            fallback_latency_ms: null,
+            primary_error: error instanceof Error ? error.message : 'unknown error',
+            selected_source: 'FALLBACK_EMPTY',
+            checked_at: new Date().toISOString(),
+          },
+        }),
       },
       { status: 500 },
     );

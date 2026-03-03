@@ -1,12 +1,13 @@
 import { db } from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
-import { fallbackEmptyMeta, primaryDbMeta } from '@/lib/source-adapter';
+import { sourceMeta } from '@/lib/source-adapter';
 
 /**
  * Handles GET requests to fetch the latest CNN model prediction for a given symbol.
  * Example: /api/prediction?symbol=BBCA
  */
 export async function GET(request: NextRequest) {
+  const startedAt = Date.now();
   const { searchParams } = new URL(request.url);
   const symbol = searchParams.get("symbol");
 
@@ -35,14 +36,42 @@ export async function GET(request: NextRequest) {
           {
             success: false,
             message: "No prediction found for this symbol.",
-            data_source: fallbackEmptyMeta('No prediction rows for symbol'),
+            data_source: sourceMeta({
+              provider: 'FALLBACK_EMPTY',
+              degraded: true,
+              reason: 'No prediction rows for symbol',
+              fallbackDelayMinutes: 15,
+              diagnostics: {
+                primary_latency_ms: Math.max(0, Date.now() - startedAt),
+                fallback_latency_ms: null,
+                primary_error: 'No prediction rows for symbol',
+                selected_source: 'FALLBACK_EMPTY',
+                checked_at: new Date().toISOString(),
+              },
+            }),
           },
           { status: 404 },
         );
       }
       
       return NextResponse.json(
-        { success: true, data: result.rows[0], data_source: primaryDbMeta() },
+        {
+          success: true,
+          data: result.rows[0],
+          data_source: sourceMeta({
+            provider: 'PRIMARY_DB',
+            degraded: false,
+            reason: null,
+            fallbackDelayMinutes: 0,
+            diagnostics: {
+              primary_latency_ms: Math.max(0, Date.now() - startedAt),
+              fallback_latency_ms: null,
+              primary_error: null,
+              selected_source: 'PRIMARY_DB',
+              checked_at: new Date().toISOString(),
+            },
+          }),
+        },
         { status: 200 }
       );
     } finally {
@@ -56,7 +85,19 @@ export async function GET(request: NextRequest) {
         success: false,
         error: "Failed to fetch prediction.",
         details: errorMessage,
-        data_source: fallbackEmptyMeta('Prediction query failed'),
+        data_source: sourceMeta({
+          provider: 'FALLBACK_EMPTY',
+          degraded: true,
+          reason: 'Prediction query failed',
+          fallbackDelayMinutes: 15,
+          diagnostics: {
+            primary_latency_ms: Math.max(0, Date.now() - startedAt),
+            fallback_latency_ms: null,
+            primary_error: errorMessage,
+            selected_source: 'FALLBACK_EMPTY',
+            checked_at: new Date().toISOString(),
+          },
+        }),
       },
       { status: 500 }
     );

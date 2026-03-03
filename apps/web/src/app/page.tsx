@@ -152,6 +152,10 @@ interface AdapterHealthState {
   degraded: boolean;
 }
 
+interface EndpointSourceHealthState extends AdapterHealthState {
+  name: string;
+}
+
 interface GlobalCorrelationResponse {
   gold?: number;
   coal?: number;
@@ -1095,6 +1099,7 @@ function RightSidebar({
   newsImpact,
   mtfValidation,
   marketIntelAdapter,
+  sourceHealth,
 }: {
   brokers: BrokerRow[];
   zData: ZScorePoint[];
@@ -1110,6 +1115,7 @@ function RightSidebar({
   newsImpact: NewsImpactState;
   mtfValidation: MultiTimeframeValidationState;
   marketIntelAdapter: AdapterHealthState;
+  sourceHealth: EndpointSourceHealthState[];
 }) {
   const canRenderChart = typeof window !== 'undefined';
   const hasAlert = zData.some((item) => item.score > 2 || item.score < -2);
@@ -1312,6 +1318,22 @@ function RightSidebar({
             {`SRC ${marketIntelAdapter.selectedSource} | P ${marketIntelAdapter.primaryLatencyMs ?? '-'}ms | F ${marketIntelAdapter.fallbackLatencyMs ?? '-'}ms`}
           </div>
           {marketIntelAdapter.primaryError ? <div className="text-[9px] text-slate-500 font-mono mt-1">{marketIntelAdapter.primaryError}</div> : null}
+          {sourceHealth.slice(0, 4).map((item) => (
+            <div key={item.name} className="mt-2 border-t border-slate-800/70 pt-2">
+              <div
+                className={cn(
+                  'text-[9px] font-mono border rounded px-2 py-1',
+                  item.degraded ? 'text-amber-300 border-amber-500/40 bg-amber-500/10' : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10',
+                )}
+              >
+                {item.degraded ? `${item.name} Degraded` : `${item.name} Healthy`}
+              </div>
+              <div className="text-[9px] text-slate-500 font-mono mt-1">
+                {`SRC ${item.selectedSource} | P ${item.primaryLatencyMs ?? '-'}ms | F ${item.fallbackLatencyMs ?? '-'}ms`}
+              </div>
+              {item.primaryError ? <div className="text-[9px] text-slate-500 font-mono mt-1">{item.primaryError}</div> : null}
+            </div>
+          ))}
         </div>
         <div className="flex-1 px-2 pb-2">
           {canRenderChart ? (
@@ -1765,6 +1787,7 @@ export default function Home() {
     checkedAt: null,
     degraded: false,
   });
+  const [sourceHealth, setSourceHealth] = useState<EndpointSourceHealthState[]>([]);
   const [actionState, setActionState] = useState<ActionState>({ busy: false, message: null });
   const [riskDraft, setRiskDraft] = useState<RuntimeRiskDraft>({
     ihsgRiskTriggerPct: String(KILL_SWITCH_IHSG_DROP_PCT),
@@ -2090,15 +2113,34 @@ export default function Home() {
     trackDegraded('Prediction', pred?.data_source || null);
     setDegradedSources(Array.from(new Set(nextDegradedSources)).slice(0, 4));
 
-    const marketIntelDiagnostics = marketIntel?.data_source?.diagnostics;
+    const toAdapterHealth = (name: string, source?: SourceAdapterMetaClient | null, fallbackReason?: string | null): EndpointSourceHealthState => {
+      const diagnostics = source?.diagnostics;
+      return {
+        name,
+        selectedSource: diagnostics?.selected_source || source?.provider || 'UNKNOWN',
+        primaryLatencyMs: typeof diagnostics?.primary_latency_ms === 'number' ? diagnostics.primary_latency_ms : null,
+        fallbackLatencyMs: typeof diagnostics?.fallback_latency_ms === 'number' ? diagnostics.fallback_latency_ms : null,
+        primaryError: diagnostics?.primary_error || fallbackReason || null,
+        checkedAt: diagnostics?.checked_at || null,
+        degraded: Boolean(source?.degraded || fallbackReason),
+      };
+    };
+
+    const marketIntelHealth = toAdapterHealth('Market Intel', marketIntel?.data_source || null);
     setMarketIntelAdapter({
-      selectedSource: marketIntelDiagnostics?.selected_source || marketIntel?.data_source?.provider || 'UNKNOWN',
-      primaryLatencyMs: typeof marketIntelDiagnostics?.primary_latency_ms === 'number' ? marketIntelDiagnostics.primary_latency_ms : null,
-      fallbackLatencyMs: typeof marketIntelDiagnostics?.fallback_latency_ms === 'number' ? marketIntelDiagnostics.fallback_latency_ms : null,
-      primaryError: marketIntelDiagnostics?.primary_error || null,
-      checkedAt: marketIntelDiagnostics?.checked_at || null,
-      degraded: Boolean(marketIntel?.data_source?.degraded),
+      selectedSource: marketIntelHealth.selectedSource,
+      primaryLatencyMs: marketIntelHealth.primaryLatencyMs,
+      fallbackLatencyMs: marketIntelHealth.fallbackLatencyMs,
+      primaryError: marketIntelHealth.primaryError,
+      checkedAt: marketIntelHealth.checkedAt,
+      degraded: marketIntelHealth.degraded,
     });
+    setSourceHealth([
+      toAdapterHealth('Broker Flow', brokerFlow?.data_source || null),
+      toAdapterHealth('Order Flow', heatmap?.data_source || null, heatmap?.degraded ? heatmap?.reason || 'degraded response' : null),
+      toAdapterHealth('Model Confidence', confidence?.data_source || null),
+      toAdapterHealth('Prediction', pred?.data_source || null),
+    ]);
 
     const snapshotRows = (snapshots?.snapshots || [])
       .filter((row) => row.symbol === activeSymbol && typeof row.price === 'number')
@@ -3010,6 +3052,15 @@ export default function Home() {
           primary_error: marketIntelAdapter.primaryError,
           checked_at: marketIntelAdapter.checkedAt,
         },
+        adapters: sourceHealth.map((item) => ({
+          name: item.name,
+          selected_source: item.selectedSource,
+          degraded: item.degraded,
+          primary_latency_ms: item.primaryLatencyMs,
+          fallback_latency_ms: item.fallbackLatencyMs,
+          primary_error: item.primaryError,
+          checked_at: item.checkedAt,
+        })),
       },
       liquidity_guard: {
         daily_volume_lots: liquidityGuard.dailyVolumeLots,
@@ -3191,6 +3242,7 @@ export default function Home() {
     marketIntelAdapter.fallbackLatencyMs,
     marketIntelAdapter.primaryError,
     marketIntelAdapter.checkedAt,
+    sourceHealth,
     ihsgChangePct,
     killSwitchActive,
     liquidityGuard.capPct,
@@ -3583,6 +3635,7 @@ export default function Home() {
           newsImpact={newsImpact}
           mtfValidation={mtfValidation}
           marketIntelAdapter={marketIntelAdapter}
+          sourceHealth={sourceHealth}
         />
       </div>
       {!combatMode.active ? (
