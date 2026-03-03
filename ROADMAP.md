@@ -364,6 +364,10 @@ Source:
 
 Tolong konfirmasi jika kamu sudah memahami konteks ini, dan mari kita mulai dengan fokus pada memasukan semua fitur tersebut dan melanjutkan coding hingga semua fitur tersebut terimplementasi."
 
+note:
+- semisal fitur fitur tidak bisa di muat berdasarkan design ui/ux yang sudah ada, anda bisa improvisasi sendiri. namun masih pada thema yang sama.
+- setelah melakukan perubahan apapun, lakukanlah commit.
+
 
 
 

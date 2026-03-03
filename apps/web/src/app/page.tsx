@@ -148,6 +148,60 @@ interface LiquidityGuard {
   warning: string | null;
 }
 
+interface SystemicRisk {
+  betaEstimate: number;
+  threshold: number;
+  high: boolean;
+}
+
+interface RuntimeRiskConfig {
+  ihsg_risk_trigger_pct?: number;
+  ups_min_normal?: number;
+  ups_min_risk?: number;
+  participation_cap_normal_pct?: number;
+  participation_cap_risk_pct?: number;
+  systemic_risk_beta_threshold?: number;
+  risk_audit_stale_hours?: number;
+  cooling_off_drawdown_pct?: number;
+  cooling_off_hours?: number;
+  cooling_off_required_breaches?: number;
+}
+
+interface RuntimeRiskDraft {
+  ihsgRiskTriggerPct: string;
+  upsMinNormal: string;
+  upsMinRisk: string;
+  participationCapNormalPct: string;
+  participationCapRiskPct: string;
+  systemicRiskBetaThreshold: string;
+  riskAuditStaleHours: string;
+  coolingOffDrawdownPct: string;
+  coolingOffHours: string;
+  coolingOffRequiredBreaches: string;
+}
+
+interface RiskAuditInfo {
+  key: string | null;
+  actor: string | null;
+  source: string | null;
+  createdAt: string | null;
+}
+
+interface RiskConfigLockMeta {
+  checkedRows: number;
+  hashMismatches: number;
+  linkageMismatches: number;
+  verifiedAt: string | null;
+}
+
+interface CoolingOffState {
+  active: boolean;
+  activeUntil: string | null;
+  remainingSeconds: number;
+  breachStreak: number;
+  reason: string | null;
+}
+
 const FALLBACK_MARKET_DATA: ChartPoint[] = [
   { time: '09:00', price: 9200, volume: 4000 },
   { time: '09:30', price: 9250, volume: 3000 },
@@ -183,6 +237,40 @@ const FALLBACK_HEATMAP = Array.from({ length: 40 }, (_, index) => ({
   volume: 700 + ((index * 173) % 5000),
   type: (index > 20 ? 'Ask' : 'Bid') as 'Bid' | 'Ask',
 }));
+
+function envNumber(name: string, fallback: number) {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function envBool(name: string, fallback: boolean) {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  return !['0', 'false', 'off', 'no'].includes(raw.trim().toLowerCase());
+}
+
+const KILL_SWITCH_IHSG_DROP_PCT = envNumber('NEXT_PUBLIC_KILL_SWITCH_IHSG_DROP_PCT', -1.5);
+const KILL_SWITCH_MIN_UPS = envNumber('NEXT_PUBLIC_KILL_SWITCH_MIN_UPS', 90);
+const NORMAL_MIN_UPS = envNumber('NEXT_PUBLIC_NORMAL_MIN_UPS', 70);
+const PARTICIPATION_CAP_NORMAL_PCT = envNumber('NEXT_PUBLIC_PARTICIPATION_CAP_NORMAL_PCT', 0.01);
+const PARTICIPATION_CAP_KILL_SWITCH_PCT = envNumber('NEXT_PUBLIC_PARTICIPATION_CAP_KILL_SWITCH_PCT', 0.005);
+const SYSTEMIC_RISK_BETA_THRESHOLD = envNumber('NEXT_PUBLIC_SYSTEMIC_RISK_BETA_THRESHOLD', 1.5);
+const SYSTEMIC_RISK_HARD_GATE = envBool('NEXT_PUBLIC_SYSTEMIC_RISK_HARD_GATE', true);
+
+const ROADMAP_DEFAULTS = {
+  killSwitchIhsgDropPct: -1.5,
+  killSwitchMinUps: 90,
+  normalMinUps: 70,
+  participationCapNormalPct: 0.01,
+  participationCapKillSwitchPct: 0.005,
+  systemicRiskBetaThreshold: 1.5,
+  coolingOffDrawdownPct: 5,
+  coolingOffHours: 24,
+  coolingOffRequiredBreaches: 2,
+  systemicRiskHardGate: true,
+} as const;
 
 function cn(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(' ');
@@ -271,12 +359,14 @@ function TopNavigation({
   symbolInput,
   setSymbolInput,
   applySymbol,
+  coolingOffActive,
   infraStatus,
   globalData,
 }: {
   symbolInput: string;
   setSymbolInput: (value: string) => void;
   applySymbol: () => void;
+  coolingOffActive: boolean;
   infraStatus: { sse: Tone; db: Tone; integrity: Tone; token: Tone };
   globalData: GlobalCorrelationResponse | null;
 }) {
@@ -311,6 +401,7 @@ function TopNavigation({
             className="bg-slate-900 border border-slate-800 text-slate-200 text-xs rounded-full pl-9 pr-24 py-1.5 focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/50 w-64 transition-all"
             placeholder="Search Emiten (e.g. BBCA)..."
             value={symbolInput}
+            disabled={coolingOffActive}
             onChange={(event) => setSymbolInput(event.target.value.toUpperCase())}
             onKeyDown={(event) => {
               if (event.key === 'Enter') applySymbol();
@@ -318,7 +409,8 @@ function TopNavigation({
           />
           <button
             onClick={applySymbol}
-            className="absolute inset-y-0 right-0 px-3 text-[10px] text-cyan-400 font-mono border-l border-slate-800 hover:text-cyan-300"
+            disabled={coolingOffActive}
+            className="absolute inset-y-0 right-0 px-3 text-[10px] text-cyan-400 font-mono border-l border-slate-800 hover:text-cyan-300 disabled:opacity-50"
           >
             APPLY
           </button>
@@ -357,11 +449,13 @@ function LeftSidebar({
   setActiveSymbol,
   currentPrice,
   priceChangePct,
+  coolingOffActive,
 }: {
   activeSymbol: string;
   setActiveSymbol: (symbol: string) => void;
   currentPrice: number;
   priceChangePct: number;
+  coolingOffActive: boolean;
 }) {
   const [activeTab, setActiveTab] = useState<'day' | 'swing' | 'custom'>('day');
 
@@ -385,9 +479,10 @@ function LeftSidebar({
         {(['day', 'swing', 'custom'] as const).map((tab) => (
           <button
             key={tab}
+            disabled={coolingOffActive}
             onClick={() => setActiveTab(tab)}
             className={cn(
-              'text-[10px] uppercase font-bold py-1.5 rounded transition-colors border',
+              'text-[10px] uppercase font-bold py-1.5 rounded transition-colors border disabled:opacity-40',
               activeTab === tab ? 'bg-cyan-500/10 text-cyan-500 border-cyan-500/30' : 'bg-slate-900 text-slate-500 border-slate-800 hover:bg-slate-800',
             )}
           >
@@ -399,7 +494,7 @@ function LeftSidebar({
       <div className="px-3 pb-2">
         <div className="text-[10px] text-slate-500 font-mono mb-1 uppercase tracking-wider flex justify-between">
           <span>Scanner Logic</span>
-          <span className="text-cyan-500">Active</span>
+          <span className={coolingOffActive ? 'text-amber-400' : 'text-cyan-500'}>{coolingOffActive ? 'Cooling-Off' : 'Active'}</span>
         </div>
         <div className="text-xs text-slate-300 leading-relaxed bg-slate-950/50 p-2 rounded border border-slate-800/50">
           {activeTab === 'day' && 'Detecting high volatility & HAKA dominance > 65%.'}
@@ -414,9 +509,14 @@ function LeftSidebar({
           {watchlist.map((item) => (
             <div
               key={item.symbol}
-              onClick={() => setActiveSymbol(item.symbol)}
+              onClick={() => {
+                if (!coolingOffActive) {
+                  setActiveSymbol(item.symbol);
+                }
+              }}
               className={cn(
                 'group px-3 py-2.5 hover:bg-slate-800/50 cursor-pointer flex items-center justify-between transition-colors border-l-2 border-transparent hover:border-cyan-500',
+                coolingOffActive && 'opacity-50 cursor-not-allowed hover:border-transparent',
                 item.symbol === activeSymbol && 'bg-slate-800/40 border-cyan-500',
               )}
             >
@@ -726,10 +826,34 @@ function BottomPanel({
   onSendTelegram,
   onRunBacktest,
   onResetDeadman,
+  onResetCoolingOff,
   deadmanResetCooldown,
   actionState,
   tokenTelemetry,
   liquidityGuard,
+  systemicRisk,
+  configDrift,
+  runtimeConfigSource,
+  runtimeIhsgDrop,
+  runtimeNormalUps,
+  runtimeRiskUps,
+  runtimeParticipationCapNormalPct,
+  runtimeParticipationCapRiskPct,
+  runtimeSystemicRiskBetaThreshold,
+  runtimeRiskAuditStaleHours,
+  runtimeCoolingOffDrawdownPct,
+  runtimeCoolingOffHours,
+  runtimeCoolingOffRequiredBreaches,
+  riskDraft,
+  onRiskDraftChange,
+  onApplyRiskConfig,
+  onResetRiskDraft,
+  riskConfigLocked,
+  riskConfigLockReason,
+  riskConfigLockMeta,
+  lastRiskAudit,
+  staleAudit,
+  coolingOff,
 }: {
   narrative: string;
   confidence: ModelConfidenceResponse | null;
@@ -739,10 +863,34 @@ function BottomPanel({
   onSendTelegram: () => void;
   onRunBacktest: () => void;
   onResetDeadman: () => void;
+  onResetCoolingOff: () => void;
   deadmanResetCooldown: number;
   actionState: ActionState;
   tokenTelemetry: TokenTelemetry;
   liquidityGuard: LiquidityGuard;
+  systemicRisk: SystemicRisk;
+  configDrift: boolean;
+  runtimeConfigSource: 'DB' | 'ENV';
+  runtimeIhsgDrop: number;
+  runtimeNormalUps: number;
+  runtimeRiskUps: number;
+  runtimeParticipationCapNormalPct: number;
+  runtimeParticipationCapRiskPct: number;
+  runtimeSystemicRiskBetaThreshold: number;
+  runtimeRiskAuditStaleHours: number;
+  runtimeCoolingOffDrawdownPct: number;
+  runtimeCoolingOffHours: number;
+  runtimeCoolingOffRequiredBreaches: number;
+  riskDraft: RuntimeRiskDraft;
+  onRiskDraftChange: (key: keyof RuntimeRiskDraft, value: string) => void;
+  onApplyRiskConfig: () => void;
+  onResetRiskDraft: () => void;
+  riskConfigLocked: boolean;
+  riskConfigLockReason: string | null;
+  riskConfigLockMeta: RiskConfigLockMeta;
+  lastRiskAudit: RiskAuditInfo;
+  staleAudit: boolean;
+  coolingOff: CoolingOffState;
 }) {
   const label = confidence?.confidence_label || 'MEDIUM';
   const accuracy = Number(confidence?.accuracy_pct || 0);
@@ -795,6 +943,117 @@ function BottomPanel({
               <div>{`Participation Cap: ${(liquidityGuard.capPct * 100).toFixed(1)}%`}</div>
               <div className="text-cyan-400">{`Max Recommended: ${liquidityGuard.maxLots.toLocaleString()} lots`}</div>
               {liquidityGuard.warning ? <div className="text-amber-400 mt-1">{liquidityGuard.warning}</div> : null}
+              <div className={cn('mt-1', systemicRisk.high ? 'text-rose-400' : 'text-emerald-400')}>
+                {`Beta: ${systemicRisk.betaEstimate.toFixed(2)} / ${systemicRisk.threshold.toFixed(2)} ${systemicRisk.high ? '(Systemic Risk High)' : '(Normal)'}`}
+              </div>
+              <div className={cn('mt-1 text-[9px] font-bold', configDrift ? 'text-amber-400' : 'text-emerald-400')}>
+                {configDrift ? 'CONFIG DRIFT: runtime thresholds differ from roadmap defaults' : 'CONFIG BASELINE: roadmap defaults'}
+              </div>
+              <div className="mt-1 text-slate-500">
+                {`Cfg KS@${runtimeIhsgDrop.toFixed(2)}% | UPS N/K ${runtimeNormalUps}/${runtimeRiskUps} | Cap N/K ${(runtimeParticipationCapNormalPct * 100).toFixed(1)}%/${(runtimeParticipationCapRiskPct * 100).toFixed(1)}% | BetaThr ${runtimeSystemicRiskBetaThreshold.toFixed(2)} | AuditStale ${runtimeRiskAuditStaleHours.toFixed(0)}h | CoolOff DD ${runtimeCoolingOffDrawdownPct.toFixed(1)}% x${runtimeCoolingOffRequiredBreaches} / ${runtimeCoolingOffHours.toFixed(0)}h | BetaGate ${SYSTEMIC_RISK_HARD_GATE ? 'ON' : 'OFF'} | SRC ${runtimeConfigSource}`}
+              </div>
+              <div className="mt-2 border border-slate-800 rounded px-2 py-2 bg-slate-900/30 space-y-1">
+                <div className="text-[9px] text-slate-500 uppercase tracking-wider">Risk Config Editor</div>
+                <div className="grid grid-cols-2 gap-1">
+                  <input
+                    value={riskDraft.ihsgRiskTriggerPct}
+                    onChange={(event) => onRiskDraftChange('ihsgRiskTriggerPct', event.target.value)}
+                    className="bg-slate-950 border border-slate-800 text-slate-300 text-[10px] px-1 py-1 rounded"
+                    placeholder="KS IHSG"
+                  />
+                  <input
+                    value={riskDraft.systemicRiskBetaThreshold}
+                    onChange={(event) => onRiskDraftChange('systemicRiskBetaThreshold', event.target.value)}
+                    className="bg-slate-950 border border-slate-800 text-slate-300 text-[10px] px-1 py-1 rounded"
+                    placeholder="Beta Thr"
+                  />
+                  <input
+                    value={riskDraft.upsMinNormal}
+                    onChange={(event) => onRiskDraftChange('upsMinNormal', event.target.value)}
+                    className="bg-slate-950 border border-slate-800 text-slate-300 text-[10px] px-1 py-1 rounded"
+                    placeholder="UPS Normal"
+                  />
+                  <input
+                    value={riskDraft.upsMinRisk}
+                    onChange={(event) => onRiskDraftChange('upsMinRisk', event.target.value)}
+                    className="bg-slate-950 border border-slate-800 text-slate-300 text-[10px] px-1 py-1 rounded"
+                    placeholder="UPS Risk"
+                  />
+                  <input
+                    value={riskDraft.participationCapNormalPct}
+                    onChange={(event) => onRiskDraftChange('participationCapNormalPct', event.target.value)}
+                    className="bg-slate-950 border border-slate-800 text-slate-300 text-[10px] px-1 py-1 rounded"
+                    placeholder="Cap Normal"
+                  />
+                  <input
+                    value={riskDraft.participationCapRiskPct}
+                    onChange={(event) => onRiskDraftChange('participationCapRiskPct', event.target.value)}
+                    className="bg-slate-950 border border-slate-800 text-slate-300 text-[10px] px-1 py-1 rounded"
+                    placeholder="Cap Risk"
+                  />
+                  <input
+                    value={riskDraft.riskAuditStaleHours}
+                    onChange={(event) => onRiskDraftChange('riskAuditStaleHours', event.target.value)}
+                    className="bg-slate-950 border border-slate-800 text-slate-300 text-[10px] px-1 py-1 rounded"
+                    placeholder="Audit Stale (h)"
+                  />
+                  <input
+                    value={riskDraft.coolingOffDrawdownPct}
+                    onChange={(event) => onRiskDraftChange('coolingOffDrawdownPct', event.target.value)}
+                    className="bg-slate-950 border border-slate-800 text-slate-300 text-[10px] px-1 py-1 rounded"
+                    placeholder="CoolOff DD %"
+                  />
+                  <input
+                    value={riskDraft.coolingOffRequiredBreaches}
+                    onChange={(event) => onRiskDraftChange('coolingOffRequiredBreaches', event.target.value)}
+                    className="bg-slate-950 border border-slate-800 text-slate-300 text-[10px] px-1 py-1 rounded"
+                    placeholder="CoolOff Breaches"
+                  />
+                  <input
+                    value={riskDraft.coolingOffHours}
+                    onChange={(event) => onRiskDraftChange('coolingOffHours', event.target.value)}
+                    className="bg-slate-950 border border-slate-800 text-slate-300 text-[10px] px-1 py-1 rounded"
+                    placeholder="CoolOff Hours"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-1">
+                  <button
+                    onClick={onApplyRiskConfig}
+                    disabled={actionState.busy || riskConfigLocked}
+                    className="bg-cyan-600/20 hover:bg-cyan-600/30 disabled:opacity-50 text-cyan-300 text-[10px] font-bold py-1 rounded border border-cyan-500/30"
+                  >
+                    Apply Risk
+                  </button>
+                  <button
+                    onClick={onResetRiskDraft}
+                    disabled={actionState.busy || riskConfigLocked}
+                    className="bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-300 text-[10px] font-bold py-1 rounded border border-slate-700"
+                  >
+                    Reset Draft
+                  </button>
+                </div>
+                {riskConfigLocked ? (
+                  <div className="space-y-1">
+                    <div className="text-[9px] text-rose-400 font-mono">{`LOCKED: ${riskConfigLockReason || 'Runtime config audit chain broken'}`}</div>
+                    <div className="text-[9px] text-rose-300/90 font-mono">
+                      {`Chain: checked=${riskConfigLockMeta.checkedRows} | hash=${riskConfigLockMeta.hashMismatches} | linkage=${riskConfigLockMeta.linkageMismatches}`}
+                    </div>
+                    {riskConfigLockMeta.verifiedAt ? (
+                      <div className="text-[9px] text-rose-300/70 font-mono">
+                        {`Verified: ${new Date(riskConfigLockMeta.verifiedAt).toLocaleString('id-ID')}`}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+                <div className="text-[9px] text-slate-500 font-mono">
+                  {`Last Update: ${lastRiskAudit.createdAt ? new Date(lastRiskAudit.createdAt).toLocaleString('id-ID') : '-'} | ${lastRiskAudit.actor || '-'} | ${lastRiskAudit.source || '-'} | ${lastRiskAudit.key || '-'}`}
+                </div>
+                <div className={cn('text-[9px] font-mono', staleAudit ? 'text-amber-400' : 'text-slate-500')}>
+                  {staleAudit
+                    ? `AUDIT STALE: no config update in >${runtimeRiskAuditStaleHours.toFixed(0)}h`
+                    : `AUDIT FRESH: update within ${runtimeRiskAuditStaleHours.toFixed(0)}h`}
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -805,7 +1064,7 @@ function BottomPanel({
         <div className="p-3 grid grid-cols-1 gap-2">
           <button
             onClick={onSendTelegram}
-            disabled={actionState.busy}
+            disabled={actionState.busy || coolingOff.active}
             className="flex items-center justify-center space-x-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-xs font-bold py-2 rounded transition-colors"
           >
             <Send className="w-3.5 h-3.5" />
@@ -813,7 +1072,7 @@ function BottomPanel({
           </button>
           <button
             onClick={onRunBacktest}
-            disabled={actionState.busy}
+            disabled={actionState.busy || coolingOff.active}
             className="flex items-center justify-center space-x-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-200 text-xs font-bold py-2 rounded transition-colors border border-slate-700"
           >
             <Clock className="w-3.5 h-3.5" />
@@ -827,9 +1086,23 @@ function BottomPanel({
             <RefreshCw className="w-3.5 h-3.5" />
             <span>{deadmanResetCooldown > 0 ? `Reset Deadman (${deadmanResetCooldown}s)` : 'Reset Deadman'}</span>
           </button>
+          <button
+            onClick={onResetCoolingOff}
+            disabled={actionState.busy || !coolingOff.active}
+            className="flex items-center justify-center space-x-2 bg-emerald-600/20 hover:bg-emerald-600/30 disabled:opacity-50 text-emerald-300 text-xs font-bold py-2 rounded transition-colors border border-emerald-500/30"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            <span>Reset Cooling-Off</span>
+          </button>
           <div className="text-[9px] text-cyan-400 border border-slate-800 rounded px-2 py-1 bg-slate-900/40">
             {actionState.message || `Ready: ${activeSymbol} | UPS ${Math.round(upsScore)}`}
           </div>
+          <div className={cn('text-[9px] font-mono border rounded px-2 py-1', coolingOff.active ? 'text-amber-300 border-amber-500/40 bg-amber-500/10' : 'text-slate-500 border-slate-800 bg-slate-900/30')}>
+            {coolingOff.active
+              ? `COOLING-OFF ACTIVE: ${Math.max(0, Math.floor(coolingOff.remainingSeconds / 60))}m left`
+              : `Cooling-Off: streak ${coolingOff.breachStreak}/${runtimeCoolingOffRequiredBreaches}`}
+          </div>
+          {coolingOff.reason ? <div className="text-[9px] text-slate-500 font-mono">{coolingOff.reason}</div> : null}
           <div className="mt-2 pt-2 border-t border-slate-800 text-center">
             <span className="text-[9px] text-slate-600 block mb-1">SYSTEM LATENCY</span>
             <span className="text-[10px] text-emerald-500 font-mono">{latencyMs}ms</span>
@@ -870,7 +1143,35 @@ export default function Home() {
   const [narrative, setNarrative] = useState('System: Waiting for market stream...');
   const [latencyMs, setLatencyMs] = useState(12);
   const [globalData, setGlobalData] = useState<GlobalCorrelationResponse | null>(null);
+  const [runtimeRiskConfig, setRuntimeRiskConfig] = useState<RuntimeRiskConfig | null>(null);
   const [actionState, setActionState] = useState<ActionState>({ busy: false, message: null });
+  const [riskDraft, setRiskDraft] = useState<RuntimeRiskDraft>({
+    ihsgRiskTriggerPct: String(KILL_SWITCH_IHSG_DROP_PCT),
+    upsMinNormal: String(NORMAL_MIN_UPS),
+    upsMinRisk: String(KILL_SWITCH_MIN_UPS),
+    participationCapNormalPct: String(PARTICIPATION_CAP_NORMAL_PCT),
+    participationCapRiskPct: String(PARTICIPATION_CAP_KILL_SWITCH_PCT),
+    systemicRiskBetaThreshold: String(SYSTEMIC_RISK_BETA_THRESHOLD),
+    riskAuditStaleHours: '24',
+    coolingOffDrawdownPct: String(ROADMAP_DEFAULTS.coolingOffDrawdownPct),
+    coolingOffHours: String(ROADMAP_DEFAULTS.coolingOffHours),
+    coolingOffRequiredBreaches: String(ROADMAP_DEFAULTS.coolingOffRequiredBreaches),
+  });
+  const [riskDraftDirty, setRiskDraftDirty] = useState(false);
+  const [riskConfigLocked, setRiskConfigLocked] = useState(false);
+  const [riskConfigLockReason, setRiskConfigLockReason] = useState<string | null>(null);
+  const [riskConfigLockMeta, setRiskConfigLockMeta] = useState<RiskConfigLockMeta>({
+    checkedRows: 0,
+    hashMismatches: 0,
+    linkageMismatches: 0,
+    verifiedAt: null,
+  });
+  const [lastRiskAudit, setLastRiskAudit] = useState<RiskAuditInfo>({
+    key: null,
+    actor: null,
+    source: null,
+    createdAt: null,
+  });
   const [marketTotalVolume, setMarketTotalVolume] = useState<number | null>(null);
   const [tokenTelemetry, setTokenTelemetry] = useState<TokenTelemetry>({
     status: 'missing',
@@ -883,6 +1184,13 @@ export default function Home() {
     deadmanCooldownSeconds: null,
   });
   const [deadmanResetCooldown, setDeadmanResetCooldown] = useState(0);
+  const [coolingOff, setCoolingOff] = useState<CoolingOffState>({
+    active: false,
+    activeUntil: null,
+    remainingSeconds: 0,
+    breachStreak: 0,
+    reason: null,
+  });
 
   const [infraStatus, setInfraStatus] = useState<{ sse: Tone; db: Tone; integrity: Tone; token: Tone }>({
     sse: 'good',
@@ -892,11 +1200,15 @@ export default function Home() {
   });
 
   const applySymbol = useCallback(() => {
+    if (coolingOff.active) {
+      setActionState({ busy: false, message: 'Screener locked: cooling-off active' });
+      return;
+    }
     const value = symbolInput.trim().toUpperCase();
     if (value.length > 0) {
       setActiveSymbol(value);
     }
-  }, [symbolInput]);
+  }, [coolingOff.active, symbolInput]);
 
   const fetchDashboard = useCallback(async () => {
     const started = performance.now();
@@ -912,6 +1224,10 @@ export default function Home() {
       fetch(`/api/prediction?symbol=${activeSymbol}`).then((response) => (response.ok ? response.json() : null)).catch(() => null),
       fetch('/api/health').then((response) => (response.ok ? response.json() : null)).catch(() => null),
       fetch('/api/global-correlation').then((response) => (response.ok ? response.json() : null)).catch(() => null),
+      fetch('/api/risk-config').then((response) => (response.ok ? response.json() : null)).catch(() => null),
+      fetch('/api/risk-config/audit?limit=1').then((response) => (response.ok ? response.json() : null)).catch(() => null),
+      fetch('/api/risk-config/audit/verify?limit=200').then((response) => (response.ok ? response.json() : null)).catch(() => null),
+      fetch('/api/system-control/cooling-off').then((response) => (response.ok ? response.json() : null)).catch(() => null),
     ]);
 
     const marketIntel = requests[0] as MarketIntelResponse | null;
@@ -934,6 +1250,24 @@ export default function Home() {
       deadman_alert_cooldown_seconds?: number | null;
     } | null;
     const global = requests[7] as GlobalCorrelationResponse | null;
+    const runtimeConfig = requests[8] as { config?: RuntimeRiskConfig } | null;
+    const riskAudit = requests[9] as {
+      audit?: Array<{ config_key?: string; actor?: string | null; source?: string | null; created_at?: string }>;
+    } | null;
+    const riskVerify = requests[10] as {
+      valid?: boolean;
+      checked_rows?: number;
+      hash_mismatches?: number;
+      linkage_mismatches?: number;
+      verified_at?: string;
+    } | null;
+    const coolingState = requests[11] as {
+      active?: boolean;
+      active_until?: string | null;
+      remaining_seconds?: number;
+      breach_streak?: number;
+      reason?: string | null;
+    } | null;
 
     const snapshotRows = (snapshots?.snapshots || [])
       .filter((row) => row.symbol === activeSymbol && typeof row.price === 'number')
@@ -963,7 +1297,6 @@ export default function Home() {
 
     if (brokerRows.length > 0) {
       setBrokers(brokerRows);
-      setZData(brokerRows.slice(0, 6).map((item) => ({ time: item.broker, score: item.z })));
     }
 
     const heatRows = heatmap?.heatmap || [];
@@ -983,10 +1316,48 @@ export default function Home() {
     setModelConfidence(confidence);
     setPrediction(pred);
     setGlobalData(global);
+    if (runtimeConfig?.config) {
+      setRuntimeRiskConfig(runtimeConfig.config);
+    }
+
+    const latestAudit = riskAudit?.audit?.[0];
+    if (latestAudit) {
+      setLastRiskAudit({
+        key: latestAudit.config_key || null,
+        actor: latestAudit.actor || null,
+        source: latestAudit.source || null,
+        createdAt: latestAudit.created_at || null,
+      });
+    }
+
+    if (riskVerify) {
+      const isValid = riskVerify.valid !== false;
+      setRiskConfigLocked(!isValid);
+      setRiskConfigLockReason(isValid ? null : 'Runtime config audit chain broken');
+      setRiskConfigLockMeta({
+        checkedRows: Number(riskVerify.checked_rows || 0),
+        hashMismatches: Number(riskVerify.hash_mismatches || 0),
+        linkageMismatches: Number(riskVerify.linkage_mismatches || 0),
+        verifiedAt: riskVerify.verified_at || null,
+      });
+    }
+
+    if (coolingState) {
+      setCoolingOff({
+        active: Boolean(coolingState.active),
+        activeUntil: coolingState.active_until || null,
+        remainingSeconds: Math.max(0, Number(coolingState.remaining_seconds || 0)),
+        breachStreak: Math.max(0, Number(coolingState.breach_streak || 0)),
+        reason: coolingState.reason || null,
+      });
+    }
 
     const ihsgChangePct = Number(global?.change_ihsg || 0);
-    const killSwitchActive = ihsgChangePct <= -1.5;
-    const minUpsForLong = killSwitchActive ? 90 : 70;
+    const runtimeIhsgDrop = Number(runtimeConfig?.config?.ihsg_risk_trigger_pct ?? KILL_SWITCH_IHSG_DROP_PCT);
+    const runtimeNormalUps = Number(runtimeConfig?.config?.ups_min_normal ?? NORMAL_MIN_UPS);
+    const runtimeRiskUps = Number(runtimeConfig?.config?.ups_min_risk ?? KILL_SWITCH_MIN_UPS);
+    const killSwitchActive = ihsgChangePct <= runtimeIhsgDrop;
+    const minUpsForLong = killSwitchActive ? runtimeRiskUps : runtimeNormalUps;
 
     if (health) {
       const tokenTone: Tone =
@@ -1028,6 +1399,7 @@ export default function Home() {
 
     const volClass = marketIntel?.volatility?.classification || 'MEDIUM';
     const confLabel = confidence?.confidence_label || 'MEDIUM';
+    const coolingActive = Boolean(coolingState?.active);
     const riskGateLabel = killSwitchActive
       ? `KILL-SWITCH ACTIVE (IHSG ${ihsgChangePct.toFixed(2)}%, min UPS ${minUpsForLong})`
       : `NORMAL (${minUpsForLong} UPS gate)`;
@@ -1037,9 +1409,10 @@ export default function Home() {
         `AI: ${signalLabel(nextUps, minUpsForLong).toUpperCase()} BIAS DETECTED.\n` +
         `Price Move (${timeframe}): ${deltaPct >= 0 ? '+' : ''}${deltaPct.toFixed(2)}% | Volatility: ${volClass}\n` +
         `Risk Gate: ${riskGateLabel}\n` +
+        `Cooling-Off: ${coolingActive ? 'ACTIVE (Recommendation Locked)' : 'Clear'}\n` +
         `Whale Flow: ${topWhales || 'No dominant whale detected'}\n` +
         `Model Confidence: ${confLabel} (${Number(confidence?.accuracy_pct || 0).toFixed(1)}%)\n\n` +
-        `> Recommendation: ${nextUps >= minUpsForLong ? 'Momentum entry on pullback.' : nextUps <= 40 ? 'Defensive mode, avoid aggressive entry.' : 'Wait for clearer confirmation.'}`,
+        `> Recommendation: ${coolingActive ? 'Cooling-off active. Stand down and review risk.' : nextUps >= minUpsForLong ? 'Momentum entry on pullback.' : nextUps <= 40 ? 'Defensive mode, avoid aggressive entry.' : 'Wait for clearer confirmation.'}`,
     );
   }, [activeSymbol, timeframe, marketData]);
 
@@ -1072,16 +1445,44 @@ export default function Home() {
   const currentPrice = marketData[marketData.length - 1]?.price || FALLBACK_MARKET_DATA[FALLBACK_MARKET_DATA.length - 1].price;
   const basePrice = marketData[0]?.price || FALLBACK_MARKET_DATA[0].price;
   const priceChange = basePrice > 0 ? ((currentPrice - basePrice) / basePrice) * 100 : 0;
+  const runtimeIhsgDrop = Number(runtimeRiskConfig?.ihsg_risk_trigger_pct ?? KILL_SWITCH_IHSG_DROP_PCT);
+  const runtimeNormalUps = Number(runtimeRiskConfig?.ups_min_normal ?? NORMAL_MIN_UPS);
+  const runtimeRiskUps = Number(runtimeRiskConfig?.ups_min_risk ?? KILL_SWITCH_MIN_UPS);
+  const runtimeParticipationCapNormalPct = Number(runtimeRiskConfig?.participation_cap_normal_pct ?? PARTICIPATION_CAP_NORMAL_PCT);
+  const runtimeParticipationCapRiskPct = Number(runtimeRiskConfig?.participation_cap_risk_pct ?? PARTICIPATION_CAP_KILL_SWITCH_PCT);
+  const runtimeSystemicRiskBetaThreshold = Number(runtimeRiskConfig?.systemic_risk_beta_threshold ?? SYSTEMIC_RISK_BETA_THRESHOLD);
+  const runtimeRiskAuditStaleHours = Number(runtimeRiskConfig?.risk_audit_stale_hours ?? 24);
+  const runtimeCoolingOffDrawdownPct = Number(runtimeRiskConfig?.cooling_off_drawdown_pct ?? ROADMAP_DEFAULTS.coolingOffDrawdownPct);
+  const runtimeCoolingOffHours = Number(runtimeRiskConfig?.cooling_off_hours ?? ROADMAP_DEFAULTS.coolingOffHours);
+  const runtimeCoolingOffRequiredBreaches = Number(
+    runtimeRiskConfig?.cooling_off_required_breaches ?? ROADMAP_DEFAULTS.coolingOffRequiredBreaches,
+  );
+  const runtimeConfigSource: 'DB' | 'ENV' = runtimeRiskConfig ? 'DB' : 'ENV';
+  const lastRiskAuditAgeMs = lastRiskAudit.createdAt ? Math.max(0, Date.now() - new Date(lastRiskAudit.createdAt).getTime()) : null;
+  const staleAuditThresholdMs = Math.max(1, runtimeRiskAuditStaleHours) * 60 * 60 * 1000;
+  const staleAudit = lastRiskAuditAgeMs !== null && lastRiskAuditAgeMs > staleAuditThresholdMs;
   const ihsgChangePct = Number(globalData?.change_ihsg || 0);
-  const killSwitchActive = ihsgChangePct <= -1.5;
-  const minUpsForLong = killSwitchActive ? 90 : 70;
+  const killSwitchActive = ihsgChangePct <= runtimeIhsgDrop;
+  const minUpsForLong = killSwitchActive ? runtimeRiskUps : runtimeNormalUps;
+  const hardGateSystemicRisk = SYSTEMIC_RISK_HARD_GATE;
+  const configDrift =
+    runtimeIhsgDrop !== ROADMAP_DEFAULTS.killSwitchIhsgDropPct ||
+    runtimeRiskUps !== ROADMAP_DEFAULTS.killSwitchMinUps ||
+    runtimeNormalUps !== ROADMAP_DEFAULTS.normalMinUps ||
+    runtimeParticipationCapNormalPct !== ROADMAP_DEFAULTS.participationCapNormalPct ||
+    runtimeParticipationCapRiskPct !== ROADMAP_DEFAULTS.participationCapKillSwitchPct ||
+    runtimeSystemicRiskBetaThreshold !== ROADMAP_DEFAULTS.systemicRiskBetaThreshold ||
+    runtimeCoolingOffDrawdownPct !== ROADMAP_DEFAULTS.coolingOffDrawdownPct ||
+    runtimeCoolingOffHours !== ROADMAP_DEFAULTS.coolingOffHours ||
+    runtimeCoolingOffRequiredBreaches !== ROADMAP_DEFAULTS.coolingOffRequiredBreaches ||
+    SYSTEMIC_RISK_HARD_GATE !== ROADMAP_DEFAULTS.systemicRiskHardGate;
 
   const estimatedDailyVolumeShares =
     typeof marketTotalVolume === 'number' && marketTotalVolume > 0
       ? marketTotalVolume
       : marketData.reduce((sum, point) => sum + Number(point.volume || 0), 0);
   const estimatedDailyVolumeLots = Math.max(1, Math.floor(estimatedDailyVolumeShares / 100));
-  const participationCapPct = killSwitchActive ? 0.005 : 0.01;
+  const participationCapPct = killSwitchActive ? runtimeParticipationCapRiskPct : runtimeParticipationCapNormalPct;
   const maxRecommendedLots = Math.max(1, Math.floor(estimatedDailyVolumeLots * participationCapPct));
   const liquidityGuard: LiquidityGuard = {
     dailyVolumeLots: estimatedDailyVolumeLots,
@@ -1094,12 +1495,186 @@ export default function Home() {
           ? 'Moderate liquidity: keep entries staggered'
           : null,
   };
+  const betaThreshold = runtimeSystemicRiskBetaThreshold;
+  const betaDenominator = Math.max(0.2, Math.abs(ihsgChangePct));
+  const betaEstimate = Math.abs(priceChange) / betaDenominator;
+  const systemicRisk: SystemicRisk = {
+    betaEstimate,
+    threshold: betaThreshold,
+    high: betaEstimate > betaThreshold,
+  };
+
+  useEffect(() => {
+    if (riskDraftDirty) {
+      return;
+    }
+
+    setRiskDraft({
+      ihsgRiskTriggerPct: String(runtimeIhsgDrop),
+      upsMinNormal: String(runtimeNormalUps),
+      upsMinRisk: String(runtimeRiskUps),
+      participationCapNormalPct: String(runtimeParticipationCapNormalPct),
+      participationCapRiskPct: String(runtimeParticipationCapRiskPct),
+      systemicRiskBetaThreshold: String(runtimeSystemicRiskBetaThreshold),
+      riskAuditStaleHours: String(runtimeRiskAuditStaleHours),
+      coolingOffDrawdownPct: String(runtimeCoolingOffDrawdownPct),
+      coolingOffHours: String(runtimeCoolingOffHours),
+      coolingOffRequiredBreaches: String(runtimeCoolingOffRequiredBreaches),
+    });
+  }, [
+    riskDraftDirty,
+    runtimeCoolingOffDrawdownPct,
+    runtimeCoolingOffHours,
+    runtimeCoolingOffRequiredBreaches,
+    runtimeIhsgDrop,
+    runtimeNormalUps,
+    runtimeParticipationCapNormalPct,
+    runtimeParticipationCapRiskPct,
+    runtimeRiskAuditStaleHours,
+    runtimeRiskUps,
+    runtimeSystemicRiskBetaThreshold,
+  ]);
+
+  const onRiskDraftChange = useCallback((key: keyof RuntimeRiskDraft, value: string) => {
+    setRiskDraft((prev) => ({ ...prev, [key]: value }));
+    setRiskDraftDirty(true);
+  }, []);
+
+  const onResetRiskDraft = useCallback(() => {
+    setRiskDraft({
+      ihsgRiskTriggerPct: String(runtimeIhsgDrop),
+      upsMinNormal: String(runtimeNormalUps),
+      upsMinRisk: String(runtimeRiskUps),
+      participationCapNormalPct: String(runtimeParticipationCapNormalPct),
+      participationCapRiskPct: String(runtimeParticipationCapRiskPct),
+      systemicRiskBetaThreshold: String(runtimeSystemicRiskBetaThreshold),
+      riskAuditStaleHours: String(runtimeRiskAuditStaleHours),
+      coolingOffDrawdownPct: String(runtimeCoolingOffDrawdownPct),
+      coolingOffHours: String(runtimeCoolingOffHours),
+      coolingOffRequiredBreaches: String(runtimeCoolingOffRequiredBreaches),
+    });
+    setRiskDraftDirty(false);
+    setActionState({ busy: false, message: 'Risk draft reset to runtime config' });
+  }, [
+    runtimeCoolingOffDrawdownPct,
+    runtimeCoolingOffHours,
+    runtimeCoolingOffRequiredBreaches,
+    runtimeIhsgDrop,
+    runtimeNormalUps,
+    runtimeParticipationCapNormalPct,
+    runtimeParticipationCapRiskPct,
+    runtimeRiskAuditStaleHours,
+    runtimeRiskUps,
+    runtimeSystemicRiskBetaThreshold,
+  ]);
+
+  const onApplyRiskConfig = useCallback(async () => {
+    const ihsgRiskTriggerPct = Number(riskDraft.ihsgRiskTriggerPct);
+    const upsMinNormal = Number(riskDraft.upsMinNormal);
+    const upsMinRisk = Number(riskDraft.upsMinRisk);
+    const participationCapNormalPct = Number(riskDraft.participationCapNormalPct);
+    const participationCapRiskPct = Number(riskDraft.participationCapRiskPct);
+    const systemicRiskBetaThreshold = Number(riskDraft.systemicRiskBetaThreshold);
+    const riskAuditStaleHours = Number(riskDraft.riskAuditStaleHours);
+    const coolingOffDrawdownPct = Number(riskDraft.coolingOffDrawdownPct);
+    const coolingOffHours = Number(riskDraft.coolingOffHours);
+    const coolingOffRequiredBreaches = Number(riskDraft.coolingOffRequiredBreaches);
+
+    const values = [
+      ihsgRiskTriggerPct,
+      upsMinNormal,
+      upsMinRisk,
+      participationCapNormalPct,
+      participationCapRiskPct,
+      systemicRiskBetaThreshold,
+      riskAuditStaleHours,
+      coolingOffDrawdownPct,
+      coolingOffHours,
+      coolingOffRequiredBreaches,
+    ];
+
+    if (values.some((item) => !Number.isFinite(item))) {
+      setActionState({ busy: false, message: 'Risk config invalid: all fields must be numeric' });
+      return;
+    }
+
+    setActionState({ busy: true, message: 'Applying runtime risk config...' });
+    try {
+      const response = await fetch('/api/risk-config', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-operator-id': 'dashboard-ui',
+          'x-config-source': 'command-center',
+        },
+        body: JSON.stringify({
+          ihsg_risk_trigger_pct: ihsgRiskTriggerPct,
+          ups_min_normal: upsMinNormal,
+          ups_min_risk: upsMinRisk,
+          participation_cap_normal_pct: participationCapNormalPct,
+          participation_cap_risk_pct: participationCapRiskPct,
+          systemic_risk_beta_threshold: systemicRiskBetaThreshold,
+          risk_audit_stale_hours: riskAuditStaleHours,
+          cooling_off_drawdown_pct: coolingOffDrawdownPct,
+          cooling_off_hours: coolingOffHours,
+          cooling_off_required_breaches: coolingOffRequiredBreaches,
+        }),
+      });
+
+      const body = (await response.json()) as {
+        config?: RuntimeRiskConfig;
+        error?: string;
+        checked_rows?: number;
+        hash_mismatches?: number;
+        linkage_mismatches?: number;
+      };
+      if (!response.ok) {
+        if (response.status === 423) {
+          setRiskConfigLocked(true);
+          setRiskConfigLockReason(body.error || 'Runtime config audit chain broken');
+          setRiskConfigLockMeta((prev) => ({
+            checkedRows: Number(body.checked_rows ?? prev.checkedRows),
+            hashMismatches: Number(body.hash_mismatches ?? prev.hashMismatches),
+            linkageMismatches: Number(body.linkage_mismatches ?? prev.linkageMismatches),
+            verifiedAt: new Date().toISOString(),
+          }));
+        }
+        throw new Error(body.error || 'Failed to apply risk config');
+      }
+
+      if (body.config) {
+        setRuntimeRiskConfig(body.config);
+      }
+      setRiskConfigLocked(false);
+      setRiskConfigLockReason(null);
+      setRiskConfigLockMeta((prev) => ({ ...prev, verifiedAt: new Date().toISOString() }));
+      setRiskDraftDirty(false);
+      setActionState({ busy: false, message: 'Runtime risk config updated' });
+      void fetchDashboard();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to apply risk config';
+      setActionState({ busy: false, message: `Risk config failed: ${message}` });
+    }
+  }, [fetchDashboard, riskDraft]);
 
   const sendTelegramAlert = useCallback(async () => {
+    if (coolingOff.active) {
+      setActionState({ busy: false, message: 'Alert blocked: cooling-off active' });
+      return;
+    }
+
     if (killSwitchActive && upsScore < minUpsForLong) {
       setActionState({
         busy: false,
         message: `Alert blocked: kill-switch active (IHSG ${ihsgChangePct.toFixed(2)}%, UPS ${Math.round(upsScore)}/${minUpsForLong})`,
+      });
+      return;
+    }
+
+    if (hardGateSystemicRisk && systemicRisk.high) {
+      setActionState({
+        busy: false,
+        message: `Alert blocked: systemic risk high (beta ${systemicRisk.betaEstimate.toFixed(2)} > ${systemicRisk.threshold.toFixed(2)})`,
       });
       return;
     }
@@ -1128,6 +1703,11 @@ export default function Home() {
               max_recommended_lots: liquidityGuard.maxLots,
               warning: liquidityGuard.warning,
             },
+            beta_guard: {
+              beta_estimate: systemicRisk.betaEstimate,
+              beta_threshold: systemicRisk.threshold,
+              systemic_risk_high: systemicRisk.high,
+            },
           },
         }),
       });
@@ -1150,11 +1730,21 @@ export default function Home() {
     liquidityGuard.maxLots,
     liquidityGuard.warning,
     minUpsForLong,
+    hardGateSystemicRisk,
+    systemicRisk.betaEstimate,
+    systemicRisk.high,
+    systemicRisk.threshold,
     timeframe,
     upsScore,
+    coolingOff.active,
   ]);
 
   const runBacktest = useCallback(async () => {
+    if (coolingOff.active) {
+      setActionState({ busy: false, message: 'Backtest locked: cooling-off active' });
+      return;
+    }
+
     setActionState({ busy: true, message: 'Running backtest...' });
     try {
       const now = new Date();
@@ -1180,21 +1770,80 @@ export default function Home() {
             max_recommended_lots: liquidityGuard.maxLots,
             warning: liquidityGuard.warning,
           },
+          beta_guard: {
+            beta_estimate: systemicRisk.betaEstimate,
+            beta_threshold: systemicRisk.threshold,
+            systemic_risk_high: systemicRisk.high,
+          },
         }),
       });
-      const body = (await response.json()) as { success?: boolean; error?: string; result?: { win_rate?: number; total_trades?: number } };
+      const body = (await response.json()) as {
+        success?: boolean;
+        error?: string;
+        result?: { win_rate?: number; total_trades?: number; max_drawdown?: number };
+      };
       if (!response.ok || !body.success) {
         throw new Error(body.error || 'Backtest failed');
       }
+
+      const evaluateResponse = await fetch('/api/system-control/cooling-off', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'evaluate',
+          source: 'backtest-rig',
+          max_drawdown_pct: Number(body.result?.max_drawdown || 0),
+          threshold_pct: runtimeCoolingOffDrawdownPct,
+          lock_hours: runtimeCoolingOffHours,
+          required_breaches: runtimeCoolingOffRequiredBreaches,
+        }),
+      });
+
+      const coolingBody = (await evaluateResponse.json()) as {
+        active?: boolean;
+        active_until?: string | null;
+        remaining_seconds?: number;
+        breach_streak?: number;
+        reason?: string;
+      };
+
+      setCoolingOff({
+        active: Boolean(coolingBody.active),
+        activeUntil: coolingBody.active_until || null,
+        remainingSeconds: Math.max(0, Number(coolingBody.remaining_seconds || 0)),
+        breachStreak: Math.max(0, Number(coolingBody.breach_streak || 0)),
+        reason: coolingBody.reason || null,
+      });
+
+      const coolingSuffix = coolingBody.active
+        ? ` | COOLING-OFF ${Math.max(0, Math.floor(Number(coolingBody.remaining_seconds || 0) / 60))}m`
+        : ` | DD streak ${Math.max(0, Number(coolingBody.breach_streak || 0))}/${Math.max(1, runtimeCoolingOffRequiredBreaches)}`;
+
       setActionState({
         busy: false,
-        message: `Backtest done: ${Number(body.result?.win_rate || 0).toFixed(1)}% WR (${Number(body.result?.total_trades || 0)} trades)`,
+        message: `Backtest done: ${Number(body.result?.win_rate || 0).toFixed(1)}% WR (${Number(body.result?.total_trades || 0)} trades)${coolingSuffix}`,
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Backtest failed';
       setActionState({ busy: false, message: `Backtest failed: ${message}` });
     }
-  }, [activeSymbol, ihsgChangePct, killSwitchActive, liquidityGuard.capPct, liquidityGuard.dailyVolumeLots, liquidityGuard.maxLots, liquidityGuard.warning, minUpsForLong]);
+  }, [
+    activeSymbol,
+    ihsgChangePct,
+    killSwitchActive,
+    liquidityGuard.capPct,
+    liquidityGuard.dailyVolumeLots,
+    liquidityGuard.maxLots,
+    liquidityGuard.warning,
+    minUpsForLong,
+    systemicRisk.betaEstimate,
+    systemicRisk.high,
+    systemicRisk.threshold,
+    coolingOff.active,
+    runtimeCoolingOffDrawdownPct,
+    runtimeCoolingOffHours,
+    runtimeCoolingOffRequiredBreaches,
+  ]);
 
   const resetDeadman = useCallback(async () => {
     if (deadmanResetCooldown > 0) {
@@ -1224,17 +1873,75 @@ export default function Home() {
     }
   }, [deadmanResetCooldown, fetchDashboard]);
 
+  const resetCoolingOff = useCallback(async () => {
+    if (!coolingOff.active) {
+      setActionState({ busy: false, message: 'Cooling-off already inactive' });
+      return;
+    }
+
+    setActionState({ busy: true, message: 'Resetting cooling-off lock...' });
+    try {
+      const response = await fetch('/api/system-control/cooling-off', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'reset',
+          source: `operator:${activeSymbol}`,
+        }),
+      });
+
+      const body = (await response.json()) as {
+        success?: boolean;
+        error?: string;
+        active?: boolean;
+        active_until?: string | null;
+        remaining_seconds?: number;
+        breach_streak?: number;
+        reason?: string;
+      };
+
+      if (!response.ok || !body.success) {
+        throw new Error(body.error || 'Cooling-off reset failed');
+      }
+
+      setCoolingOff({
+        active: Boolean(body.active),
+        activeUntil: body.active_until || null,
+        remainingSeconds: Math.max(0, Number(body.remaining_seconds || 0)),
+        breachStreak: Math.max(0, Number(body.breach_streak || 0)),
+        reason: body.reason || 'manual reset',
+      });
+
+      setActionState({ busy: false, message: 'Cooling-off reset completed' });
+      void fetchDashboard();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Cooling-off reset failed';
+      setActionState({ busy: false, message: `Cooling-off reset failed: ${message}` });
+    }
+  }, [activeSymbol, coolingOff.active, fetchDashboard]);
+
   return (
     <div className="h-screen w-screen bg-black text-slate-200 selection:bg-cyan-500/30 overflow-hidden flex flex-col">
       <TopNavigation
         symbolInput={symbolInput}
         setSymbolInput={setSymbolInput}
         applySymbol={applySymbol}
+        coolingOffActive={coolingOff.active}
         infraStatus={infraStatus}
         globalData={globalData}
       />
       <div className="flex-1 flex min-h-0">
-        <LeftSidebar activeSymbol={activeSymbol} setActiveSymbol={(symbol) => setActiveSymbol(symbol.toUpperCase())} currentPrice={currentPrice} priceChangePct={priceChange} />
+        <LeftSidebar
+          activeSymbol={activeSymbol}
+          setActiveSymbol={(symbol) => {
+            if (!coolingOff.active) {
+              setActiveSymbol(symbol.toUpperCase());
+            }
+          }}
+          currentPrice={currentPrice}
+          priceChangePct={priceChange}
+          coolingOffActive={coolingOff.active}
+        />
         <CenterPanel
           activeSymbol={activeSymbol}
           timeframe={timeframe}
@@ -1257,10 +1964,34 @@ export default function Home() {
         onSendTelegram={sendTelegramAlert}
         onRunBacktest={runBacktest}
         onResetDeadman={resetDeadman}
+        onResetCoolingOff={resetCoolingOff}
         deadmanResetCooldown={deadmanResetCooldown}
         actionState={actionState}
         tokenTelemetry={tokenTelemetry}
         liquidityGuard={liquidityGuard}
+        systemicRisk={systemicRisk}
+        configDrift={configDrift}
+        runtimeConfigSource={runtimeConfigSource}
+        runtimeIhsgDrop={runtimeIhsgDrop}
+        runtimeNormalUps={runtimeNormalUps}
+        runtimeRiskUps={runtimeRiskUps}
+        runtimeParticipationCapNormalPct={runtimeParticipationCapNormalPct}
+        runtimeParticipationCapRiskPct={runtimeParticipationCapRiskPct}
+        runtimeSystemicRiskBetaThreshold={runtimeSystemicRiskBetaThreshold}
+        runtimeRiskAuditStaleHours={runtimeRiskAuditStaleHours}
+        runtimeCoolingOffDrawdownPct={runtimeCoolingOffDrawdownPct}
+        runtimeCoolingOffHours={runtimeCoolingOffHours}
+        runtimeCoolingOffRequiredBreaches={runtimeCoolingOffRequiredBreaches}
+        riskDraft={riskDraft}
+        onRiskDraftChange={onRiskDraftChange}
+        onApplyRiskConfig={onApplyRiskConfig}
+        onResetRiskDraft={onResetRiskDraft}
+        riskConfigLocked={riskConfigLocked}
+        riskConfigLockReason={riskConfigLockReason}
+        riskConfigLockMeta={riskConfigLockMeta}
+        lastRiskAudit={lastRiskAudit}
+        staleAudit={staleAudit}
+        coolingOff={coolingOff}
       />
     </div>
   );
