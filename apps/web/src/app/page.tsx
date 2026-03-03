@@ -50,6 +50,11 @@ interface HealthResponse {
   data_integrity?: boolean;
 }
 
+interface CoolingState {
+  active: boolean;
+  until: string | null;
+}
+
 /**
  * Main Dashboard - Dellmology Command Center (Bento Grid)
  */
@@ -69,6 +74,8 @@ export default function Home() {
   }>({ vote: 'NEUTRAL', score: 50, label: 'LOW' });
   const [isSystemActive, setIsSystemActive] = useState(true);
   const [killSwitchReason, setKillSwitchReason] = useState<string | null>(null);
+  const [portfolioDrawdown, setPortfolioDrawdown] = useState(-1.2);
+  const [cooling, setCooling] = useState<CoolingState>({ active: false, until: null });
 
   // System health state
   const [systemHealth, setSystemHealth] = useState({
@@ -103,7 +110,8 @@ export default function Home() {
   const consensusSignal: ConsensusVote = buyVotes >= 2 ? 'BUY' : sellVotes >= 2 ? 'SELL' : 'NEUTRAL';
   const shouldStandAside = consensusSignal === 'NEUTRAL';
   const isGloballyLocked = !isSystemActive || !systemHealth.db || !systemHealth.shield;
-  const isActionLocked = shouldStandAside || isGloballyLocked;
+  const isActionLocked = shouldStandAside || isGloballyLocked || cooling.active;
+  const isScreenerLocked = cooling.active;
 
   // Fetch trades via SSE
   useEffect(() => {
@@ -135,6 +143,56 @@ export default function Home() {
       eventSource.close();
     };
   }, []);
+
+  useEffect(() => {
+    const saved = localStorage.getItem('dellmology.cooling_until');
+    if (!saved) {
+      return;
+    }
+    const untilDate = new Date(saved);
+    if (Number.isNaN(untilDate.getTime())) {
+      localStorage.removeItem('dellmology.cooling_until');
+      return;
+    }
+    if (untilDate.getTime() > Date.now()) {
+      setCooling({ active: true, until: untilDate.toISOString() });
+      return;
+    }
+    localStorage.removeItem('dellmology.cooling_until');
+  }, []);
+
+  useEffect(() => {
+    if (portfolioDrawdown > -5) {
+      return;
+    }
+
+    const currentUntil = cooling.until ? new Date(cooling.until).getTime() : 0;
+    if (currentUntil > Date.now()) {
+      return;
+    }
+
+    const untilDate = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    setCooling({ active: true, until: untilDate.toISOString() });
+    localStorage.setItem('dellmology.cooling_until', untilDate.toISOString());
+  }, [portfolioDrawdown, cooling.until]);
+
+  useEffect(() => {
+    if (!cooling.active || !cooling.until) {
+      return;
+    }
+
+    const untilTime = new Date(cooling.until).getTime();
+    const tick = () => {
+      if (Date.now() >= untilTime) {
+        setCooling({ active: false, until: null });
+        localStorage.removeItem('dellmology.cooling_until');
+      }
+    };
+
+    tick();
+    const interval = setInterval(tick, 30_000);
+    return () => clearInterval(interval);
+  }, [cooling.active, cooling.until]);
 
   useEffect(() => {
     const fetchBrokerFlow = async () => {
@@ -273,9 +331,12 @@ export default function Home() {
                       {(['DAYTRADE', 'SWING', 'CUSTOM'] as const).map((mode) => (
                         <button
                           key={mode}
+                          disabled={isScreenerLocked}
                           onClick={() => setScreenerMode(mode)}
                           className={`px-2 py-1 rounded border transition-colors ${
-                            screenerMode === mode
+                            isScreenerLocked
+                              ? 'bg-gray-800/60 border-gray-700 text-gray-500 cursor-not-allowed'
+                              : screenerMode === mode
                               ? 'bg-cyan-600/30 border-cyan-500 text-cyan-200'
                               : 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700'
                           }`}
@@ -291,14 +352,22 @@ export default function Home() {
                           type="number"
                           value={customRange.min}
                           onChange={(e) => setCustomRange((prev) => ({ ...prev, min: Number(e.target.value) || 0 }))}
-                          className="px-2 py-1 bg-gray-800 border border-gray-700 rounded text-sm"
+                          disabled={isScreenerLocked}
+                          className="px-2 py-1 bg-gray-800 border border-gray-700 rounded text-sm disabled:opacity-60 disabled:cursor-not-allowed"
                         />
                         <input
                           type="number"
                           value={customRange.max}
                           onChange={(e) => setCustomRange((prev) => ({ ...prev, max: Number(e.target.value) || 0 }))}
-                          className="px-2 py-1 bg-gray-800 border border-gray-700 rounded text-sm"
+                          disabled={isScreenerLocked}
+                          className="px-2 py-1 bg-gray-800 border border-gray-700 rounded text-sm disabled:opacity-60 disabled:cursor-not-allowed"
                         />
+                      </div>
+                    )}
+
+                    {cooling.active && cooling.until && (
+                      <div className="rounded border border-red-700 bg-red-900/20 px-2 py-1.5 text-[11px] text-red-300">
+                        Cooling-Off aktif sampai {new Date(cooling.until).toLocaleTimeString()} • Screener locked 24h
                       </div>
                     )}
                   </div>
@@ -525,6 +594,15 @@ export default function Home() {
                 <Card title="Smart Position Sizing" subtitle="Inputs calculator" headerDensity="compact" className="p-3! h-full">
                   <div className="grid grid-cols-3 gap-2 text-sm mb-3">
                     <label className="text-[10px] text-gray-400">
+                      Drawdown %
+                      <input
+                        type="number"
+                        value={portfolioDrawdown}
+                        onChange={(e) => setPortfolioDrawdown(Number(e.target.value) || 0)}
+                        className="mt-1 w-full px-2 py-1 bg-gray-800 border border-gray-700 rounded"
+                      />
+                    </label>
+                    <label className="text-[10px] text-gray-400">
                       Entry
                       <input
                         type="number"
@@ -553,6 +631,12 @@ export default function Home() {
                     </label>
                   </div>
 
+                  {cooling.active && cooling.until && (
+                    <div className="mb-2 rounded border border-red-700 bg-red-900/20 px-2 py-1.5 text-[11px] text-red-300">
+                      Forced Cooling-Off: recommendation locked until {new Date(cooling.until).toLocaleString()}
+                    </div>
+                  )}
+
                   <div className="grid grid-cols-2 gap-2 text-sm">
                     <div className="p-2 rounded border border-gray-700 bg-gray-900/40">
                       <div className="text-gray-400 text-xs">ATR Volatility</div>
@@ -580,7 +664,7 @@ export default function Home() {
                           : 'border-cyan-700 bg-cyan-900/20 text-cyan-300 hover:bg-cyan-900/30'
                       }`}
                     >
-                      <Send className="w-4 h-4" /> {isGloballyLocked ? 'Signal Locked: System Inactive' : shouldStandAside ? 'Signal Locked: Stand Aside' : 'Send Signal to Telegram'}
+                      <Send className="w-4 h-4" /> {cooling.active ? 'Signal Locked: Cooling-Off' : isGloballyLocked ? 'Signal Locked: System Inactive' : shouldStandAside ? 'Signal Locked: Stand Aside' : 'Send Signal to Telegram'}
                     </button>
                     <button className="w-full px-3 py-2 rounded border border-yellow-700 bg-yellow-900/20 text-yellow-300 hover:bg-yellow-900/30 inline-flex items-center justify-center gap-2 text-sm">
                       <Bell className="w-4 h-4" /> Set Price Alert
