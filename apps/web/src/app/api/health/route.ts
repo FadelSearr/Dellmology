@@ -9,6 +9,8 @@ export const dynamic = 'force-dynamic';
  */
 export async function GET(request: Request) {
   try {
+    const isSystemActive = process.env.SYSTEM_ACTIVE !== 'false';
+
     // Check database connection
     let dbConnected = false;
     try {
@@ -35,6 +37,8 @@ export async function GET(request: Request) {
 
     return NextResponse.json({
       status: 'OK',
+      is_system_active: isSystemActive,
+      kill_switch_reason: isSystemActive ? null : 'Cloud kill-switch active',
       sse_connected: true,  // In production, track this from streamer
       db_connected: dbConnected,
       data_integrity: dataIntegrity,

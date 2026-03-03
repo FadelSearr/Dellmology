@@ -35,6 +35,21 @@ interface BrokerEntry {
 
 type ConsensusVote = 'BUY' | 'SELL' | 'NEUTRAL';
 
+interface NarrativeConsensusResponse {
+  confidence_score?: number;
+  confidence_label?: 'LOW' | 'MEDIUM' | 'HIGH';
+  market_bias?: ConsensusVote;
+  market_bias_score?: number;
+}
+
+interface HealthResponse {
+  is_system_active?: boolean;
+  kill_switch_reason?: string | null;
+  sse_connected?: boolean;
+  db_connected?: boolean;
+  data_integrity?: boolean;
+}
+
 /**
  * Main Dashboard - Dellmology Command Center (Bento Grid)
  */
@@ -47,6 +62,13 @@ export default function Home() {
   const [screenerMode, setScreenerMode] = useState<'DAYTRADE' | 'SWING' | 'CUSTOM'>('DAYTRADE');
   const [customRange, setCustomRange] = useState({ min: 100, max: 500 });
   const [positionInputs, setPositionInputs] = useState({ entry: 100, stopLoss: 2.5, atr: 4.5 });
+  const [narrativeSignal, setNarrativeSignal] = useState<{
+    vote: ConsensusVote;
+    score: number;
+    label: 'LOW' | 'MEDIUM' | 'HIGH';
+  }>({ vote: 'NEUTRAL', score: 50, label: 'LOW' });
+  const [isSystemActive, setIsSystemActive] = useState(true);
+  const [killSwitchReason, setKillSwitchReason] = useState<string | null>(null);
 
   // System health state
   const [systemHealth, setSystemHealth] = useState({
@@ -69,21 +91,19 @@ export default function Home() {
   const flowRows = brokerData.slice(0, 2);
   const heatmapSeries = brokerData[0]?.daily_heatmap?.slice(-8) || [30, 45, -20, 35, -10, 55, 25, -30];
   const netWhaleFlow = topWhales.reduce((sum, whale) => sum + (whale.net_buy_value || 0), 0);
-  const recentTrades = trades.slice(0, 20);
-  const hakaCount = recentTrades.filter((trade) => trade.type === 'HAKA').length;
-  const hakiCount = recentTrades.filter((trade) => trade.type === 'HAKI').length;
-  const tradeBias = hakaCount - hakiCount;
 
   const technicalVote: ConsensusVote = unifiedPowerScore >= 70 ? 'BUY' : unifiedPowerScore <= 40 ? 'SELL' : 'NEUTRAL';
   const bandarmologyVote: ConsensusVote =
     washSaleScore >= 70 ? 'NEUTRAL' : netWhaleFlow > 0 ? 'BUY' : netWhaleFlow < 0 ? 'SELL' : 'NEUTRAL';
-  const sentimentVote: ConsensusVote = tradeBias >= 3 ? 'BUY' : tradeBias <= -3 ? 'SELL' : 'NEUTRAL';
+  const sentimentVote: ConsensusVote = narrativeSignal.vote;
 
   const votes = [technicalVote, bandarmologyVote, sentimentVote];
   const buyVotes = votes.filter((vote) => vote === 'BUY').length;
   const sellVotes = votes.filter((vote) => vote === 'SELL').length;
   const consensusSignal: ConsensusVote = buyVotes >= 2 ? 'BUY' : sellVotes >= 2 ? 'SELL' : 'NEUTRAL';
   const shouldStandAside = consensusSignal === 'NEUTRAL';
+  const isGloballyLocked = !isSystemActive || !systemHealth.db || !systemHealth.shield;
+  const isActionLocked = shouldStandAside || isGloballyLocked;
 
   // Fetch trades via SSE
   useEffect(() => {
@@ -135,6 +155,99 @@ export default function Home() {
 
     fetchBrokerFlow();
   }, [symbol]);
+
+  useEffect(() => {
+    let mounted = true;
+
+    const fetchHealth = async () => {
+      try {
+        const response = await fetch('/api/health');
+        if (!response.ok || !mounted) {
+          return;
+        }
+
+        const health = (await response.json()) as HealthResponse;
+        if (!mounted) {
+          return;
+        }
+
+        setIsSystemActive(health.is_system_active !== false);
+        setKillSwitchReason(health.kill_switch_reason || null);
+        setSystemHealth((prev) => ({
+          ...prev,
+          sse: typeof health.sse_connected === 'boolean' ? health.sse_connected : prev.sse,
+          db: typeof health.db_connected === 'boolean' ? health.db_connected : prev.db,
+          shield: typeof health.data_integrity === 'boolean' ? health.data_integrity : prev.shield,
+        }));
+      } catch (error) {
+        console.error('Health poll failed:', error);
+      }
+    };
+
+    fetchHealth();
+    const interval = setInterval(fetchHealth, 15_000);
+
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+
+    const fetchNarrativeSignal = async () => {
+      try {
+        const whales = brokerData.filter((entry) => entry.is_whale).slice(0, 3);
+        const consistencyAvg =
+          brokerData.length > 0
+            ? brokerData.reduce((sum, entry) => sum + (entry.consistency_score || 0), 0) / brokerData.length
+            : 0;
+
+        const payload = {
+          type: 'broker',
+          symbol,
+          data: {
+            whales,
+            wash_sale_score: washSaleScore,
+            consistency: consistencyAvg,
+            period: '7 days',
+          },
+        };
+
+        const response = await fetch('/api/narrative', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+
+        if (!response.ok) {
+          return;
+        }
+
+        const result = (await response.json()) as NarrativeConsensusResponse;
+        if (!mounted) {
+          return;
+        }
+
+        setNarrativeSignal({
+          vote: result.market_bias || 'NEUTRAL',
+          score: Math.max(0, Math.min(100, result.market_bias_score || 50)),
+          label: result.confidence_label || 'LOW',
+        });
+      } catch (error) {
+        console.error('Narrative signal fetch failed:', error);
+      }
+    };
+
+    fetchNarrativeSignal();
+    const interval = setInterval(fetchNarrativeSignal, 60_000);
+
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, [brokerData, washSaleScore, symbol]);
 
 
   return (
@@ -268,7 +381,9 @@ export default function Home() {
 
                     <div
                       className={`rounded-lg border p-2.5 ${
-                        shouldStandAside
+                        isGloballyLocked
+                          ? 'border-red-700 bg-red-900/20'
+                          : shouldStandAside
                           ? 'border-yellow-700 bg-yellow-900/20'
                           : consensusSignal === 'BUY'
                             ? 'border-green-700 bg-green-900/20'
@@ -279,10 +394,20 @@ export default function Home() {
                         <span className="text-gray-300">Multi-Model Consensus (2/3)</span>
                         <span
                           className={`font-semibold ${
-                            shouldStandAside ? 'text-yellow-300' : consensusSignal === 'BUY' ? 'text-green-300' : 'text-red-300'
+                            isGloballyLocked
+                              ? 'text-red-300'
+                              : shouldStandAside
+                                ? 'text-yellow-300'
+                                : consensusSignal === 'BUY'
+                                  ? 'text-green-300'
+                                  : 'text-red-300'
                           }`}
                         >
-                          {shouldStandAside ? 'MARKET CONFUSION - STAND ASIDE' : `${consensusSignal} SIGNAL CONFIRMED`}
+                          {isGloballyLocked
+                            ? `SYSTEM LOCKED${killSwitchReason ? ` - ${killSwitchReason}` : ''}`
+                            : shouldStandAside
+                              ? 'MARKET CONFUSION - STAND ASIDE'
+                              : `${consensusSignal} SIGNAL CONFIRMED`}
                         </span>
                       </div>
                       <div className="grid grid-cols-3 gap-2 text-[11px]">
@@ -303,6 +428,7 @@ export default function Home() {
                           <div className={`font-semibold ${sentimentVote === 'BUY' ? 'text-green-300' : sentimentVote === 'SELL' ? 'text-red-300' : 'text-yellow-300'}`}>
                             {sentimentVote}
                           </div>
+                          <div className="text-[10px] text-gray-500">{narrativeSignal.score}/100 • {narrativeSignal.label}</div>
                         </div>
                       </div>
                     </div>
@@ -314,8 +440,8 @@ export default function Home() {
               <div className="xl:col-span-3 xl:min-h-132">
                 <Card title="Whale & Flow Engine" subtitle="The Tape" headerDensity="compact" className="p-3! h-full">
                   <div className="flex h-full flex-col gap-2.5">
-                    <div className={`rounded border px-2.5 py-1.5 text-[11px] font-medium ${shouldStandAside ? 'border-yellow-700 bg-yellow-900/20 text-yellow-300' : consensusSignal === 'BUY' ? 'border-green-700 bg-green-900/20 text-green-300' : 'border-red-700 bg-red-900/20 text-red-300'}`}>
-                      Consensus Gate: {shouldStandAside ? 'MARKET CONFUSION - STAND ASIDE' : `${consensusSignal} (${Math.max(buyVotes, sellVotes)}/3)`}
+                    <div className={`rounded border px-2.5 py-1.5 text-[11px] font-medium ${isGloballyLocked ? 'border-red-700 bg-red-900/20 text-red-300' : shouldStandAside ? 'border-yellow-700 bg-yellow-900/20 text-yellow-300' : consensusSignal === 'BUY' ? 'border-green-700 bg-green-900/20 text-green-300' : 'border-red-700 bg-red-900/20 text-red-300'}`}>
+                      Consensus Gate: {isGloballyLocked ? `SYSTEM LOCKED${killSwitchReason ? ` - ${killSwitchReason}` : ''}` : shouldStandAside ? 'MARKET CONFUSION - STAND ASIDE' : `${consensusSignal} (${Math.max(buyVotes, sellVotes)}/3)`}
                     </div>
 
                     <div>
@@ -447,14 +573,14 @@ export default function Home() {
                 <Card title="Action Dock" headerDensity="compact" className="p-3! h-full">
                   <div className="space-y-1.5">
                     <button
-                      disabled={shouldStandAside}
+                      disabled={isActionLocked}
                       className={`w-full px-3 py-2 rounded border inline-flex items-center justify-center gap-2 text-sm ${
-                        shouldStandAside
+                        isActionLocked
                           ? 'border-gray-700 bg-gray-800/60 text-gray-500 cursor-not-allowed'
                           : 'border-cyan-700 bg-cyan-900/20 text-cyan-300 hover:bg-cyan-900/30'
                       }`}
                     >
-                      <Send className="w-4 h-4" /> {shouldStandAside ? 'Signal Locked: Stand Aside' : 'Send Signal to Telegram'}
+                      <Send className="w-4 h-4" /> {isGloballyLocked ? 'Signal Locked: System Inactive' : shouldStandAside ? 'Signal Locked: Stand Aside' : 'Send Signal to Telegram'}
                     </button>
                     <button className="w-full px-3 py-2 rounded border border-yellow-700 bg-yellow-900/20 text-yellow-300 hover:bg-yellow-900/30 inline-flex items-center justify-center gap-2 text-sm">
                       <Bell className="w-4 h-4" /> Set Price Alert

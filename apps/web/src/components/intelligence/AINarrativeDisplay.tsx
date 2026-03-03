@@ -8,6 +8,8 @@ interface AInarrative {
   narrative: string;
   confidence_score?: number;
   confidence_label?: 'LOW' | 'MEDIUM' | 'HIGH';
+  market_bias?: 'BUY' | 'SELL' | 'NEUTRAL';
+  market_bias_score?: number;
   generated_at: string;
 }
 

@@ -26,6 +26,7 @@ export async function POST(request: Request) {
     // This would typically call a dedicated service or run inline
     const narrativeResponse = await generateNarrative(type, data, symbol);
     const confidence = calculateNarrativeConfidence(type, data);
+    const marketBias = inferNarrativeBias(type, data, confidence);
 
     return NextResponse.json({
       type,
@@ -33,6 +34,8 @@ export async function POST(request: Request) {
       narrative: narrativeResponse,
       confidence_score: confidence.score,
       confidence_label: confidence.label,
+      market_bias: marketBias.bias,
+      market_bias_score: marketBias.score,
       generated_at: new Date().toISOString()
     });
 
@@ -43,6 +46,37 @@ export async function POST(request: Request) {
       { status: 500 }
     );
   }
+}
+
+function inferNarrativeBias(
+  type: string,
+  data: any,
+  confidence: { score: number; label: 'LOW' | 'MEDIUM' | 'HIGH' },
+): { bias: 'BUY' | 'SELL' | 'NEUTRAL'; score: number } {
+  if (type !== 'broker') {
+    if (confidence.score >= 75) {
+      return { bias: 'BUY', score: Math.min(100, confidence.score) };
+    }
+    if (confidence.score <= 35) {
+      return { bias: 'SELL', score: Math.max(0, confidence.score) };
+    }
+    return { bias: 'NEUTRAL', score: confidence.score };
+  }
+
+  const washSaleScore = Number(data?.wash_sale_score || 0);
+  const consistency = Number(data?.consistency || 0);
+  const whaleCount = Array.isArray(data?.whales) ? data.whales.length : 0;
+
+  const signalStrength = whaleCount * 20 + consistency * 50 - washSaleScore * 0.35;
+  const normalized = Math.max(0, Math.min(100, 50 + signalStrength));
+
+  if (normalized >= 62) {
+    return { bias: 'BUY', score: normalized };
+  }
+  if (normalized <= 38) {
+    return { bias: 'SELL', score: normalized };
+  }
+  return { bias: 'NEUTRAL', score: normalized };
 }
 
 /**
