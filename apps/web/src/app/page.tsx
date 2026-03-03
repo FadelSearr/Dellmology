@@ -249,6 +249,11 @@ interface DeploymentGateState {
   checkedAt: string | null;
 }
 
+interface SystemKillSwitchState {
+  active: boolean;
+  reason: string | null;
+}
+
 interface ArtificialLiquidityState {
   warning: boolean;
   reason: string | null;
@@ -1352,6 +1357,7 @@ function BottomPanel({
   coolingOff,
   modelConsensus,
   deploymentGate,
+  systemKillSwitch,
 }: {
   narrative: string;
   adversarialNarrative: AdversarialNarrative;
@@ -1393,6 +1399,7 @@ function BottomPanel({
   coolingOff: CoolingOffState;
   modelConsensus: ModelConsensus;
   deploymentGate: DeploymentGateState;
+  systemKillSwitch: SystemKillSwitchState;
 }) {
   const label = confidence?.confidence_label || 'MEDIUM';
   const accuracy = Number(confidence?.accuracy_pct || 0);
@@ -1581,7 +1588,7 @@ function BottomPanel({
         <div className="p-3 grid grid-cols-1 gap-2">
           <button
             onClick={onSendTelegram}
-            disabled={actionState.busy || coolingOff.active || !modelConsensus.pass}
+            disabled={actionState.busy || coolingOff.active || !modelConsensus.pass || systemKillSwitch.active}
             className="flex items-center justify-center space-x-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-xs font-bold py-2 rounded transition-colors"
           >
             <Send className="w-3.5 h-3.5" />
@@ -1589,7 +1596,7 @@ function BottomPanel({
           </button>
           <button
             onClick={onRunBacktest}
-            disabled={actionState.busy || coolingOff.active || deploymentGate.blocked}
+            disabled={actionState.busy || coolingOff.active || deploymentGate.blocked || systemKillSwitch.active}
             className="flex items-center justify-center space-x-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-200 text-xs font-bold py-2 rounded transition-colors border border-slate-700"
           >
             <Clock className="w-3.5 h-3.5" />
@@ -1635,6 +1642,15 @@ function BottomPanel({
           >
             {deploymentGate.blocked ? 'DEPLOY GATE: BLOCKED' : 'DEPLOY GATE: PASS'}
           </div>
+          <div
+            className={cn(
+              'text-[9px] font-mono border rounded px-2 py-1',
+              systemKillSwitch.active ? 'text-rose-300 border-rose-500/40 bg-rose-500/10' : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10',
+            )}
+          >
+            {systemKillSwitch.active ? 'SYSTEM SWITCH: OFFLINE LOCK' : 'SYSTEM SWITCH: ACTIVE'}
+          </div>
+          {systemKillSwitch.reason ? <div className="text-[9px] text-slate-500 font-mono">{systemKillSwitch.reason}</div> : null}
           {deploymentGate.reason ? <div className="text-[9px] text-slate-500 font-mono">{deploymentGate.reason}</div> : null}
           <div
             className={cn(
@@ -1765,6 +1781,10 @@ export default function Home() {
     reason: null,
     checkedAt: null,
   });
+  const [systemKillSwitch, setSystemKillSwitch] = useState<SystemKillSwitchState>({
+    active: false,
+    reason: null,
+  });
   const [artificialLiquidity, setArtificialLiquidity] = useState<ArtificialLiquidityState>({
     warning: false,
     reason: null,
@@ -1862,6 +1882,10 @@ export default function Home() {
   });
 
   const applySymbol = useCallback(() => {
+    if (systemKillSwitch.active) {
+      setActionState({ busy: false, message: `Screener locked: ${systemKillSwitch.reason || 'system inactive'}` });
+      return;
+    }
     if (coolingOff.active) {
       setActionState({ busy: false, message: 'Screener locked: cooling-off active' });
       return;
@@ -1870,7 +1894,7 @@ export default function Home() {
     if (value.length > 0) {
       setActiveSymbol(value);
     }
-  }, [coolingOff.active, symbolInput]);
+  }, [coolingOff.active, symbolInput, systemKillSwitch.active, systemKillSwitch.reason]);
 
   const fetchDashboard = useCallback(async () => {
     const started = performance.now();
@@ -1918,6 +1942,8 @@ export default function Home() {
     const confidence = requests[4] as ModelConfidenceResponse | null;
     const pred = requests[5] as PredictionResponse | null;
     const health = requests[6] as {
+      is_system_active?: boolean;
+      kill_switch_reason?: string | null;
       sse_connected?: boolean;
       db_connected?: boolean;
       data_integrity?: boolean;
@@ -2234,6 +2260,12 @@ export default function Home() {
     });
 
     if (health) {
+      const systemInactive = health.is_system_active === false;
+      setSystemKillSwitch({
+        active: systemInactive,
+        reason: systemInactive ? health.kill_switch_reason || 'Cloud kill-switch active' : null,
+      });
+
       const tokenTone: Tone =
         health.token_status === 'fresh' ? 'good' : health.token_status === 'expiring' ? 'warning' : 'error';
 
@@ -2425,6 +2457,7 @@ export default function Home() {
         `AI: ${signalLabel(nextUps, minUpsForLong).toUpperCase()} BIAS DETECTED.\n` +
         `Price Move (${timeframe}): ${deltaPct >= 0 ? '+' : ''}${deltaPct.toFixed(2)}% | Volatility: ${volClass}\n` +
         `Risk Gate: ${riskGateLabel}\n` +
+        `System Switch: ${systemKillSwitch.active ? `LOCK (${systemKillSwitch.reason || 'inactive'})` : 'ACTIVE'}\n` +
         `Deploy Gate: ${deployGate?.blocked ? 'BLOCKED' : 'PASS'}\n` +
         `Flow Integrity: ${artificialLiquidityWarning ? 'Artificial Liquidity Warning' : 'Healthy'}\n` +
         `BCP: ${brokerCharacterWarning ? 'Risk Profile Detected' : 'Stable'}\n` +
@@ -2441,7 +2474,7 @@ export default function Home() {
         `Cooling-Off: ${coolingActive ? 'ACTIVE (Recommendation Locked)' : 'Clear'}\n` +
         `Whale Flow: ${topWhales || 'No dominant whale detected'}\n` +
         `Model Confidence: ${confLabel} (${Number(confidence?.accuracy_pct || 0).toFixed(1)}%)\n\n` +
-        `> Recommendation: ${coolingActive ? 'Cooling-off active. Stand down and review risk.' : sanityWarning ? 'Data contaminated. Lock sinyal hingga verifikasi ulang.' : crossCheckWarning ? 'Cross-check lock aktif. Tahan eksekusi sampai harga sinkron.' : incompleteDataWarning ? 'Data belum lengkap. Tunda aksi sampai stream normal.' : mtfWarning ? 'Konfirmasi multi-timeframe gagal. Tunda entry sampai trend 1h searah.' : newsImpactWarning ? 'News stress tinggi terdeteksi. Kurangi eksposur dan verifikasi red flags.' : championDriftWarning ? 'Model drift warning. Gunakan mode defensif sampai champion dikaji ulang.' : rocCritical ? 'CRITICAL volatility spike. Disable buy and wait stabilization.' : spoofingWarning ? 'Spoofing risk terdeteksi. Hindari entry impulsif.' : nextUps >= minUpsForLong ? 'Momentum entry on pullback.' : nextUps <= 40 ? 'Defensive mode, avoid aggressive entry.' : 'Wait for clearer confirmation.'}`,
+        `> Recommendation: ${systemKillSwitch.active ? 'System kill-switch aktif. Hentikan rekomendasi dan lakukan verifikasi infrastruktur.' : coolingActive ? 'Cooling-off active. Stand down and review risk.' : sanityWarning ? 'Data contaminated. Lock sinyal hingga verifikasi ulang.' : crossCheckWarning ? 'Cross-check lock aktif. Tahan eksekusi sampai harga sinkron.' : incompleteDataWarning ? 'Data belum lengkap. Tunda aksi sampai stream normal.' : mtfWarning ? 'Konfirmasi multi-timeframe gagal. Tunda entry sampai trend 1h searah.' : newsImpactWarning ? 'News stress tinggi terdeteksi. Kurangi eksposur dan verifikasi red flags.' : championDriftWarning ? 'Model drift warning. Gunakan mode defensif sampai champion dikaji ulang.' : rocCritical ? 'CRITICAL volatility spike. Disable buy and wait stabilization.' : spoofingWarning ? 'Spoofing risk terdeteksi. Hindari entry impulsif.' : nextUps >= minUpsForLong ? 'Momentum entry on pullback.' : nextUps <= 40 ? 'Defensive mode, avoid aggressive entry.' : 'Wait for clearer confirmation.'}`,
     );
 
     try {
@@ -2764,6 +2797,11 @@ export default function Home() {
   }, [fetchDashboard, riskDraft]);
 
   const sendTelegramAlert = useCallback(async () => {
+    if (systemKillSwitch.active) {
+      setActionState({ busy: false, message: `Alert blocked: ${systemKillSwitch.reason || 'system inactive'}` });
+      return;
+    }
+
     if (coolingOff.active) {
       setActionState({ busy: false, message: 'Alert blocked: cooling-off active' });
       return;
@@ -2883,6 +2921,10 @@ export default function Home() {
         mode: killSwitchActive ? 'KILL_SWITCH' : 'NORMAL',
         ihsg_change_pct: ihsgChangePct,
         min_ups_for_long: minUpsForLong,
+      },
+      system_control: {
+        is_system_active: !systemKillSwitch.active,
+        reason: systemKillSwitch.reason,
       },
       liquidity_guard: {
         daily_volume_lots: liquidityGuard.dailyVolumeLots,
@@ -3056,6 +3098,8 @@ export default function Home() {
   }, [
     activeSymbol,
     currentPrice,
+    systemKillSwitch.active,
+    systemKillSwitch.reason,
     ihsgChangePct,
     killSwitchActive,
     liquidityGuard.capPct,
@@ -3150,6 +3194,11 @@ export default function Home() {
   ]);
 
   const runBacktest = useCallback(async () => {
+    if (systemKillSwitch.active) {
+      setActionState({ busy: false, message: `Backtest locked: ${systemKillSwitch.reason || 'system inactive'}` });
+      return;
+    }
+
     if (coolingOff.active) {
       setActionState({ busy: false, message: 'Backtest locked: cooling-off active' });
       return;
@@ -3178,6 +3227,10 @@ export default function Home() {
             mode: killSwitchActive ? 'KILL_SWITCH' : 'NORMAL',
             ihsg_change_pct: ihsgChangePct,
             min_ups_for_long: minUpsForLong,
+          },
+          system_control: {
+            is_system_active: !systemKillSwitch.active,
+            reason: systemKillSwitch.reason,
           },
           liquidity_guard: {
             daily_volume_lots: liquidityGuard.dailyVolumeLots,
@@ -3246,6 +3299,8 @@ export default function Home() {
     }
   }, [
     activeSymbol,
+    systemKillSwitch.active,
+    systemKillSwitch.reason,
     ihsgChangePct,
     killSwitchActive,
     liquidityGuard.capPct,
@@ -3475,6 +3530,7 @@ export default function Home() {
           coolingOff={coolingOff}
           modelConsensus={modelConsensus}
           deploymentGate={deploymentGate}
+          systemKillSwitch={systemKillSwitch}
         />
       ) : null}
     </div>
