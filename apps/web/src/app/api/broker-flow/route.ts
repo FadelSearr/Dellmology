@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { fallbackEmptyMeta, primaryDbMeta } from '@/lib/source-adapter';
 
 export const dynamic = 'force-dynamic';
 
@@ -186,6 +187,7 @@ export async function GET(request: Request) {
       days,
       filter,
       brokers: filtered,
+      data_source: primaryDbMeta(),
       stats: {
         total_brokers: brokersWithZScore.length,
         whales: brokersWithZScore.filter(b => b.is_whale).length,
@@ -209,8 +211,11 @@ export async function GET(request: Request) {
   } catch (error) {
     console.error('Error fetching broker flow:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch broker flow data' },
-      { status: 500 }
+      {
+        error: 'Failed to fetch broker flow data',
+        data_source: fallbackEmptyMeta('Broker flow query failed'),
+      },
+      { status: 500 },
     );
   }
 }

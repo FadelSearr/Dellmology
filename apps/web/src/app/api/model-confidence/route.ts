@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { fallbackEmptyMeta, primaryDbMeta } from '@/lib/source-adapter';
 
 export const dynamic = 'force-dynamic';
 
@@ -113,10 +114,19 @@ export async function GET(request: Request) {
       warning: recalibrationRequired ? 'AI CONFIDENCE: LOW - RE-CALIBRATION REQUIRED' : null,
     };
 
-    return NextResponse.json(summary);
+    return NextResponse.json({
+      ...summary,
+      data_source: primaryDbMeta(),
+    });
   } catch (error) {
     console.error('model-confidence GET failed:', error);
-    return NextResponse.json({ error: 'Failed to compute model confidence' }, { status: 500 });
+    return NextResponse.json(
+      {
+        error: 'Failed to compute model confidence',
+        data_source: fallbackEmptyMeta('Model confidence query failed'),
+      },
+      { status: 500 },
+    );
   }
 }
 

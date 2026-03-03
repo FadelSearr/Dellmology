@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { fallbackEmptyMeta, sourceMeta } from '@/lib/source-adapter';
 
 // Initialize Supabase client with fallbacks for build time
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co';
@@ -96,6 +97,12 @@ export async function GET(request: NextRequest) {
           },
           degraded: true,
           reason: 'Supabase is not configured; using graceful fallback payload',
+          data_source: sourceMeta({
+            provider: 'FALLBACK_EMPTY',
+            degraded: true,
+            reason: 'Supabase is not configured; using graceful fallback payload',
+            fallbackDelayMinutes: 15,
+          }),
         },
         {
           headers: {
@@ -133,6 +140,7 @@ export async function GET(request: NextRequest) {
             avgIntensity: 0,
             anomalyCount: 0,
           },
+          data_source: fallbackEmptyMeta('Heatmap query failed'),
         },
         {
           headers: {
@@ -206,6 +214,12 @@ export async function GET(request: NextRequest) {
           avgIntensity: getAvgIntensity(heatmapData as HeatmapDataPoint[]),
           anomalyCount: anomalies.length,
         },
+        data_source: sourceMeta({
+          provider: 'SUPABASE',
+          degraded: false,
+          reason: null,
+          fallbackDelayMinutes: 0,
+        }),
       },
       {
         headers: {
@@ -217,7 +231,10 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('Order flow heatmap API error:', error);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      {
+        error: 'Internal server error',
+        data_source: fallbackEmptyMeta('Order flow heatmap internal error'),
+      },
       { status: 500 }
     );
   }

@@ -122,6 +122,18 @@ interface PredictionResponse {
     confidence_up?: number;
     confidence_down?: number;
   };
+  data_source?: {
+    provider?: string;
+    degraded?: boolean;
+    reason?: string | null;
+  };
+}
+
+interface SourceAdapterMetaClient {
+  provider?: string;
+  degraded?: boolean;
+  reason?: string | null;
+  fallback_delay_minutes?: number;
 }
 
 interface GlobalCorrelationResponse {
@@ -1714,6 +1726,7 @@ export default function Home() {
   const [latencyMs, setLatencyMs] = useState(12);
   const [globalData, setGlobalData] = useState<GlobalCorrelationResponse | null>(null);
   const [runtimeRiskConfig, setRuntimeRiskConfig] = useState<RuntimeRiskConfig | null>(null);
+  const [degradedSources, setDegradedSources] = useState<string[]>([]);
   const [actionState, setActionState] = useState<ActionState>({ busy: false, message: null });
   const [riskDraft, setRiskDraft] = useState<RuntimeRiskDraft>({
     ihsgRiskTriggerPct: String(KILL_SWITCH_IHSG_DROP_PCT),
@@ -1935,11 +1948,11 @@ export default function Home() {
       fetch(`/api/market-intelligence?symbol=${activeSymbol}&timeframe=1h`).then((response) => (response.ok ? response.json() : null)).catch(() => null),
     ]);
 
-    const marketIntel = requests[0] as MarketIntelResponse | null;
-    const brokerFlow = requests[1] as { brokers?: BrokerFlowApiRow[]; stats?: BrokerFlowStats } | null;
+    const marketIntel = requests[0] as (MarketIntelResponse & { data_source?: SourceAdapterMetaClient }) | null;
+    const brokerFlow = requests[1] as ({ brokers?: BrokerFlowApiRow[]; stats?: BrokerFlowStats; data_source?: SourceAdapterMetaClient }) | null;
     const snapshots = requests[2] as { snapshots?: SnapshotRow[] } | null;
-    const heatmap = requests[3] as { heatmap?: HeatmapApiRow[] } | null;
-    const confidence = requests[4] as ModelConfidenceResponse | null;
+    const heatmap = requests[3] as { heatmap?: HeatmapApiRow[]; data_source?: SourceAdapterMetaClient; degraded?: boolean; reason?: string } | null;
+    const confidence = requests[4] as (ModelConfidenceResponse & { data_source?: SourceAdapterMetaClient }) | null;
     const pred = requests[5] as PredictionResponse | null;
     const health = requests[6] as {
       is_system_active?: boolean;
@@ -2024,6 +2037,20 @@ export default function Home() {
     } | null;
     const mtfShortIntel = requests[17] as MarketIntelResponse | null;
     const mtfHighIntel = requests[18] as MarketIntelResponse | null;
+
+    const nextDegradedSources: string[] = [];
+    const trackDegraded = (name: string, source?: SourceAdapterMetaClient | null, fallbackReason?: string | null) => {
+      const isDegraded = Boolean(source?.degraded) || Boolean(fallbackReason);
+      if (!isDegraded) return;
+      const reason = source?.reason || fallbackReason || 'degraded source';
+      nextDegradedSources.push(`${name}: ${reason}`);
+    };
+    trackDegraded('Market Intel', marketIntel?.data_source || null);
+    trackDegraded('Broker Flow', brokerFlow?.data_source || null);
+    trackDegraded('Order Flow', heatmap?.data_source || null, heatmap?.degraded ? heatmap?.reason || 'degraded response' : null);
+    trackDegraded('Model Confidence', confidence?.data_source || null);
+    trackDegraded('Prediction', pred?.data_source || null);
+    setDegradedSources(Array.from(new Set(nextDegradedSources)).slice(0, 4));
 
     const snapshotRows = (snapshots?.snapshots || [])
       .filter((row) => row.symbol === activeSymbol && typeof row.price === 'number')
@@ -3448,6 +3475,11 @@ export default function Home() {
         infraStatus={infraStatus}
         globalData={globalData}
       />
+      {degradedSources.length > 0 ? (
+        <div className="border-b border-amber-500/30 bg-amber-500/10 px-4 py-1.5 text-[10px] font-mono text-amber-300">
+          {`DEGRADED SOURCES: ${degradedSources.join(' | ')}`}
+        </div>
+      ) : null}
       <div className="flex-1 flex min-h-0">
         <LeftSidebar
           activeSymbol={activeSymbol}

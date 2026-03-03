@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
+import { fallbackEmptyMeta, primaryDbMeta } from '@/lib/source-adapter';
 
 /**
  * Handles GET requests to fetch the latest CNN model prediction for a given symbol.
@@ -31,13 +32,17 @@ export async function GET(request: NextRequest) {
 
       if (result.rows.length === 0) {
         return NextResponse.json(
-          { success: false, message: "No prediction found for this symbol." },
-          { status: 404 }
+          {
+            success: false,
+            message: "No prediction found for this symbol.",
+            data_source: fallbackEmptyMeta('No prediction rows for symbol'),
+          },
+          { status: 404 },
         );
       }
       
       return NextResponse.json(
-        { success: true, data: result.rows[0] },
+        { success: true, data: result.rows[0], data_source: primaryDbMeta() },
         { status: 200 }
       );
     } finally {
@@ -47,7 +52,12 @@ export async function GET(request: NextRequest) {
     const errorMessage =
       error instanceof Error ? error.message : "An unknown error occurred";
     return NextResponse.json(
-      { success: false, error: "Failed to fetch prediction.", details: errorMessage },
+      {
+        success: false,
+        error: "Failed to fetch prediction.",
+        details: errorMessage,
+        data_source: fallbackEmptyMeta('Prediction query failed'),
+      },
       { status: 500 }
     );
   }
