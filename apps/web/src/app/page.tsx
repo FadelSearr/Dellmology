@@ -134,6 +134,22 @@ interface SourceAdapterMetaClient {
   degraded?: boolean;
   reason?: string | null;
   fallback_delay_minutes?: number;
+  diagnostics?: {
+    primary_latency_ms?: number | null;
+    fallback_latency_ms?: number | null;
+    primary_error?: string | null;
+    selected_source?: string;
+    checked_at?: string;
+  };
+}
+
+interface AdapterHealthState {
+  selectedSource: string;
+  primaryLatencyMs: number | null;
+  fallbackLatencyMs: number | null;
+  primaryError: string | null;
+  checkedAt: string | null;
+  degraded: boolean;
 }
 
 interface GlobalCorrelationResponse {
@@ -1078,6 +1094,7 @@ function RightSidebar({
   championChallenger,
   newsImpact,
   mtfValidation,
+  marketIntelAdapter,
 }: {
   brokers: BrokerRow[];
   zData: ZScorePoint[];
@@ -1092,6 +1109,7 @@ function RightSidebar({
   championChallenger: ChampionChallengerState;
   newsImpact: NewsImpactState;
   mtfValidation: MultiTimeframeValidationState;
+  marketIntelAdapter: AdapterHealthState;
 }) {
   const canRenderChart = typeof window !== 'undefined';
   const hasAlert = zData.some((item) => item.score > 2 || item.score < -2);
@@ -1282,6 +1300,18 @@ function RightSidebar({
             {`${mtfValidation.shortTimeframe}:${mtfValidation.shortVote} (${Math.round(mtfValidation.shortUps)}) | ${mtfValidation.highTimeframe}:${mtfValidation.highVote} (${Math.round(mtfValidation.highUps)})`}
           </div>
           {mtfValidation.reason ? <div className="text-[9px] text-slate-500 font-mono mt-1">{mtfValidation.reason}</div> : null}
+          <div
+            className={cn(
+              'text-[9px] font-mono border rounded px-2 py-1 mt-2',
+              marketIntelAdapter.degraded ? 'text-amber-300 border-amber-500/40 bg-amber-500/10' : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10',
+            )}
+          >
+            {marketIntelAdapter.degraded ? 'Market-Intel Adapter Degraded' : 'Market-Intel Adapter Healthy'}
+          </div>
+          <div className="text-[9px] text-slate-500 font-mono mt-1">
+            {`SRC ${marketIntelAdapter.selectedSource} | P ${marketIntelAdapter.primaryLatencyMs ?? '-'}ms | F ${marketIntelAdapter.fallbackLatencyMs ?? '-'}ms`}
+          </div>
+          {marketIntelAdapter.primaryError ? <div className="text-[9px] text-slate-500 font-mono mt-1">{marketIntelAdapter.primaryError}</div> : null}
         </div>
         <div className="flex-1 px-2 pb-2">
           {canRenderChart ? (
@@ -1727,6 +1757,14 @@ export default function Home() {
   const [globalData, setGlobalData] = useState<GlobalCorrelationResponse | null>(null);
   const [runtimeRiskConfig, setRuntimeRiskConfig] = useState<RuntimeRiskConfig | null>(null);
   const [degradedSources, setDegradedSources] = useState<string[]>([]);
+  const [marketIntelAdapter, setMarketIntelAdapter] = useState<AdapterHealthState>({
+    selectedSource: 'UNKNOWN',
+    primaryLatencyMs: null,
+    fallbackLatencyMs: null,
+    primaryError: null,
+    checkedAt: null,
+    degraded: false,
+  });
   const [actionState, setActionState] = useState<ActionState>({ busy: false, message: null });
   const [riskDraft, setRiskDraft] = useState<RuntimeRiskDraft>({
     ihsgRiskTriggerPct: String(KILL_SWITCH_IHSG_DROP_PCT),
@@ -2051,6 +2089,16 @@ export default function Home() {
     trackDegraded('Model Confidence', confidence?.data_source || null);
     trackDegraded('Prediction', pred?.data_source || null);
     setDegradedSources(Array.from(new Set(nextDegradedSources)).slice(0, 4));
+
+    const marketIntelDiagnostics = marketIntel?.data_source?.diagnostics;
+    setMarketIntelAdapter({
+      selectedSource: marketIntelDiagnostics?.selected_source || marketIntel?.data_source?.provider || 'UNKNOWN',
+      primaryLatencyMs: typeof marketIntelDiagnostics?.primary_latency_ms === 'number' ? marketIntelDiagnostics.primary_latency_ms : null,
+      fallbackLatencyMs: typeof marketIntelDiagnostics?.fallback_latency_ms === 'number' ? marketIntelDiagnostics.fallback_latency_ms : null,
+      primaryError: marketIntelDiagnostics?.primary_error || null,
+      checkedAt: marketIntelDiagnostics?.checked_at || null,
+      degraded: Boolean(marketIntel?.data_source?.degraded),
+    });
 
     const snapshotRows = (snapshots?.snapshots || [])
       .filter((row) => row.symbol === activeSymbol && typeof row.price === 'number')
@@ -2953,6 +3001,16 @@ export default function Home() {
         is_system_active: !systemKillSwitch.active,
         reason: systemKillSwitch.reason,
       },
+      source_health: {
+        market_intel: {
+          selected_source: marketIntelAdapter.selectedSource,
+          degraded: marketIntelAdapter.degraded,
+          primary_latency_ms: marketIntelAdapter.primaryLatencyMs,
+          fallback_latency_ms: marketIntelAdapter.fallbackLatencyMs,
+          primary_error: marketIntelAdapter.primaryError,
+          checked_at: marketIntelAdapter.checkedAt,
+        },
+      },
       liquidity_guard: {
         daily_volume_lots: liquidityGuard.dailyVolumeLots,
         participation_cap_pct: liquidityGuard.capPct,
@@ -3127,6 +3185,12 @@ export default function Home() {
     currentPrice,
     systemKillSwitch.active,
     systemKillSwitch.reason,
+    marketIntelAdapter.selectedSource,
+    marketIntelAdapter.degraded,
+    marketIntelAdapter.primaryLatencyMs,
+    marketIntelAdapter.fallbackLatencyMs,
+    marketIntelAdapter.primaryError,
+    marketIntelAdapter.checkedAt,
     ihsgChangePct,
     killSwitchActive,
     liquidityGuard.capPct,
@@ -3518,6 +3582,7 @@ export default function Home() {
           championChallenger={championChallenger}
           newsImpact={newsImpact}
           mtfValidation={mtfValidation}
+          marketIntelAdapter={marketIntelAdapter}
         />
       </div>
       {!combatMode.active ? (
