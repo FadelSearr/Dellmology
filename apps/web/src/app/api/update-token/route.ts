@@ -33,7 +33,7 @@ export async function OPTIONS() {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { token, expires_at } = body;
+    const { token, expires_at, meta } = body;
 
     // Validate token
     if (!token || typeof token !== 'string') {
@@ -78,6 +78,31 @@ export async function POST(req: NextRequest) {
     if (!result.rows || result.rows.length === 0) {
       throw new Error('Failed to store token in database');
     }
+
+    const syncReason = typeof meta?.sync_reason === 'string' ? meta.sync_reason : 'capture';
+    const syncJitterMs = typeof meta?.jitter_ms === 'number' ? Math.max(0, Math.floor(meta.jitter_ms)) : null;
+    const forcedRefreshCount = typeof meta?.forced_refresh_count === 'number' ? Math.max(0, Math.floor(meta.forced_refresh_count)) : null;
+
+    await db.query(
+      `
+        INSERT INTO config (key, value, updated_at)
+        VALUES
+          ('token_last_sync_reason', $1, NOW()),
+          ('token_last_jitter_ms', $2, NOW()),
+          ('token_forced_refresh_count', $3, NOW()),
+          ('token_extension_last_seen', $4, NOW())
+        ON CONFLICT (key) DO UPDATE
+        SET
+          value = EXCLUDED.value,
+          updated_at = NOW();
+      `,
+      [
+        syncReason,
+        syncJitterMs !== null ? String(syncJitterMs) : null,
+        forcedRefreshCount !== null ? String(forcedRefreshCount) : null,
+        new Date().toISOString(),
+      ],
+    );
 
     console.log('[API] Token updated successfully from Chrome extension');
 

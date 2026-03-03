@@ -120,6 +120,57 @@ export async function GET(request: Request) {
       console.error('Session token health check failed:', err);
     }
 
+    let tokenLastSyncReason: string | null = null;
+    let tokenLastJitterMs: number | null = null;
+    let tokenForcedRefreshCount: number | null = null;
+    let tokenExtensionLastSeenSeconds: number | null = null;
+    try {
+      const extensionMeta = await db.query(
+        `
+          SELECT key, value
+          FROM config
+          WHERE key IN (
+            'token_last_sync_reason',
+            'token_last_jitter_ms',
+            'token_forced_refresh_count',
+            'token_extension_last_seen'
+          )
+        `,
+      );
+
+      const reason = extensionMeta.rows.find((row) => row.key === 'token_last_sync_reason')?.value;
+      const jitter = extensionMeta.rows.find((row) => row.key === 'token_last_jitter_ms')?.value;
+      const refreshCount = extensionMeta.rows.find((row) => row.key === 'token_forced_refresh_count')?.value;
+      const extensionSeenAt = extensionMeta.rows.find((row) => row.key === 'token_extension_last_seen')?.value;
+
+      if (typeof reason === 'string' && reason.trim().length > 0) {
+        tokenLastSyncReason = reason;
+      }
+
+      if (typeof jitter === 'string') {
+        const parsed = Number(jitter);
+        if (!Number.isNaN(parsed)) {
+          tokenLastJitterMs = parsed;
+        }
+      }
+
+      if (typeof refreshCount === 'string') {
+        const parsed = Number(refreshCount);
+        if (!Number.isNaN(parsed)) {
+          tokenForcedRefreshCount = parsed;
+        }
+      }
+
+      if (typeof extensionSeenAt === 'string') {
+        const seenAt = new Date(extensionSeenAt);
+        if (!Number.isNaN(seenAt.getTime())) {
+          tokenExtensionLastSeenSeconds = Math.max(0, Math.floor((Date.now() - seenAt.getTime()) / 1000));
+        }
+      }
+    } catch (err) {
+      console.error('Token extension metadata check failed:', err);
+    }
+
     const killSwitchReason =
       !isSystemActive
         ? configuredKillReason || 'Cloud kill-switch active'
@@ -141,6 +192,10 @@ export async function GET(request: Request) {
       token_status: tokenStatus,
       token_expires_in_seconds: tokenExpiresInSeconds,
       token_last_updated_seconds: tokenLastUpdatedSeconds,
+      token_last_sync_reason: tokenLastSyncReason,
+      token_last_jitter_ms: tokenLastJitterMs,
+      token_forced_refresh_count: tokenForcedRefreshCount,
+      token_extension_last_seen_seconds: tokenExtensionLastSeenSeconds,
       api_rate_limit: 65,   // Track from requests
       timestamp: new Date().toISOString(),
       services: {

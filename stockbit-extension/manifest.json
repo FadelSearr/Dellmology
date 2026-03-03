@@ -6,7 +6,8 @@
   "permissions": [
     "webRequest",
     "storage",
-    "alarms"
+    "alarms",
+    "tabs"
   ],
   "host_permissions": [
     "https://*.stockbit.com/*",
