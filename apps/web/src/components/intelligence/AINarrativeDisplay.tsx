@@ -6,7 +6,20 @@ interface AInarrative {
   type: string;
   symbol?: string;
   narrative: string;
+  confidence_score?: number;
+  confidence_label?: 'LOW' | 'MEDIUM' | 'HIGH';
   generated_at: string;
+}
+
+interface BrokerNarrativePayload {
+  type: 'broker' | 'regime' | 'screener' | 'swot';
+  symbol: string;
+  data: {
+    whales?: Array<{ is_whale?: boolean }>;
+    wash_sale_score?: number;
+    consistency?: number;
+    period?: string;
+  };
 }
 
 export const AINarrativeDisplay = ({ 
@@ -28,9 +41,10 @@ export const AINarrativeDisplay = ({
         setLoading(true);
 
         // Prepare data based on type
-        let data: any = {
+        const requestPayload: BrokerNarrativePayload = {
           type,
           symbol,
+          data: {},
         };
 
         // Fetch appropriate data first
@@ -43,7 +57,7 @@ export const AINarrativeDisplay = ({
           if (!brokerData.stats) {
             throw new Error('Broker flow stats missing');
           }
-          data.data = {
+          requestPayload.data = {
             whales: brokerData.brokers?.filter((b: any) => b.is_whale).slice(0, 3) || [],
             wash_sale_score: brokerData.stats.wash_sale_score || 0,
             consistency: brokerData.stats.total_brokers > 0 ? 1 : 0,
@@ -51,16 +65,16 @@ export const AINarrativeDisplay = ({
           };
         } else if (type === 'regime') {
           const res = await fetch('/api/market-regime');
-          data.data = await res.json();
+          requestPayload.data = await res.json();
         } else {
           // other types (screener, swot) may not require pre-fetched data
-          data.data = {};
+          requestPayload.data = {};
         }
 
         const response = await fetch('/api/narrative', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(data)
+          body: JSON.stringify(requestPayload)
         });
 
         if (!response.ok) {
@@ -113,10 +127,26 @@ export const AINarrativeDisplay = ({
   return (
     <div className="bg-linear-to-r from-purple-900/20 to-indigo-900/20 border border-purple-700/50 rounded-lg p-4">
       <div className="flex items-start justify-between mb-2">
-        <h4 className="text-sm font-semibold text-purple-300 flex items-center gap-2">
-          🤖 AI Analysis
-          {narrative.symbol && <span className="text-xs bg-purple-500/30 px-2 py-1 rounded">{narrative.symbol}</span>}
-        </h4>
+        <div>
+          <h4 className="text-sm font-semibold text-purple-300 flex items-center gap-2">
+            🤖 AI Analysis
+            {narrative.symbol && <span className="text-xs bg-purple-500/30 px-2 py-1 rounded">{narrative.symbol}</span>}
+          </h4>
+          <div className="mt-1 flex items-center gap-2 text-xs">
+            <span
+              className={`px-2 py-0.5 rounded border ${
+                narrative.confidence_label === 'HIGH'
+                  ? 'border-green-700 bg-green-900/30 text-green-300'
+                  : narrative.confidence_label === 'MEDIUM'
+                    ? 'border-yellow-700 bg-yellow-900/30 text-yellow-300'
+                    : 'border-red-700 bg-red-900/30 text-red-300'
+              }`}
+            >
+              Confidence: {narrative.confidence_label || 'LOW'}
+            </span>
+            <span className="text-gray-500">{narrative.confidence_score ?? 0}/100</span>
+          </div>
+        </div>
         <span className="text-xs text-gray-500">
           {new Date(narrative.generated_at).toLocaleTimeString()}
         </span>

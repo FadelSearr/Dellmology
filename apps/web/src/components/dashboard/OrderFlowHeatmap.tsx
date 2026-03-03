@@ -65,9 +65,13 @@ export const OrderFlowHeatmap = ({ symbol = 'BBCA' }: { symbol: string }) => {
   const [aggregate, setAggregate] = useState(false);
 
   useEffect(() => {
+    let mounted = true;
+
     const fetchOrderFlowData = async () => {
       try {
-        setLoading(true);
+        if (mounted) {
+          setLoading(true);
+        }
         const response = await fetch(
           `/api/order-flow-heatmap?symbol=${symbol}&limit=100&aggregate=${aggregate}`
         );
@@ -79,15 +83,21 @@ export const OrderFlowHeatmap = ({ symbol = 'BBCA' }: { symbol: string }) => {
         }
 
         const data = await response.json();
-        setHeatmapData(data.heatmap);
-        setMarketDepth(data.marketDepth);
-        setAnomalies(data.anomalies);
-        setError(null);
+        if (mounted) {
+          setHeatmapData(data.heatmap);
+          setMarketDepth(data.marketDepth);
+          setAnomalies(data.anomalies);
+          setError(null);
+        }
       } catch (err) {
         console.error('Error fetching order flow data:', err);
-        setError(err instanceof Error ? err.message : 'Unknown error');
+        if (mounted) {
+          setError(err instanceof Error ? err.message : 'Unknown error');
+        }
       } finally {
-        setLoading(false);
+        if (mounted) {
+          setLoading(false);
+        }
       }
     };
 
@@ -95,8 +105,11 @@ export const OrderFlowHeatmap = ({ symbol = 'BBCA' }: { symbol: string }) => {
 
     // Poll every 30 seconds
     const interval = setInterval(fetchOrderFlowData, 30000);
-    return () => clearInterval(interval);
-  }, [symbol]);
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, [symbol, aggregate]);
 
   // Draw heatmap on canvas
   useEffect(() => {

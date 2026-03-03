@@ -55,7 +55,7 @@ export const Section4_RiskDock: React.FC<Section4Props> = ({
               <span className="text-yellow-400 font-mono">{atrValue}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-400">Today's Vol:</span>
+              <span className="text-gray-400">Today&apos;s Vol:</span>
               <StatusBadge status="critical" label={volatilityLevel} size="sm" />
             </div>
 

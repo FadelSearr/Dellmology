@@ -1,7 +1,35 @@
 🗺️ Roadmap Eksekusi Dellmology Pro
 
 Desain / Prototipe Absolute
-🖥️ Layout: The Dellmology Command CenterLayout ini menggunakan pembagian layar yang kaku namun modular (Bento Grid) agar mata Anda bisa melakukan scanning data dalam hitungan detik.1. Top Navigation Bar (The Pulse)Tetap tipis di bagian paling atas untuk memaksimalkan area kerja.Search Emiten Bar: Kotak pencarian cerdas di pojok kiri atas dengan live price dan regime status.Global Marquee: Ticker berjalan untuk korelasi harga Gold, Coal, Nickel, dan IHSG secara real-time.Infrastructure Health: Indikator LED kecil untuk status Go + SSE, TimescaleDB, dan Data Integrity Shield.2. Left Sidebar: Discovery & Intelligence (AI Screener)Panel sempit di sisi kiri untuk berpindah fokus antar emiten.Screener Navigation: Tab khusus untuk berpindah mode secara instan:Daytrade: Mencari volatilitas dan dominasi HAKA.Swing: Mencari akumulasi konsisten dan pola teknikal solid.Custom: Filter rentang harga (Rp 100 - Rp 500).Watchlist: Daftar emiten yang sedang Anda pantau dengan ringkasan Unified Power Score di sampingnya.3. Center Panel: Visual Analysis (The Canvas)Area terbesar untuk melihat pergerakan harga secara mendalam.Advanced Chart (Top-Center): Grafik utama dengan CNN Technical Overlay yang otomatis mendeteksi pola chart.Order Flow Heatmap: Terintegrasi di sisi kanan chart untuk melihat "tembok" harga.Unified Power Score (Bottom-Center): Bar gradasi warna (0-100) sebagai konfirmasi final sinyal.4. Right Sidebar: Whale & Flow Engine (The Tape)Pusat data Bandarmology yang paling sering Anda lirik.Deep Broker Flow Table: Tabel yang menampilkan Identity (Whale/Retail), Daily Heatmap (Spark-bars), Net Value, dan Consistency Score.Whale Z-Score & Wash Sale Alert: Grafik anomali volume dan notifikasi transaksi semu di bawah tabel.Negotiated Market Monitor: Feed kecil untuk transaksi pasar negosiasi.5. Bottom Panel: Execution & AI Narrative (The Brain)Panel horizontal di bagian bawah untuk merangkum dan mengeksekusi.AI Narrative Terminal: Narasi strategi dari Gemini yang merangkum kondisi teknikal dan broker flow.Smart Position sizing: Kalkulator otomatis lot berdasarkan ATR Volatility.Action Dock: Tombol cepat untuk Send to Telegram dan kontrol Backtesting Rig.🎨 Perbandingan EfisiensiFiturVertical ScrollWorkspace Layout (Dashboard)Konteks DataTerpisah-pisah saat di-scroll.Terlihat semua secara bersamaan.KecepatanMenengah (butuh gerakan mouse).Sangat Tinggi (hanya gerakan mata).PenggunaanCocok untuk Mobile/Analisis Santai.Cocok untuk Trader Aktif/Daytrading.
+🖥️ Layout: The Dellmology Command Center
+Layout ini menggunakan pembagian layar yang kaku namun modular (Bento Grid) agar mata Anda bisa melakukan scanning data dalam hitungan detik.
+1. Top Navigation Bar (The Pulse)
+Tetap tipis di bagian paling atas untuk memaksimalkan area kerja.
+•	Search Emiten Bar: Kotak pencarian cerdas di pojok kiri atas dengan live price dan regime status.
+•	Global Marquee: Ticker berjalan untuk korelasi harga Gold, Coal, Nickel, dan IHSG secara real-time.
+•	Infrastructure Health: Indikator LED kecil untuk status Go + SSE, TimescaleDB, dan Data Integrity Shield.
+2. Left Sidebar: Discovery & Intelligence (AI Screener)
+Panel sempit di sisi kiri untuk berpindah fokus antar emiten.
+•	Screener Navigation: Tab khusus untuk berpindah mode secara instan:
+o	Daytrade: Mencari volatilitas dan dominasi HAKA.
+o	Swing: Mencari akumulasi konsisten dan pola teknikal solid.
+o	Custom: Filter rentang harga (Rp 100 - Rp 500).
+•	Watchlist: Daftar emiten yang sedang Anda pantau dengan ringkasan Unified Power Score di sampingnya.
+3. Center Panel: Visual Analysis (The Canvas)
+Area terbesar untuk melihat pergerakan harga secara mendalam.
+•	Advanced Chart (Top-Center): Grafik utama dengan CNN Technical Overlay yang otomatis mendeteksi pola chart.
+•	Order Flow Heatmap: Terintegrasi di sisi kanan chart untuk melihat "tembok" harga.
+•	Unified Power Score (Bottom-Center): Bar gradasi warna (0-100) sebagai konfirmasi final sinyal.
+4. Right Sidebar: Whale & Flow Engine (The Tape)
+Pusat data Bandarmology yang paling sering Anda lirik.
+•	Deep Broker Flow Table: Tabel yang menampilkan Identity (Whale/Retail), Daily Heatmap (Spark-bars), Net Value, dan Consistency Score.
+•	Whale Z-Score & Wash Sale Alert: Grafik anomali volume dan notifikasi transaksi semu di bawah tabel.
+•	Negotiated Market Monitor: Feed kecil untuk transaksi pasar negosiasi.
+5. Bottom Panel: Execution & AI Narrative (The Brain)
+Panel horizontal di bagian bawah untuk merangkum dan mengeksekusi.
+•	AI Narrative Terminal: Narasi strategi dari Gemini yang merangkum kondisi teknikal dan broker flow.
+•	Smart Position sizing: Kalkulator otomatis lot berdasarkan ATR Volatility.
+•	Action Dock: Tombol cepat untuk Send to Telegram dan kontrol Backtesting Rig.
 
 Fitur Fitur
 1. Core Infrastructure & Data Engine (Pondasi)
@@ -305,7 +333,7 @@ Karena server tidak perlu menyala 24 jam, laptop Anda menjadi pusat pemrosesan d
 o	Fungsi: Membuat laptop Anda "terlihat" oleh internet secara sementara. Jadi, saat laptop menyala, dashboard di Vercel bisa menarik data langsung dari laptop Anda.
 2. The Cloud Storage (Always Online)
 Tempat menyimpan hasil analisis agar bisa diakses kapan saja.
-•	Provider: Supabase.
+•	Provider: Supabase atau Neon.tech.
 o	Status: Gratis (PostgreSQL).
 o	Fungsi: Menyimpan hasil akhir seperti "Top 10 Akumulasi Hari Ini", "Z-Score Alert", dan "Master Key/Token".
 o	Keunggulan: Meskipun laptop mati, data hasil scan terakhir tetap bisa Anda lihat di HP via dashboard Vercel.
@@ -328,20 +356,13 @@ Fase 2	Dashboard Bento Grid + Chart	Visualisasi data real-time di web.
 Fase 3	Broker Flow & Z-Score	Analisis akumulasi/distribusi (Bandarmology).
 Fase 4	AI Narrative & Screener	Gemini memberikan rekomendasi berdasarkan data.
 Fase 5	CNN Pattern Recognition	Deteksi pola teknikal otomatis.
-
-
 Source:
 •	https://github.com/anandanand84/technicalindicators
 •	https://github.com/bhaktiutama/adimology
 •	https://github.com/philipxjm/Deep-Convolution-Stock-Technical-Analysis?tab=readme-ov-file
 
-untuk referensi anda bisa membuka folder References 
-
 
 Tolong konfirmasi jika kamu sudah memahami konteks ini, dan mari kita mulai dengan fokus pada memasukan semua fitur tersebut dan melanjutkan coding hingga semua fitur tersebut terimplementasi."
-
-NOTES:
-- jika kita mulai melanjutkan projek kita nanti semisal ada perubahan seperti penambahan atau pengurang tolong anda kirim code lengkapnya langsung agar saya bisa langsung overwrite.
 
 
 

@@ -1,10 +1,9 @@
 'use client';
 
 import React from 'react';
-import { TrendingUp, AlertTriangle } from 'lucide-react';
+import { TrendingUp } from 'lucide-react';
 import { Card } from '@/components/common/Card';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
-import { StatusBadge } from '@/components/common/StatusBadge';
 import { MarketIntelligenceCanvas } from '@/components/dashboard/MarketIntelligenceCanvas';
 import { OrderFlowHeatmap } from '@/components/dashboard/OrderFlowHeatmap';
 import { ExitWhaleTable } from '@/components/tables/ExitWhaleTable';

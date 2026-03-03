@@ -25,11 +25,14 @@ export async function POST(request: Request) {
     // Call Python narrative generator service
     // This would typically call a dedicated service or run inline
     const narrativeResponse = await generateNarrative(type, data, symbol);
+    const confidence = calculateNarrativeConfidence(type, data);
 
     return NextResponse.json({
       type,
       symbol: symbol || 'N/A',
       narrative: narrativeResponse,
+      confidence_score: confidence.score,
+      confidence_label: confidence.label,
       generated_at: new Date().toISOString()
     });
 
@@ -66,18 +69,94 @@ async function generateNarrative(type: string, data: any, symbol?: string): Prom
 
   // Mock narratives for now - in production, would call Python service
   
+  let narrative = '';
   switch (type) {
     case 'broker':
-      return generateBrokerNarrative(data, symbol);
+      narrative = generateBrokerNarrative(data, symbol);
+      break;
     case 'regime':
-      return generateRegimeNarrative(data);
+      narrative = generateRegimeNarrative(data);
+      break;
     case 'screener':
-      return generateScreenerNarrative(data);
+      narrative = generateScreenerNarrative(data);
+      break;
     case 'swot':
-      return generateSWOTNarrative(data, symbol);
+      narrative = generateSWOTNarrative(data, symbol);
+      break;
     default:
-      return 'Jenis narasi tidak dikenali.';
+      narrative = 'Jenis narasi tidak dikenali.';
+      break;
   }
+
+  const bearishCounterCase = generateBearishCounterCase(type, data);
+  return `${narrative}\n\n🛡️ Bearish Counter-Case:\n${bearishCounterCase}`;
+}
+
+function calculateNarrativeConfidence(type: string, data: any): { score: number; label: 'LOW' | 'MEDIUM' | 'HIGH' } {
+  if (!data || typeof data !== 'object') {
+    return { score: 20, label: 'LOW' };
+  }
+
+  let score = 30;
+
+  if (type === 'broker') {
+    if (Array.isArray(data.whales) && data.whales.length > 0) score += 30;
+    if (typeof data.wash_sale_score === 'number') score += 20;
+    if (typeof data.consistency === 'number') score += 20;
+  } else if (type === 'regime') {
+    if (typeof data.regime === 'string') score += 20;
+    if (typeof data.volatility === 'string') score += 15;
+    if (typeof data.rsi === 'number') score += 20;
+    if (typeof data.trend_strength === 'number') score += 15;
+  } else if (type === 'screener') {
+    if (typeof data.mode === 'string') score += 20;
+    if (typeof data.count === 'number') score += 20;
+    if (Array.isArray(data.signals) && data.signals.length > 0) score += 30;
+  } else if (type === 'swot') {
+    if (Array.isArray(data.strengths) && data.strengths.length > 0) score += 15;
+    if (Array.isArray(data.weaknesses) && data.weaknesses.length > 0) score += 15;
+    if (Array.isArray(data.opportunities) && data.opportunities.length > 0) score += 15;
+    if (Array.isArray(data.threats) && data.threats.length > 0) score += 15;
+  }
+
+  const normalized = Math.max(0, Math.min(100, score));
+  if (normalized >= 75) return { score: normalized, label: 'HIGH' };
+  if (normalized >= 50) return { score: normalized, label: 'MEDIUM' };
+  return { score: normalized, label: 'LOW' };
+}
+
+function generateBearishCounterCase(type: string, data: any): string {
+  if (type === 'broker') {
+    const washSaleScore = Number(data?.wash_sale_score || 0);
+    const consistency = Number(data?.consistency || 0);
+    return [
+      `1) Jika wash sale score naik di atas 60 (saat ini ${washSaleScore.toFixed(1)}), akumulasi bisa jadi volume semu.`,
+      `2) Jika konsistensi broker turun di bawah 40% (saat ini ${(consistency * 100).toFixed(0)}%), sinyal bisa cepat gagal.`,
+      `3) Jika harga gagal bertahan di support intraday, skenario distribusi lebih dominan dari akumulasi.`,
+    ].join('\n');
+  }
+
+  if (type === 'regime') {
+    return [
+      '1) Reversal makro mendadak dapat membatalkan sinyal teknikal jangka pendek.',
+      '2) Volatilitas tinggi bisa memicu whipsaw meskipun trend utama terlihat sehat.',
+      '3) RSI ekstrem berisiko memicu pullback tajam sebelum trend lanjut.',
+    ].join('\n');
+  }
+
+  if (type === 'screener') {
+    return [
+      '1) Skor screener tinggi tidak menjamin likuiditas exit saat market panik.',
+      '2) Momentum cepat bisa berbalik jika didorong volume non-organik.',
+      '3) Konfirmasi multi-timeframe tetap wajib untuk menghindari false breakout.',
+    ].join('\n');
+  }
+
+  return [
+    '1) Data yang tidak lengkap dapat membuat kesimpulan terlalu optimis.',
+    '2) Perubahan sentimen makro dapat membatalkan setup terbaik sekalipun.',
+    '3) Gunakan ukuran posisi konservatif saat sinyal belum terkonfirmasi penuh.',
+  ].join('\n');
 }
 
 function generateBrokerNarrative(data: any, symbol?: string): string {

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Search, TrendingUp, AlertCircle, Zap, Settings } from 'lucide-react';
+import { Search, TrendingUp, Settings } from 'lucide-react';
 import { StatusBadge } from '@/components/common/StatusBadge';
 
 interface Section0Props {

@@ -1,8 +1,15 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { TrendingUp, TrendingDown, Activity, Zap } from 'lucide-react';
 import TradingViewWidget from './TradingViewWidget';
+
+const ALERT_COOLDOWN_MS = 5 * 60 * 1000;
+
+interface PredictionResult {
+  prediction: string;
+  confidence_up: number;
+}
 
 interface MarketIntelligence {
   symbol: string;
@@ -29,18 +36,32 @@ interface MarketIntelligence {
     };
   };
   timestamp: string;
+  xai?: {
+    base_prob_up?: number;
+    top_features: Array<{
+      feature: string;
+      day_index: number;
+      importance: number;
+    }>;
+  };
 }
 
 export const MarketIntelligenceCanvas = ({ symbol, timeframe = '1h' }: { symbol: string; timeframe?: string }) => {
   const [data, setData] = useState<MarketIntelligence | null>(null);
-  const [prediction, setPrediction] = useState<any>(null);
+  const [prediction, setPrediction] = useState<PredictionResult | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isExplaining, setIsExplaining] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const lastAlertRef = useRef<{ symbol: string; signal: string; time: number } | null>(null);
 
   useEffect(() => {
+    let mounted = true;
+
     const fetchMarketIntelligence = async () => {
       try {
-        setLoading(true);
+        if (mounted) {
+          setLoading(true);
+        }
         const response = await fetch(
           `/api/market-intelligence?symbol=${symbol}&timeframe=${timeframe}`
         );
@@ -50,13 +71,19 @@ export const MarketIntelligenceCanvas = ({ symbol, timeframe = '1h' }: { symbol:
         }
 
         const data = await response.json();
-        setData(data);
-        setError(null);
+        if (mounted) {
+          setData(data);
+          setError(null);
+        }
       } catch (err) {
         console.error('Error fetching market intelligence:', err);
-        setError(err instanceof Error ? err.message : 'Unknown error');
+        if (mounted) {
+          setError(err instanceof Error ? err.message : 'Unknown error');
+        }
       } finally {
-        setLoading(false);
+        if (mounted) {
+          setLoading(false);
+        }
       }
     };
 
@@ -65,7 +92,7 @@ export const MarketIntelligenceCanvas = ({ symbol, timeframe = '1h' }: { symbol:
         const resp = await fetch(`/api/prediction?symbol=${symbol}`);
         if (resp.ok) {
           const json = await resp.json();
-          if (json.success) {
+          if (json.success && mounted) {
             setPrediction(json.data);
           }
         }
@@ -80,7 +107,11 @@ export const MarketIntelligenceCanvas = ({ symbol, timeframe = '1h' }: { symbol:
     // Poll every 30 seconds
     const interval = setInterval(fetchMarketIntelligence, 30000);
     const interval2 = setInterval(fetchPrediction, 60000);
-    return () => { clearInterval(interval); clearInterval(interval2); };
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+      clearInterval(interval2);
+    };
   }, [symbol, timeframe]);
 
   useEffect(() => {
@@ -91,7 +122,24 @@ export const MarketIntelligenceCanvas = ({ symbol, timeframe = '1h' }: { symbol:
     if (score >= 85) signal = 'STRONG_BUY';
     else if (score <= 30) signal = 'STRONG_SELL';
 
-    if (!signal) return;
+    if (!signal) {
+      if (lastAlertRef.current?.symbol === symbol) {
+        lastAlertRef.current = null;
+      }
+      return;
+    }
+
+    const now = Date.now();
+    const previousAlert = lastAlertRef.current;
+    const isDuplicateWithinCooldown =
+      previousAlert &&
+      previousAlert.symbol === symbol &&
+      previousAlert.signal === signal &&
+      now - previousAlert.time < ALERT_COOLDOWN_MS;
+
+    if (isDuplicateWithinCooldown) {
+      return;
+    }
 
     fetch('/api/telegram-alert', {
       method: 'POST',
@@ -106,8 +154,12 @@ export const MarketIntelligenceCanvas = ({ symbol, timeframe = '1h' }: { symbol:
           confidence: score,
         },
       }),
-    }).catch((e) => console.error('Telegram alert failed', e));
-  }, [data, symbol]);
+    })
+      .then(() => {
+        lastAlertRef.current = { symbol, signal, time: now };
+      })
+      .catch((e) => console.error('Telegram alert failed', e));
+  }, [data?.unified_power_score?.score, symbol]);
 
   if (loading) {
     return (
@@ -201,28 +253,31 @@ export const MarketIntelligenceCanvas = ({ symbol, timeframe = '1h' }: { symbol:
           )}
           <button
             onClick={async () => {
-              // toggle simple fetch and show explanation below by updating state
               try {
-                setLoading(true)
+                setIsExplaining(true);
                 const r = await fetch('/api/xai', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({ symbol, top_k: 8 }),
-                })
-                if (!r.ok) throw new Error('XAI request failed')
+                });
+                if (!r.ok) throw new Error('XAI request failed');
                 const j = await r.json();
-                // attach the explanation to data so we can render XAIReport inline
-                (data as any).xai = j.explanation;
-                setData({ ...(data as any) })
+                setData((prev) => {
+                  if (!prev) return prev;
+                  return {
+                    ...prev,
+                    xai: j.explanation,
+                  };
+                });
               } catch (e) {
-                console.error('XAI fetch failed', e)
+                console.error('XAI fetch failed', e);
               } finally {
-                setLoading(false)
+                setIsExplaining(false);
               }
             }}
             className="px-2 py-1 bg-indigo-600 hover:bg-indigo-700 rounded text-xs"
           >
-            🧭 Explain
+            {isExplaining ? '⏳ Explaining...' : '🧭 Explain'}
           </button>
         </div>
       </div>
@@ -339,7 +394,7 @@ export const MarketIntelligenceCanvas = ({ symbol, timeframe = '1h' }: { symbol:
         </p>
       </div>
       {/* XAI Explanation (if available) */}
-      {data && (data as any).xai && (
+      {data?.xai && (
         <div>
           <h3 className="text-sm text-gray-300 mb-2">Model Explainability</h3>
           <div className="grid grid-cols-1 gap-2">
@@ -348,10 +403,10 @@ export const MarketIntelligenceCanvas = ({ symbol, timeframe = '1h' }: { symbol:
               <div className="bg-gray-900/40 border border-gray-700 rounded p-3 text-sm">
                 <div className="flex justify-between mb-2">
                   <div className="font-medium">Top contributors</div>
-                  <div className="text-xs text-gray-400">Up prob: {(data as any).xai.base_prob_up ? ((data as any).xai.base_prob_up*100).toFixed(1) : 'N/A'}%</div>
+                  <div className="text-xs text-gray-400">Up prob: {data.xai.base_prob_up ? (data.xai.base_prob_up * 100).toFixed(1) : 'N/A'}%</div>
                 </div>
                 <ul className="text-xs space-y-1">
-                  {(data as any).xai.top_features.map((t: any, i: number) => (
+                  {data.xai.top_features.map((t, i: number) => (
                     <li key={i} className="flex justify-between">
                       <span>{t.feature} (d-{t.day_index})</span>
                       <span className="font-mono">{t.importance.toFixed(4)}</span>

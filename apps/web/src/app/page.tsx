@@ -33,6 +33,8 @@ interface BrokerEntry {
   daily_heatmap?: number[];
 }
 
+type ConsensusVote = 'BUY' | 'SELL' | 'NEUTRAL';
+
 /**
  * Main Dashboard - Dellmology Command Center (Bento Grid)
  */
@@ -42,7 +44,6 @@ export default function Home() {
   const [trades, setTrades] = useState<ProcessedTrade[]>([]);
   const [brokerData, setBrokerData] = useState<BrokerEntry[]>([]);
   const [washSaleScore, setWashSaleScore] = useState(0);
-  const [isLoadingTrades, setIsLoadingTrades] = useState(false);
   const [screenerMode, setScreenerMode] = useState<'DAYTRADE' | 'SWING' | 'CUSTOM'>('DAYTRADE');
   const [customRange, setCustomRange] = useState({ min: 100, max: 500 });
   const [positionInputs, setPositionInputs] = useState({ entry: 100, stopLoss: 2.5, atr: 4.5 });
@@ -67,10 +68,25 @@ export default function Home() {
   const topWhales = brokerData.filter((b) => b.is_whale).slice(0, 2);
   const flowRows = brokerData.slice(0, 2);
   const heatmapSeries = brokerData[0]?.daily_heatmap?.slice(-8) || [30, 45, -20, 35, -10, 55, 25, -30];
+  const netWhaleFlow = topWhales.reduce((sum, whale) => sum + (whale.net_buy_value || 0), 0);
+  const recentTrades = trades.slice(0, 20);
+  const hakaCount = recentTrades.filter((trade) => trade.type === 'HAKA').length;
+  const hakiCount = recentTrades.filter((trade) => trade.type === 'HAKI').length;
+  const tradeBias = hakaCount - hakiCount;
+
+  const technicalVote: ConsensusVote = unifiedPowerScore >= 70 ? 'BUY' : unifiedPowerScore <= 40 ? 'SELL' : 'NEUTRAL';
+  const bandarmologyVote: ConsensusVote =
+    washSaleScore >= 70 ? 'NEUTRAL' : netWhaleFlow > 0 ? 'BUY' : netWhaleFlow < 0 ? 'SELL' : 'NEUTRAL';
+  const sentimentVote: ConsensusVote = tradeBias >= 3 ? 'BUY' : tradeBias <= -3 ? 'SELL' : 'NEUTRAL';
+
+  const votes = [technicalVote, bandarmologyVote, sentimentVote];
+  const buyVotes = votes.filter((vote) => vote === 'BUY').length;
+  const sellVotes = votes.filter((vote) => vote === 'SELL').length;
+  const consensusSignal: ConsensusVote = buyVotes >= 2 ? 'BUY' : sellVotes >= 2 ? 'SELL' : 'NEUTRAL';
+  const shouldStandAside = consensusSignal === 'NEUTRAL';
 
   // Fetch trades via SSE
   useEffect(() => {
-    setIsLoadingTrades(true);
     const eventSource = new EventSource(STREAM_URL);
 
     eventSource.onopen = () => {
@@ -84,7 +100,6 @@ export default function Home() {
           const newTrades = [trade, ...prevTrades];
           return newTrades.slice(0, MAX_TRADES_IN_LIST);
         });
-        setIsLoadingTrades(false);
       } catch (error) {
         console.error('Failed to parse trade data:', error);
       }
@@ -250,6 +265,47 @@ export default function Home() {
                         <span>100</span>
                       </div>
                     </div>
+
+                    <div
+                      className={`rounded-lg border p-2.5 ${
+                        shouldStandAside
+                          ? 'border-yellow-700 bg-yellow-900/20'
+                          : consensusSignal === 'BUY'
+                            ? 'border-green-700 bg-green-900/20'
+                            : 'border-red-700 bg-red-900/20'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between text-xs mb-2">
+                        <span className="text-gray-300">Multi-Model Consensus (2/3)</span>
+                        <span
+                          className={`font-semibold ${
+                            shouldStandAside ? 'text-yellow-300' : consensusSignal === 'BUY' ? 'text-green-300' : 'text-red-300'
+                          }`}
+                        >
+                          {shouldStandAside ? 'MARKET CONFUSION - STAND ASIDE' : `${consensusSignal} SIGNAL CONFIRMED`}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2 text-[11px]">
+                        <div className="rounded border border-gray-700 bg-gray-900/40 px-2 py-1.5">
+                          <div className="text-gray-400">Technical</div>
+                          <div className={`font-semibold ${technicalVote === 'BUY' ? 'text-green-300' : technicalVote === 'SELL' ? 'text-red-300' : 'text-yellow-300'}`}>
+                            {technicalVote}
+                          </div>
+                        </div>
+                        <div className="rounded border border-gray-700 bg-gray-900/40 px-2 py-1.5">
+                          <div className="text-gray-400">Bandarmology</div>
+                          <div className={`font-semibold ${bandarmologyVote === 'BUY' ? 'text-green-300' : bandarmologyVote === 'SELL' ? 'text-red-300' : 'text-yellow-300'}`}>
+                            {bandarmologyVote}
+                          </div>
+                        </div>
+                        <div className="rounded border border-gray-700 bg-gray-900/40 px-2 py-1.5">
+                          <div className="text-gray-400">Sentiment</div>
+                          <div className={`font-semibold ${sentimentVote === 'BUY' ? 'text-green-300' : sentimentVote === 'SELL' ? 'text-red-300' : 'text-yellow-300'}`}>
+                            {sentimentVote}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </Card>
               </div>
@@ -258,6 +314,10 @@ export default function Home() {
               <div className="xl:col-span-3 xl:min-h-132">
                 <Card title="Whale & Flow Engine" subtitle="The Tape" headerDensity="compact" className="p-3! h-full">
                   <div className="flex h-full flex-col gap-2.5">
+                    <div className={`rounded border px-2.5 py-1.5 text-[11px] font-medium ${shouldStandAside ? 'border-yellow-700 bg-yellow-900/20 text-yellow-300' : consensusSignal === 'BUY' ? 'border-green-700 bg-green-900/20 text-green-300' : 'border-red-700 bg-red-900/20 text-red-300'}`}>
+                      Consensus Gate: {shouldStandAside ? 'MARKET CONFUSION - STAND ASIDE' : `${consensusSignal} (${Math.max(buyVotes, sellVotes)}/3)`}
+                    </div>
+
                     <div>
                       <div className="text-xs font-semibold text-gray-400 mb-1.5">Deep Broker Flow Table</div>
                       <div className="overflow-hidden rounded border border-gray-700">
@@ -386,8 +446,15 @@ export default function Home() {
               <div className="xl:col-span-3 xl:min-h-56">
                 <Card title="Action Dock" headerDensity="compact" className="p-3! h-full">
                   <div className="space-y-1.5">
-                    <button className="w-full px-3 py-2 rounded border border-cyan-700 bg-cyan-900/20 text-cyan-300 hover:bg-cyan-900/30 inline-flex items-center justify-center gap-2 text-sm">
-                      <Send className="w-4 h-4" /> Send Signal to Telegram
+                    <button
+                      disabled={shouldStandAside}
+                      className={`w-full px-3 py-2 rounded border inline-flex items-center justify-center gap-2 text-sm ${
+                        shouldStandAside
+                          ? 'border-gray-700 bg-gray-800/60 text-gray-500 cursor-not-allowed'
+                          : 'border-cyan-700 bg-cyan-900/20 text-cyan-300 hover:bg-cyan-900/30'
+                      }`}
+                    >
+                      <Send className="w-4 h-4" /> {shouldStandAside ? 'Signal Locked: Stand Aside' : 'Send Signal to Telegram'}
                     </button>
                     <button className="w-full px-3 py-2 rounded border border-yellow-700 bg-yellow-900/20 text-yellow-300 hover:bg-yellow-900/30 inline-flex items-center justify-center gap-2 text-sm">
                       <Bell className="w-4 h-4" /> Set Price Alert
