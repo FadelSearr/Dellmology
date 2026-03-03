@@ -334,6 +334,18 @@ interface NewsImpactState {
   checkedAt: string | null;
 }
 
+interface MultiTimeframeValidationState {
+  warning: boolean;
+  reason: string | null;
+  shortTimeframe: '15m';
+  highTimeframe: '1h';
+  shortUps: number;
+  highUps: number;
+  shortVote: VoteSignal;
+  highVote: VoteSignal;
+  checkedAt: string | null;
+}
+
 const FALLBACK_MARKET_DATA: ChartPoint[] = [
   { time: '09:00', price: 9200, volume: 4000 },
   { time: '09:30', price: 9250, volume: 3000 },
@@ -596,6 +608,17 @@ function applyRocConsensusGuard(consensus: ModelConsensus, rocActive: boolean): 
     pass: false,
     status: 'CONFUSION',
     message: 'CRITICAL: VOLATILITY SPIKE - BUY DISABLED',
+  };
+}
+
+function applyMtfConsensusGuard(consensus: ModelConsensus, mtfWarning: boolean): ModelConsensus {
+  if (!mtfWarning) return consensus;
+  if (consensus.status !== 'CONSENSUS_BULL') return consensus;
+  return {
+    ...consensus,
+    pass: false,
+    status: 'CONFUSION',
+    message: 'MULTI-TIMEFRAME CONFLICT - BUY DISABLED',
   };
 }
 
@@ -1037,6 +1060,7 @@ function RightSidebar({
   dataSanity,
   championChallenger,
   newsImpact,
+  mtfValidation,
 }: {
   brokers: BrokerRow[];
   zData: ZScorePoint[];
@@ -1050,6 +1074,7 @@ function RightSidebar({
   dataSanity: DataSanityState;
   championChallenger: ChampionChallengerState;
   newsImpact: NewsImpactState;
+  mtfValidation: MultiTimeframeValidationState;
 }) {
   const canRenderChart = typeof window !== 'undefined';
   const hasAlert = zData.some((item) => item.score > 2 || item.score < -2);
@@ -1228,6 +1253,18 @@ function RightSidebar({
             {`Stress ${newsImpact.stressScore.toFixed(1)} | UPS-${newsImpact.penaltyUps.toFixed(0)} | ${newsImpact.riskLabel}`}
           </div>
           {newsImpact.redFlags.length > 0 ? <div className="text-[9px] text-slate-500 font-mono mt-1">{newsImpact.redFlags.slice(0, 2).join(' | ')}</div> : null}
+          <div
+            className={cn(
+              'text-[9px] font-mono border rounded px-2 py-1 mt-2',
+              mtfValidation.warning ? 'text-rose-300 border-rose-500/40 bg-rose-500/10' : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10',
+            )}
+          >
+            {mtfValidation.warning ? 'Multi-Timeframe Conflict' : 'Multi-Timeframe Aligned'}
+          </div>
+          <div className="text-[9px] text-slate-500 font-mono mt-1">
+            {`${mtfValidation.shortTimeframe}:${mtfValidation.shortVote} (${Math.round(mtfValidation.shortUps)}) | ${mtfValidation.highTimeframe}:${mtfValidation.highVote} (${Math.round(mtfValidation.highUps)})`}
+          </div>
+          {mtfValidation.reason ? <div className="text-[9px] text-slate-500 font-mono mt-1">{mtfValidation.reason}</div> : null}
         </div>
         <div className="flex-1 px-2 pb-2">
           {canRenderChart ? (
@@ -1803,6 +1840,17 @@ export default function Home() {
     redFlags: [],
     checkedAt: null,
   });
+  const [mtfValidation, setMtfValidation] = useState<MultiTimeframeValidationState>({
+    warning: false,
+    reason: null,
+    shortTimeframe: '15m',
+    highTimeframe: '1h',
+    shortUps: 0,
+    highUps: 0,
+    shortVote: 'NEUTRAL',
+    highVote: 'NEUTRAL',
+    checkedAt: null,
+  });
   const bidWallAgesRef = useRef<Map<number, number>>(new Map());
   const spoofingStreakRef = useRef(0);
 
@@ -1859,6 +1907,8 @@ export default function Home() {
         .then((response) => (response.ok ? response.json() : null))
         .catch(() => null),
       fetch(`/api/news-impact?symbol=${activeSymbol}`).then((response) => (response.ok ? response.json() : null)).catch(() => null),
+      fetch(`/api/market-intelligence?symbol=${activeSymbol}&timeframe=15m`).then((response) => (response.ok ? response.json() : null)).catch(() => null),
+      fetch(`/api/market-intelligence?symbol=${activeSymbol}&timeframe=1h`).then((response) => (response.ok ? response.json() : null)).catch(() => null),
     ]);
 
     const marketIntel = requests[0] as MarketIntelResponse | null;
@@ -1946,6 +1996,8 @@ export default function Home() {
       red_flags?: string[];
       checked_at?: string;
     } | null;
+    const mtfShortIntel = requests[17] as MarketIntelResponse | null;
+    const mtfHighIntel = requests[18] as MarketIntelResponse | null;
 
     const snapshotRows = (snapshots?.snapshots || [])
       .filter((row) => row.symbol === activeSymbol && typeof row.price === 'number')
@@ -2162,6 +2214,24 @@ export default function Home() {
     );
     const killSwitchActive = ihsgChangePct <= runtimeIhsgDrop;
     const minUpsForLong = killSwitchActive ? runtimeRiskUps : runtimeNormalUps;
+    const mtfShortUps = Number(mtfShortIntel?.unified_power_score?.score || nextUps);
+    const mtfHighUps = Number(mtfHighIntel?.unified_power_score?.score || nextUps);
+    const mtfShortVote = technicalVoteFromUps(mtfShortUps, minUpsForLong);
+    const mtfHighVote = technicalVoteFromUps(mtfHighUps, minUpsForLong);
+    const mtfWarning = mtfShortVote === 'BUY' && mtfHighVote !== 'BUY';
+    setMtfValidation({
+      warning: mtfWarning,
+      reason: mtfWarning
+        ? `Sinyal ${activeSymbol} bullish pada 15m belum dikonfirmasi trend 1h.`
+        : null,
+      shortTimeframe: '15m',
+      highTimeframe: '1h',
+      shortUps: mtfShortUps,
+      highUps: mtfHighUps,
+      shortVote: mtfShortVote,
+      highVote: mtfHighVote,
+      checkedAt: new Date().toISOString(),
+    });
 
     if (health) {
       const tokenTone: Tone =
@@ -2336,7 +2406,10 @@ export default function Home() {
         : global?.global_sentiment === 'BEARISH'
           ? 'SELL'
           : 'NEUTRAL';
-    const preliminaryConsensus = applyRocConsensusGuard(buildConsensus(technicalVote, bandarmologyVote, preliminarySentimentVote), rocCritical);
+    const preliminaryConsensus = applyMtfConsensusGuard(
+      applyRocConsensusGuard(buildConsensus(technicalVote, bandarmologyVote, preliminarySentimentVote), rocCritical),
+      mtfWarning,
+    );
     setModelConsensus(preliminaryConsensus);
     const combatActive = volClass.toUpperCase() === 'HIGH' || volPct >= COMBAT_MODE_VOLATILITY_PCT;
     setCombatMode({
@@ -2362,12 +2435,13 @@ export default function Home() {
         `Data Sanity: ${sanityWarning ? 'DATA CONTAMINATED' : 'PASS'}\n` +
         `Champion-Challenger: ${championDriftWarning ? 'DRIFT WARNING' : 'STABLE'}\n` +
         `News Overlay: ${newsImpactWarning ? `RISK (${newsRiskLabel}, UPS-${newsPenaltyUps.toFixed(0)})` : 'NORMAL'}\n` +
+        `MTF Validation: ${mtfWarning ? 'CONFLICT (15m vs 1h)' : 'ALIGNED'}\n` +
         `RoC Kill-Switch: ${rocCritical ? 'CRITICAL: VOLATILITY SPIKE' : 'Normal'}\n` +
         `Consensus: ${preliminaryConsensus.message}\n` +
         `Cooling-Off: ${coolingActive ? 'ACTIVE (Recommendation Locked)' : 'Clear'}\n` +
         `Whale Flow: ${topWhales || 'No dominant whale detected'}\n` +
         `Model Confidence: ${confLabel} (${Number(confidence?.accuracy_pct || 0).toFixed(1)}%)\n\n` +
-        `> Recommendation: ${coolingActive ? 'Cooling-off active. Stand down and review risk.' : sanityWarning ? 'Data contaminated. Lock sinyal hingga verifikasi ulang.' : crossCheckWarning ? 'Cross-check lock aktif. Tahan eksekusi sampai harga sinkron.' : incompleteDataWarning ? 'Data belum lengkap. Tunda aksi sampai stream normal.' : newsImpactWarning ? 'News stress tinggi terdeteksi. Kurangi eksposur dan verifikasi red flags.' : championDriftWarning ? 'Model drift warning. Gunakan mode defensif sampai champion dikaji ulang.' : rocCritical ? 'CRITICAL volatility spike. Disable buy and wait stabilization.' : spoofingWarning ? 'Spoofing risk terdeteksi. Hindari entry impulsif.' : nextUps >= minUpsForLong ? 'Momentum entry on pullback.' : nextUps <= 40 ? 'Defensive mode, avoid aggressive entry.' : 'Wait for clearer confirmation.'}`,
+        `> Recommendation: ${coolingActive ? 'Cooling-off active. Stand down and review risk.' : sanityWarning ? 'Data contaminated. Lock sinyal hingga verifikasi ulang.' : crossCheckWarning ? 'Cross-check lock aktif. Tahan eksekusi sampai harga sinkron.' : incompleteDataWarning ? 'Data belum lengkap. Tunda aksi sampai stream normal.' : mtfWarning ? 'Konfirmasi multi-timeframe gagal. Tunda entry sampai trend 1h searah.' : newsImpactWarning ? 'News stress tinggi terdeteksi. Kurangi eksposur dan verifikasi red flags.' : championDriftWarning ? 'Model drift warning. Gunakan mode defensif sampai champion dikaji ulang.' : rocCritical ? 'CRITICAL volatility spike. Disable buy and wait stabilization.' : spoofingWarning ? 'Spoofing risk terdeteksi. Hindari entry impulsif.' : nextUps >= minUpsForLong ? 'Momentum entry on pullback.' : nextUps <= 40 ? 'Defensive mode, avoid aggressive entry.' : 'Wait for clearer confirmation.'}`,
     );
 
     try {
@@ -2389,7 +2463,10 @@ export default function Home() {
         const narrativeBody = (await narrativeResponse.json()) as { narrative?: string };
         const extracted = extractAdversarialNarrative(narrativeBody.narrative || '');
         const sentimentVote = sentimentVoteFromNarrative(extracted.bullish, extracted.bearish, global?.global_sentiment);
-        const finalConsensus = applyRocConsensusGuard(buildConsensus(technicalVote, bandarmologyVote, sentimentVote), rocCritical);
+        const finalConsensus = applyMtfConsensusGuard(
+          applyRocConsensusGuard(buildConsensus(technicalVote, bandarmologyVote, sentimentVote), rocCritical),
+          mtfWarning,
+        );
         setModelConsensus(finalConsensus);
         setCombatMode((prev) => ({ ...prev, bullets: buildCombatBullets(finalConsensus, coolingActive) }));
         setAdversarialNarrative({
@@ -2405,7 +2482,10 @@ export default function Home() {
             ? `Systemic risk tinggi: beta ${betaEstimateLocal.toFixed(2)} di atas threshold.`
             : 'Risiko downside tetap ada jika volume tidak konfirmasi dan IHSG melemah.';
         const sentimentVote = sentimentVoteFromNarrative(fallbackBullish, fallbackBearish, global?.global_sentiment);
-        const finalConsensus = applyRocConsensusGuard(buildConsensus(technicalVote, bandarmologyVote, sentimentVote), rocCritical);
+        const finalConsensus = applyMtfConsensusGuard(
+          applyRocConsensusGuard(buildConsensus(technicalVote, bandarmologyVote, sentimentVote), rocCritical),
+          mtfWarning,
+        );
         setModelConsensus(finalConsensus);
         setCombatMode((prev) => ({ ...prev, bullets: buildCombatBullets(finalConsensus, coolingActive) }));
         setAdversarialNarrative({
@@ -2422,7 +2502,10 @@ export default function Home() {
           ? `Systemic risk tinggi: beta ${betaEstimateLocal.toFixed(2)} di atas threshold.`
           : 'Risiko downside tetap ada jika volume tidak konfirmasi dan IHSG melemah.';
       const sentimentVote = sentimentVoteFromNarrative(fallbackBullish, fallbackBearish, global?.global_sentiment);
-      const finalConsensus = applyRocConsensusGuard(buildConsensus(technicalVote, bandarmologyVote, sentimentVote), rocCritical);
+      const finalConsensus = applyMtfConsensusGuard(
+        applyRocConsensusGuard(buildConsensus(technicalVote, bandarmologyVote, sentimentVote), rocCritical),
+        mtfWarning,
+      );
       setModelConsensus(finalConsensus);
       setCombatMode((prev) => ({ ...prev, bullets: buildCombatBullets(finalConsensus, coolingActive) }));
       setAdversarialNarrative({
@@ -2726,6 +2809,14 @@ export default function Home() {
       return;
     }
 
+    if (mtfValidation.warning && modelConsensus.status === 'CONSENSUS_BULL') {
+      setActionState({
+        busy: false,
+        message: `Alert blocked: multi-timeframe conflict (${mtfValidation.shortTimeframe}:${mtfValidation.shortVote} vs ${mtfValidation.highTimeframe}:${mtfValidation.highVote})`,
+      });
+      return;
+    }
+
     if (championChallenger.warning && championChallenger.swapRecommended && modelConsensus.status === 'CONSENSUS_BULL') {
       setActionState({
         busy: false,
@@ -2892,6 +2983,17 @@ export default function Home() {
         red_flags: newsImpact.redFlags,
         checked_at: newsImpact.checkedAt,
       },
+      multi_timeframe_validation: {
+        warning: mtfValidation.warning,
+        reason: mtfValidation.reason,
+        short_timeframe: mtfValidation.shortTimeframe,
+        high_timeframe: mtfValidation.highTimeframe,
+        short_ups: mtfValidation.shortUps,
+        high_ups: mtfValidation.highUps,
+        short_vote: mtfValidation.shortVote,
+        high_vote: mtfValidation.highVote,
+        checked_at: mtfValidation.checkedAt,
+      },
     };
 
     try {
@@ -3013,6 +3115,15 @@ export default function Home() {
     newsImpact.warning,
     newsImpact.riskLabel,
     newsImpact.penaltyUps,
+    mtfValidation.warning,
+    mtfValidation.reason,
+    mtfValidation.shortTimeframe,
+    mtfValidation.highTimeframe,
+    mtfValidation.shortUps,
+    mtfValidation.highUps,
+    mtfValidation.shortVote,
+    mtfValidation.highVote,
+    mtfValidation.checkedAt,
     championChallenger.warning,
     championChallenger.reason,
     championChallenger.winner,
@@ -3319,6 +3430,7 @@ export default function Home() {
           dataSanity={dataSanity}
           championChallenger={championChallenger}
           newsImpact={newsImpact}
+          mtfValidation={mtfValidation}
         />
       </div>
       {!combatMode.active ? (
