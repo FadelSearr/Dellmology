@@ -221,6 +221,12 @@ interface ModelConsensus {
   message: string;
 }
 
+interface CombatModeState {
+  active: boolean;
+  reason: string;
+  bullets: [string, string, string];
+}
+
 const FALLBACK_MARKET_DATA: ChartPoint[] = [
   { time: '09:00', price: 9200, volume: 4000 },
   { time: '09:30', price: 9250, volume: 3000 },
@@ -277,6 +283,7 @@ const PARTICIPATION_CAP_NORMAL_PCT = envNumber('NEXT_PUBLIC_PARTICIPATION_CAP_NO
 const PARTICIPATION_CAP_KILL_SWITCH_PCT = envNumber('NEXT_PUBLIC_PARTICIPATION_CAP_KILL_SWITCH_PCT', 0.005);
 const SYSTEMIC_RISK_BETA_THRESHOLD = envNumber('NEXT_PUBLIC_SYSTEMIC_RISK_BETA_THRESHOLD', 1.5);
 const SYSTEMIC_RISK_HARD_GATE = envBool('NEXT_PUBLIC_SYSTEMIC_RISK_HARD_GATE', true);
+const COMBAT_MODE_VOLATILITY_PCT = envNumber('NEXT_PUBLIC_COMBAT_MODE_VOLATILITY_PCT', 2.5);
 
 const ROADMAP_DEFAULTS = {
   killSwitchIhsgDropPct: -1.5,
@@ -423,6 +430,22 @@ function buildConsensus(technical: VoteSignal, bandarmology: VoteSignal, sentime
     status: 'CONFUSION',
     message: 'MARKET CONFUSION - STAND ASIDE',
   };
+}
+
+function buildCombatBullets(consensus: ModelConsensus, coolingActive: boolean): [string, string, string] {
+  if (coolingActive) {
+    return ['COOLING OFF ACTIVE', 'RISK FIRST ALWAYS', 'WAIT NEXT CANDLE'];
+  }
+
+  if (!consensus.pass) {
+    return ['MARKET CONFUSION NOW', 'STAND ASIDE FIRST', 'WAIT CLEAR VOTE'];
+  }
+
+  if (consensus.status === 'CONSENSUS_BULL') {
+    return ['BUY PULLBACK ONLY', 'FOLLOW WHALE FLOW', 'USE TIGHT RISK'];
+  }
+
+  return ['WHALE EXIT ALERT', 'REDUCE RISK FAST', 'NO FOMO ENTRY'];
 }
 
 function StatusDot({ status, label }: { status: Tone; label: string }) {
@@ -674,6 +697,7 @@ function CenterPanel({
   currentPrice,
   priceChange,
   prediction,
+  combatMode,
 }: {
   activeSymbol: string;
   timeframe: Timeframe;
@@ -684,6 +708,7 @@ function CenterPanel({
   currentPrice: number;
   priceChange: number;
   prediction: PredictionResponse | null;
+  combatMode: CombatModeState;
 }) {
   const canRenderChart = typeof window !== 'undefined';
   const signalText = signalLabel(upsScore);
@@ -748,7 +773,7 @@ function CenterPanel({
             <div className="h-full w-full" />
           )}
 
-          <div className="absolute bottom-4 left-4 pointer-events-none">
+          {!combatMode.active ? <div className="absolute bottom-4 left-4 pointer-events-none">
             <div className="bg-slate-900/80 backdrop-blur border border-cyan-500/30 p-2 rounded flex items-center space-x-3">
               <div className="w-8 h-8 rounded bg-cyan-500/20 flex items-center justify-center">
                 <Cpu className="w-5 h-5 text-cyan-500" />
@@ -760,7 +785,23 @@ function CenterPanel({
                 </div>
               </div>
             </div>
-          </div>
+          </div> : null}
+
+          {combatMode.active ? (
+            <div className="absolute bottom-4 left-4 right-20 pointer-events-none z-20">
+              <div className="bg-rose-500/10 border border-rose-500/40 rounded p-3 backdrop-blur-sm">
+                <div className="text-[10px] text-rose-300 font-bold uppercase tracking-wider mb-2">Combat Mode</div>
+                <div className="text-[9px] text-slate-300 font-mono mb-2">{combatMode.reason}</div>
+                <ul className="grid grid-cols-3 gap-2 text-[10px] font-bold uppercase">
+                  {combatMode.bullets.map((bullet) => (
+                    <li key={bullet} className="text-center py-1 rounded border border-slate-700 bg-slate-900/60 text-amber-300">
+                      {bullet}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          ) : null}
         </div>
 
         <div className="w-16 border-l border-slate-800 bg-slate-950 flex flex-col-reverse">
@@ -785,12 +826,12 @@ function CenterPanel({
         <div className="flex items-center space-x-4">
           <div className="flex flex-col">
             <span className="text-[10px] text-slate-500 uppercase tracking-widest font-bold">Unified Power Score</span>
-            <span className="text-2xl font-black text-white tracking-tighter">
+            <span className={cn('font-black text-white tracking-tighter', combatMode.active ? 'text-4xl' : 'text-2xl')}>
               {Math.round(upsScore)}<span className="text-lg text-slate-500">/100</span>
             </span>
           </div>
-          <div className="h-10 w-px bg-slate-800 mx-2" />
-          <div className="flex flex-col space-y-1">
+          {!combatMode.active ? <div className="h-10 w-px bg-slate-800 mx-2" /> : null}
+          {!combatMode.active ? <div className="flex flex-col space-y-1">
             <div className="flex items-center space-x-2 text-[10px]">
               <span className="text-slate-400 w-16">Technical</span>
               <div className="w-24 h-1.5 bg-slate-800 rounded-full overflow-hidden">
@@ -809,7 +850,7 @@ function CenterPanel({
                 <div className="h-full bg-amber-500" style={{ width: `${Math.max(20, Math.min(100, upsScore - 10))}%` }} />
               </div>
             </div>
-          </div>
+          </div> : null}
         </div>
 
         <div className="flex-1 mx-8 relative h-4 bg-slate-800 rounded-full overflow-hidden">
@@ -1338,6 +1379,11 @@ export default function Home() {
     breachStreak: 0,
     reason: null,
   });
+  const [combatMode, setCombatMode] = useState<CombatModeState>({
+    active: false,
+    reason: 'Volatility normal',
+    bullets: ['BUY PULLBACK ONLY', 'FOLLOW WHALE FLOW', 'USE TIGHT RISK'],
+  });
   const [modelConsensus, setModelConsensus] = useState<ModelConsensus>({
     technical: 'NEUTRAL',
     bandarmology: 'NEUTRAL',
@@ -1567,6 +1613,7 @@ export default function Home() {
       }));
 
     const volClass = marketIntel?.volatility?.classification || 'MEDIUM';
+    const volPct = Math.abs(Number(marketIntel?.volatility?.percentage || 0));
     const confLabel = confidence?.confidence_label || 'MEDIUM';
     const coolingActive = Boolean(coolingState?.active);
     const betaDenominator = Math.max(0.2, Math.abs(ihsgChangePct));
@@ -1581,6 +1628,14 @@ export default function Home() {
     const preliminarySentimentVote = global?.global_sentiment === 'BULLISH' ? 'BUY' : global?.global_sentiment === 'BEARISH' ? 'SELL' : 'NEUTRAL';
     const preliminaryConsensus = buildConsensus(technicalVote, bandarmologyVote, preliminarySentimentVote);
     setModelConsensus(preliminaryConsensus);
+    const combatActive = volClass.toUpperCase() === 'HIGH' || volPct >= COMBAT_MODE_VOLATILITY_PCT;
+    setCombatMode({
+      active: combatActive,
+      reason: combatActive
+        ? `Volatility ${volClass} (${volPct.toFixed(2)}%) >= ${COMBAT_MODE_VOLATILITY_PCT.toFixed(2)}%`
+        : `Volatility ${volClass} (${volPct.toFixed(2)}%)`,
+      bullets: buildCombatBullets(preliminaryConsensus, coolingActive),
+    });
 
     setNarrative(
       `System: Analyzing ${activeSymbol} market structure...\n\n` +
@@ -1613,7 +1668,9 @@ export default function Home() {
         const narrativeBody = (await narrativeResponse.json()) as { narrative?: string };
         const extracted = extractAdversarialNarrative(narrativeBody.narrative || '');
         const sentimentVote = sentimentVoteFromNarrative(extracted.bullish, extracted.bearish, global?.global_sentiment);
-        setModelConsensus(buildConsensus(technicalVote, bandarmologyVote, sentimentVote));
+        const finalConsensus = buildConsensus(technicalVote, bandarmologyVote, sentimentVote);
+        setModelConsensus(finalConsensus);
+        setCombatMode((prev) => ({ ...prev, bullets: buildCombatBullets(finalConsensus, coolingActive) }));
         setAdversarialNarrative({
           bullish: extracted.bullish,
           bearish: extracted.bearish,
@@ -1627,7 +1684,9 @@ export default function Home() {
             ? `Systemic risk tinggi: beta ${betaEstimateLocal.toFixed(2)} di atas threshold.`
             : 'Risiko downside tetap ada jika volume tidak konfirmasi dan IHSG melemah.';
         const sentimentVote = sentimentVoteFromNarrative(fallbackBullish, fallbackBearish, global?.global_sentiment);
-        setModelConsensus(buildConsensus(technicalVote, bandarmologyVote, sentimentVote));
+        const finalConsensus = buildConsensus(technicalVote, bandarmologyVote, sentimentVote);
+        setModelConsensus(finalConsensus);
+        setCombatMode((prev) => ({ ...prev, bullets: buildCombatBullets(finalConsensus, coolingActive) }));
         setAdversarialNarrative({
           bullish: fallbackBullish,
           bearish: fallbackBearish,
@@ -1642,7 +1701,9 @@ export default function Home() {
           ? `Systemic risk tinggi: beta ${betaEstimateLocal.toFixed(2)} di atas threshold.`
           : 'Risiko downside tetap ada jika volume tidak konfirmasi dan IHSG melemah.';
       const sentimentVote = sentimentVoteFromNarrative(fallbackBullish, fallbackBearish, global?.global_sentiment);
-      setModelConsensus(buildConsensus(technicalVote, bandarmologyVote, sentimentVote));
+      const finalConsensus = buildConsensus(technicalVote, bandarmologyVote, sentimentVote);
+      setModelConsensus(finalConsensus);
+      setCombatMode((prev) => ({ ...prev, bullets: buildCombatBullets(finalConsensus, coolingActive) }));
       setAdversarialNarrative({
         bullish: fallbackBullish,
         bearish: fallbackBearish,
@@ -2208,49 +2269,52 @@ export default function Home() {
           currentPrice={currentPrice}
           priceChange={priceChange}
           prediction={prediction}
+          combatMode={combatMode}
         />
         <RightSidebar brokers={brokers} zData={zData} />
       </div>
-      <BottomPanel
-        narrative={narrative}
-        adversarialNarrative={adversarialNarrative}
-        confidence={modelConfidence}
-        latencyMs={latencyMs}
-        activeSymbol={activeSymbol}
-        upsScore={upsScore}
-        onSendTelegram={sendTelegramAlert}
-        onRunBacktest={runBacktest}
-        onResetDeadman={resetDeadman}
-        onResetCoolingOff={resetCoolingOff}
-        deadmanResetCooldown={deadmanResetCooldown}
-        actionState={actionState}
-        tokenTelemetry={tokenTelemetry}
-        liquidityGuard={liquidityGuard}
-        systemicRisk={systemicRisk}
-        configDrift={configDrift}
-        runtimeConfigSource={runtimeConfigSource}
-        runtimeIhsgDrop={runtimeIhsgDrop}
-        runtimeNormalUps={runtimeNormalUps}
-        runtimeRiskUps={runtimeRiskUps}
-        runtimeParticipationCapNormalPct={runtimeParticipationCapNormalPct}
-        runtimeParticipationCapRiskPct={runtimeParticipationCapRiskPct}
-        runtimeSystemicRiskBetaThreshold={runtimeSystemicRiskBetaThreshold}
-        runtimeRiskAuditStaleHours={runtimeRiskAuditStaleHours}
-        runtimeCoolingOffDrawdownPct={runtimeCoolingOffDrawdownPct}
-        runtimeCoolingOffHours={runtimeCoolingOffHours}
-        runtimeCoolingOffRequiredBreaches={runtimeCoolingOffRequiredBreaches}
-        riskDraft={riskDraft}
-        onRiskDraftChange={onRiskDraftChange}
-        onApplyRiskConfig={onApplyRiskConfig}
-        onResetRiskDraft={onResetRiskDraft}
-        riskConfigLocked={riskConfigLocked}
-        riskConfigLockReason={riskConfigLockReason}
-        riskConfigLockMeta={riskConfigLockMeta}
-        lastRiskAudit={lastRiskAudit}
-        staleAudit={staleAudit}
-        coolingOff={coolingOff}
-        modelConsensus={modelConsensus}
-      />
+      {!combatMode.active ? (
+        <BottomPanel
+          narrative={narrative}
+          adversarialNarrative={adversarialNarrative}
+          confidence={modelConfidence}
+          latencyMs={latencyMs}
+          activeSymbol={activeSymbol}
+          upsScore={upsScore}
+          onSendTelegram={sendTelegramAlert}
+          onRunBacktest={runBacktest}
+          onResetDeadman={resetDeadman}
+          onResetCoolingOff={resetCoolingOff}
+          deadmanResetCooldown={deadmanResetCooldown}
+          actionState={actionState}
+          tokenTelemetry={tokenTelemetry}
+          liquidityGuard={liquidityGuard}
+          systemicRisk={systemicRisk}
+          configDrift={configDrift}
+          runtimeConfigSource={runtimeConfigSource}
+          runtimeIhsgDrop={runtimeIhsgDrop}
+          runtimeNormalUps={runtimeNormalUps}
+          runtimeRiskUps={runtimeRiskUps}
+          runtimeParticipationCapNormalPct={runtimeParticipationCapNormalPct}
+          runtimeParticipationCapRiskPct={runtimeParticipationCapRiskPct}
+          runtimeSystemicRiskBetaThreshold={runtimeSystemicRiskBetaThreshold}
+          runtimeRiskAuditStaleHours={runtimeRiskAuditStaleHours}
+          runtimeCoolingOffDrawdownPct={runtimeCoolingOffDrawdownPct}
+          runtimeCoolingOffHours={runtimeCoolingOffHours}
+          runtimeCoolingOffRequiredBreaches={runtimeCoolingOffRequiredBreaches}
+          riskDraft={riskDraft}
+          onRiskDraftChange={onRiskDraftChange}
+          onApplyRiskConfig={onApplyRiskConfig}
+          onResetRiskDraft={onResetRiskDraft}
+          riskConfigLocked={riskConfigLocked}
+          riskConfigLockReason={riskConfigLockReason}
+          riskConfigLockMeta={riskConfigLockMeta}
+          lastRiskAudit={lastRiskAudit}
+          staleAudit={staleAudit}
+          coolingOff={coolingOff}
+          modelConsensus={modelConsensus}
+        />
+      ) : null}
     </div>
   );
 }
