@@ -284,6 +284,13 @@ interface SpoofingAlertState {
   avgLifetimeSeconds: number;
 }
 
+interface IncompleteDataState {
+  warning: boolean;
+  reason: string | null;
+  maxGapSeconds: number;
+  gapCount: number;
+}
+
 const FALLBACK_MARKET_DATA: ChartPoint[] = [
   { time: '09:00', price: 9200, volume: 4000 },
   { time: '09:30', price: 9250, volume: 3000 },
@@ -348,6 +355,8 @@ const SPOOFING_WALL_MIN_VOLUME = envNumber('NEXT_PUBLIC_SPOOFING_WALL_MIN_VOLUME
 const SPOOFING_MAX_LIFETIME_SECONDS = envNumber('NEXT_PUBLIC_SPOOFING_MAX_LIFETIME_SECONDS', 40);
 const SPOOFING_MIN_DISAPPEARED_WALLS = Math.max(1, Math.floor(envNumber('NEXT_PUBLIC_SPOOFING_MIN_DISAPPEARED_WALLS', 2)));
 const DASHBOARD_POLL_SECONDS = 20;
+const INCOMPLETE_DATA_GAP_SECONDS = envNumber('NEXT_PUBLIC_INCOMPLETE_DATA_GAP_SECONDS', 5);
+const INCOMPLETE_DATA_MIN_GAPS = Math.max(1, Math.floor(envNumber('NEXT_PUBLIC_INCOMPLETE_DATA_MIN_GAPS', 1)));
 
 const ROADMAP_DEFAULTS = {
   killSwitchIhsgDropPct: -1.5,
@@ -433,12 +442,14 @@ function bandarmologyVoteFromFlow(
   brokerCharacterWarning = false,
   lateEntryWarning = false,
   spoofingWarning = false,
+  incompleteDataWarning = false,
 ): VoteSignal {
   if (brokers.length === 0) return 'NEUTRAL';
   if (artificialLiquidityWarning) return 'NEUTRAL';
   if (brokerCharacterWarning) return 'NEUTRAL';
   if (lateEntryWarning) return 'NEUTRAL';
   if (spoofingWarning) return 'NEUTRAL';
+  if (incompleteDataWarning) return 'NEUTRAL';
 
   const whaleNet = brokers.filter((row) => row.type === 'Whale').reduce((sum, row) => sum + row.net, 0);
   const marketNet = brokers.reduce((sum, row) => sum + row.net, 0);
@@ -966,6 +977,7 @@ function RightSidebar({
   divergence,
   rocKillSwitch,
   spoofing,
+  incompleteData,
 }: {
   brokers: BrokerRow[];
   zData: ZScorePoint[];
@@ -974,6 +986,7 @@ function RightSidebar({
   divergence: VolumeProfileDivergenceState;
   rocKillSwitch: RocKillSwitchState;
   spoofing: SpoofingAlertState;
+  incompleteData: IncompleteDataState;
 }) {
   const canRenderChart = typeof window !== 'undefined';
   const hasAlert = zData.some((item) => item.score > 2 || item.score < -2);
@@ -1089,6 +1102,18 @@ function RightSidebar({
             {`Vanish ${spoofing.vanishedWalls} | Lifetime ${spoofing.avgLifetimeSeconds.toFixed(0)}s`}
           </div>
           {spoofing.reason ? <div className="text-[9px] text-slate-500 font-mono mt-1">{spoofing.reason}</div> : null}
+          <div
+            className={cn(
+              'text-[9px] font-mono border rounded px-2 py-1 mt-2',
+              incompleteData.warning ? 'text-rose-300 border-rose-500/40 bg-rose-500/10' : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10',
+            )}
+          >
+            {incompleteData.warning ? 'Incomplete Data' : 'Data Stream Complete'}
+          </div>
+          <div className="text-[9px] text-slate-500 font-mono mt-1">
+            {`MaxGap ${incompleteData.maxGapSeconds.toFixed(1)}s | Gaps ${incompleteData.gapCount}`}
+          </div>
+          {incompleteData.reason ? <div className="text-[9px] text-slate-500 font-mono mt-1">{incompleteData.reason}</div> : null}
         </div>
         <div className="flex-1 px-2 pb-2">
           {canRenderChart ? (
@@ -1619,6 +1644,12 @@ export default function Home() {
     vanishedWalls: 0,
     avgLifetimeSeconds: 0,
   });
+  const [incompleteData, setIncompleteData] = useState<IncompleteDataState>({
+    warning: false,
+    reason: null,
+    maxGapSeconds: 0,
+    gapCount: 0,
+  });
   const bidWallAgesRef = useRef<Map<number, number>>(new Map());
   const spoofingStreakRef = useRef(0);
 
@@ -1711,6 +1742,38 @@ export default function Home() {
       .filter((row) => row.symbol === activeSymbol && typeof row.price === 'number')
       .slice(0, 32)
       .reverse();
+
+    const marketNow = new Date();
+    const marketDay = marketNow.getDay();
+    const marketHour = marketNow.getHours();
+    const marketOpenSession = marketDay >= 1 && marketDay <= 5 && marketHour >= 9 && marketHour <= 16;
+    const snapshotEpochs = snapshotRows
+      .map((row) => new Date(row.created_at).getTime())
+      .filter((value) => Number.isFinite(value))
+      .sort((a, b) => a - b);
+    let maxGapSeconds = 0;
+    let gapCount = 0;
+    for (let index = 1; index < snapshotEpochs.length; index += 1) {
+      const gapSeconds = Math.max(0, (snapshotEpochs[index] - snapshotEpochs[index - 1]) / 1000);
+      if (gapSeconds > maxGapSeconds) {
+        maxGapSeconds = gapSeconds;
+      }
+      if (gapSeconds > INCOMPLETE_DATA_GAP_SECONDS) {
+        gapCount += 1;
+      }
+    }
+    const insufficientStream = marketOpenSession && snapshotRows.length < 3;
+    const incompleteDataWarning = marketOpenSession && (gapCount >= INCOMPLETE_DATA_MIN_GAPS || insufficientStream);
+    setIncompleteData({
+      warning: incompleteDataWarning,
+      reason: incompleteDataWarning
+        ? insufficientStream
+          ? 'Snapshot stream belum cukup untuk validasi kontinuitas data saat market buka.'
+          : `Terdeteksi ${gapCount} gap > ${INCOMPLETE_DATA_GAP_SECONDS.toFixed(0)}s (max ${maxGapSeconds.toFixed(1)}s) saat market buka.`
+        : null,
+      maxGapSeconds,
+      gapCount,
+    });
 
     if (snapshotRows.length >= 2) {
       const dynamicMarketData = snapshotRows.map((row) => ({
@@ -1986,6 +2049,7 @@ export default function Home() {
       brokerCharacterWarning,
       lateEntryWarning,
       spoofingWarning,
+      incompleteDataWarning,
     );
     const preliminarySentimentVote = rocCritical
       ? 'NEUTRAL'
@@ -2015,12 +2079,13 @@ export default function Home() {
         `BCP: ${brokerCharacterWarning ? 'Risk Profile Detected' : 'Stable'}\n` +
         `Volume Profile: ${lateEntryWarning ? 'Late Entry Warning' : 'Normal'}\n` +
         `Order Lifetime: ${spoofingWarning ? 'Spoofing Alert' : 'Stable'}\n` +
+        `Data Integrity: ${incompleteDataWarning ? 'Incomplete Data' : 'Complete'}\n` +
         `RoC Kill-Switch: ${rocCritical ? 'CRITICAL: VOLATILITY SPIKE' : 'Normal'}\n` +
         `Consensus: ${preliminaryConsensus.message}\n` +
         `Cooling-Off: ${coolingActive ? 'ACTIVE (Recommendation Locked)' : 'Clear'}\n` +
         `Whale Flow: ${topWhales || 'No dominant whale detected'}\n` +
         `Model Confidence: ${confLabel} (${Number(confidence?.accuracy_pct || 0).toFixed(1)}%)\n\n` +
-        `> Recommendation: ${coolingActive ? 'Cooling-off active. Stand down and review risk.' : rocCritical ? 'CRITICAL volatility spike. Disable buy and wait stabilization.' : spoofingWarning ? 'Spoofing risk terdeteksi. Hindari entry impulsif.' : nextUps >= minUpsForLong ? 'Momentum entry on pullback.' : nextUps <= 40 ? 'Defensive mode, avoid aggressive entry.' : 'Wait for clearer confirmation.'}`,
+        `> Recommendation: ${coolingActive ? 'Cooling-off active. Stand down and review risk.' : incompleteDataWarning ? 'Data belum lengkap. Tunda aksi sampai stream normal.' : rocCritical ? 'CRITICAL volatility spike. Disable buy and wait stabilization.' : spoofingWarning ? 'Spoofing risk terdeteksi. Hindari entry impulsif.' : nextUps >= minUpsForLong ? 'Momentum entry on pullback.' : nextUps <= 40 ? 'Defensive mode, avoid aggressive entry.' : 'Wait for clearer confirmation.'}`,
     );
 
     try {
@@ -2357,6 +2422,14 @@ export default function Home() {
       return;
     }
 
+    if (incompleteData.warning) {
+      setActionState({
+        busy: false,
+        message: `Alert blocked: incomplete data (${incompleteData.gapCount} gaps, max ${incompleteData.maxGapSeconds.toFixed(1)}s)`,
+      });
+      return;
+    }
+
     if (volumeProfileDivergence.warning && modelConsensus.status === 'CONSENSUS_BULL') {
       setActionState({
         busy: false,
@@ -2460,6 +2533,13 @@ export default function Home() {
               wall_min_volume: SPOOFING_WALL_MIN_VOLUME,
               max_lifetime_seconds: SPOOFING_MAX_LIFETIME_SECONDS,
             },
+            incomplete_data: {
+              warning: incompleteData.warning,
+              reason: incompleteData.reason,
+              gap_count: incompleteData.gapCount,
+              max_gap_seconds: incompleteData.maxGapSeconds,
+              gap_threshold_seconds: INCOMPLETE_DATA_GAP_SECONDS,
+            },
           },
         }),
       });
@@ -2519,6 +2599,10 @@ export default function Home() {
     spoofingAlert.reason,
     spoofingAlert.vanishedWalls,
     spoofingAlert.avgLifetimeSeconds,
+    incompleteData.warning,
+    incompleteData.reason,
+    incompleteData.gapCount,
+    incompleteData.maxGapSeconds,
   ]);
 
   const runBacktest = useCallback(async () => {
@@ -2793,6 +2877,7 @@ export default function Home() {
           divergence={volumeProfileDivergence}
           rocKillSwitch={rocKillSwitch}
           spoofing={spoofingAlert}
+          incompleteData={incompleteData}
         />
       </div>
       {!combatMode.active ? (
