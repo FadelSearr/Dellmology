@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
 export const dynamic = 'force-dynamic';
 
@@ -101,7 +102,12 @@ async function generateNarrative(type: string, data: any, symbol?: string): Prom
     }
   }
 
-  // Mock narratives for now - in production, would call Python service
+  const geminiNarrative = await tryGenerateGeminiNarrative(type, data, symbol);
+  if (geminiNarrative) {
+    return geminiNarrative;
+  }
+
+  // Fallback narratives when Gemini is unavailable
   
   let narrative = '';
   switch (type) {
@@ -124,6 +130,46 @@ async function generateNarrative(type: string, data: any, symbol?: string): Prom
 
   const bearishCounterCase = generateBearishCounterCase(type, data);
   return `${narrative}\n\n🛡️ Bearish Counter-Case:\n${bearishCounterCase}`;
+}
+
+async function tryGenerateGeminiNarrative(type: string, data: any, symbol?: string): Promise<string | null> {
+  try {
+    if (!process.env.GEMINI_API_KEY) {
+      return null;
+    }
+
+    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+
+    const compactData = JSON.stringify(data, null, 2).slice(0, 6000);
+    const prompt = [
+      'You are an institutional-grade Indonesia market analyst for Dellmology Pro.',
+      'Return analysis in Bahasa Indonesia with short, practical format.',
+      `Context type: ${type}`,
+      `Symbol: ${symbol || 'N/A'}`,
+      'Use only provided data summary below. Do not invent hidden numbers.',
+      '',
+      'Required output format exactly:',
+      '1) Kesimpulan Utama: <1-2 kalimat>',
+      '2) Sinyal Konfirmasi: <maks 3 bullet poin>',
+      '3) Risiko Bearish (Counter-Case): <3 bullet poin>',
+      '4) Rencana Taktis: <entry/hold/avoid + alasan singkat>',
+      '',
+      'Data Summary:',
+      compactData,
+    ].join('\n');
+
+    const result = await model.generateContent(prompt);
+    const text = result.response.text().trim();
+    if (!text) {
+      return null;
+    }
+
+    return text;
+  } catch (error) {
+    console.warn('Gemini narrative generation failed, fallback to local narrative:', error);
+    return null;
+  }
 }
 
 function calculateNarrativeConfidence(type: string, data: any): { score: number; label: 'LOW' | 'MEDIUM' | 'HIGH' } {

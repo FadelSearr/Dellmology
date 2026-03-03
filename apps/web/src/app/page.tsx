@@ -110,6 +110,26 @@ interface PredictionResponse {
   };
 }
 
+interface GlobalCorrelationResponse {
+  gold?: number;
+  coal?: number;
+  nickel?: number;
+  ihsg?: number;
+  dji?: number;
+  change_gold?: number;
+  change_coal?: number;
+  change_nickel?: number;
+  change_ihsg?: number;
+  change_dji?: number;
+  correlation_strength?: number;
+  global_sentiment?: 'BULLISH' | 'BEARISH';
+}
+
+interface ActionState {
+  busy: boolean;
+  message: string | null;
+}
+
 const FALLBACK_MARKET_DATA: ChartPoint[] = [
   { time: '09:00', price: 9200, volume: 4000 },
   { time: '09:30', price: 9250, volume: 3000 },
@@ -139,6 +159,12 @@ const FALLBACK_BROKER: BrokerRow[] = [
   { broker: 'PD', type: 'Retail', net: -2.1e9, score: 40, action: 'Sell', z: -0.5 },
   { broker: 'ZP', type: 'Whale', net: 8.9e9, score: 82, action: 'Buy', z: 1.1 },
 ];
+
+const FALLBACK_HEATMAP = Array.from({ length: 40 }, (_, index) => ({
+  price: 9400 + index * 25,
+  volume: 700 + ((index * 173) % 5000),
+  type: (index > 20 ? 'Ask' : 'Bid') as 'Bid' | 'Ask',
+}));
 
 function cn(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(' ');
@@ -227,17 +253,29 @@ function TopNavigation({
   setSymbolInput,
   applySymbol,
   infraStatus,
+  globalData,
 }: {
   symbolInput: string;
   setSymbolInput: (value: string) => void;
   applySymbol: () => void;
   infraStatus: { sse: Tone; db: Tone; integrity: Tone };
+  globalData: GlobalCorrelationResponse | null;
 }) {
+  const tapeItems = [
+    { label: 'GOLD', price: Number(globalData?.gold || 0), change: Number(globalData?.change_gold || 0), tone: 'text-yellow-500' },
+    { label: 'COAL', price: Number(globalData?.coal || 0), change: Number(globalData?.change_coal || 0), tone: 'text-slate-300' },
+    { label: 'NICKEL', price: Number(globalData?.nickel || 0), change: Number(globalData?.change_nickel || 0), tone: 'text-cyan-400' },
+    { label: 'IHSG', price: Number(globalData?.ihsg || 0), change: Number(globalData?.change_ihsg || 0), tone: 'text-slate-300' },
+    { label: 'DJI', price: Number(globalData?.dji || 0), change: Number(globalData?.change_dji || 0), tone: 'text-slate-300' },
+  ];
+
+  const correlationLabel = Number(globalData?.correlation_strength || 0) >= 0.7 ? 'HIGH' : Number(globalData?.correlation_strength || 0) >= 0.45 ? 'MEDIUM' : 'LOW';
+
   return (
     <header className="h-12 bg-slate-950 border-b border-slate-800 flex items-center px-4 justify-between shrink-0 z-50">
       <div className="flex items-center space-x-6">
         <div className="flex items-center space-x-2 font-bold text-white tracking-tight">
-          <div className="w-8 h-8 bg-gradient-to-br from-cyan-500 to-blue-600 rounded flex items-center justify-center text-xs font-black shadow-lg shadow-cyan-900/20">
+          <div className="w-8 h-8 bg-linear-to-br from-cyan-500 to-blue-600 rounded flex items-center justify-center text-xs font-black shadow-lg shadow-cyan-900/20">
             DP
           </div>
           <span className="hidden md:inline">
@@ -270,17 +308,17 @@ function TopNavigation({
 
       <div className="flex-1 mx-8 overflow-hidden relative mask-linear-fade">
         <div className="ticker-track flex space-x-8 whitespace-nowrap text-xs font-mono text-slate-400">
+          {tapeItems.map((item) => (
+            <span key={item.label} className="flex items-center space-x-1">
+              <span className={item.tone}>{item.label}</span>
+              <span>{item.price.toLocaleString('en-US', { maximumFractionDigits: 2 })}</span>
+              <span className={item.change >= 0 ? 'text-emerald-500' : 'text-rose-500'}>
+                ({item.change >= 0 ? '+' : ''}{item.change.toFixed(2)}%)
+              </span>
+            </span>
+          ))}
           <span className="flex items-center space-x-1">
-            <span className="text-yellow-500">NICKEL</span> <span>16,200</span> <span className="text-emerald-500">(+2.1%)</span>
-          </span>
-          <span className="flex items-center space-x-1">
-            <span className="text-slate-300">IHSG</span> <span>7,245.12</span> <span className="text-emerald-500">(+0.8%)</span>
-          </span>
-          <span className="flex items-center space-x-1">
-            <span className="text-blue-400">BTC</span> <span>64,230</span> <span className="text-emerald-500">(+1.5%)</span>
-          </span>
-          <span className="flex items-center space-x-1">
-            <span className="text-slate-500">CORRELATION:</span> <span className="text-cyan-500">HIGH</span>
+            <span className="text-slate-500">CORRELATION:</span> <span className="text-cyan-500">{correlationLabel}</span>
           </span>
         </div>
       </div>
@@ -417,12 +455,6 @@ function CenterPanel({
   priceChange: number;
   prediction: PredictionResponse | null;
 }) {
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
   const signalText = signalLabel(upsScore);
   const confidenceUp = Number(prediction?.data?.confidence_up || 0);
   const confidenceDown = Number(prediction?.data?.confidence_down || 0);
@@ -459,31 +491,27 @@ function CenterPanel({
 
       <div className="flex-1 flex relative">
         <div className="flex-1 relative">
-          {mounted ? (
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={marketData} margin={{ top: 80, right: 10, left: 0, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="colorPrice" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.2} />
-                    <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-                <XAxis dataKey="time" hide />
-                <YAxis orientation="right" domain={['auto', 'auto']} stroke="#475569" fontSize={10} tickFormatter={(value) => value.toLocaleString()} />
-                <Tooltip contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '4px', fontSize: '12px' }} itemStyle={{ color: '#e2e8f0' }} />
-                <Area type="monotone" dataKey="price" stroke="#10b981" strokeWidth={2} fillOpacity={1} fill="url(#colorPrice)" />
-                <ReferenceLine
-                  x={marketData[Math.max(0, Math.floor(marketData.length / 2))]?.time}
-                  stroke="#06b6d4"
-                  strokeDasharray="3 3"
-                  label={{ position: 'top', value: `${signalText.toUpperCase()} DETECTED`, fill: '#06b6d4', fontSize: 10, fontWeight: 'bold' }}
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          ) : (
-            <div className="h-full w-full" />
-          )}
+          <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={1}>
+            <AreaChart data={marketData} margin={{ top: 80, right: 10, left: 0, bottom: 0 }}>
+              <defs>
+                <linearGradient id="colorPrice" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#10b981" stopOpacity={0.2} />
+                  <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+              <XAxis dataKey="time" hide />
+              <YAxis orientation="right" domain={['auto', 'auto']} stroke="#475569" fontSize={10} tickFormatter={(value) => value.toLocaleString()} />
+              <Tooltip contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '4px', fontSize: '12px' }} itemStyle={{ color: '#e2e8f0' }} />
+              <Area type="monotone" dataKey="price" stroke="#10b981" strokeWidth={2} fillOpacity={1} fill="url(#colorPrice)" />
+              <ReferenceLine
+                x={marketData[Math.max(0, Math.floor(marketData.length / 2))]?.time}
+                stroke="#06b6d4"
+                strokeDasharray="3 3"
+                label={{ position: 'top', value: `${signalText.toUpperCase()} DETECTED`, fill: '#06b6d4', fontSize: 10, fontWeight: 'bold' }}
+              />
+            </AreaChart>
+          </ResponsiveContainer>
 
           <div className="absolute bottom-4 left-4 pointer-events-none">
             <div className="bg-slate-900/80 backdrop-blur border border-cyan-500/30 p-2 rounded flex items-center space-x-3">
@@ -550,7 +578,7 @@ function CenterPanel({
         </div>
 
         <div className="flex-1 mx-8 relative h-4 bg-slate-800 rounded-full overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-r from-rose-600 via-amber-500 to-emerald-500 opacity-80" />
+          <div className="absolute inset-0 bg-linear-to-r from-rose-600 via-amber-500 to-emerald-500 opacity-80" />
           <div className="absolute top-0 bottom-0 w-1 bg-white shadow-[0_0_10px_white] z-10" style={{ left: `${upsScore}%` }} />
           <div className="absolute inset-0 flex justify-between items-center px-2 text-[9px] font-bold text-black/50 uppercase mix-blend-overlay">
             <span>Strong Sell</span>
@@ -570,12 +598,6 @@ function CenterPanel({
 }
 
 function RightSidebar({ brokers, zData }: { brokers: BrokerRow[]; zData: ZScorePoint[] }) {
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
   const hasAlert = zData.some((item) => item.score > 2 || item.score < -2);
 
   return (
@@ -625,23 +647,19 @@ function RightSidebar({ brokers, zData }: { brokers: BrokerRow[]; zData: ZScoreP
           <StatusDot status={hasAlert ? 'warning' : 'good'} label={hasAlert ? 'Alert: > 2σ' : 'Normal'} />
         </div>
         <div className="flex-1 px-2 pb-2">
-          {mounted ? (
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={zData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-                <XAxis dataKey="time" hide />
-                <Tooltip cursor={{ fill: '#1e293b' }} contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #334155', fontSize: '10px' }} />
-                <ReferenceLine y={0} stroke="#475569" />
-                <Bar dataKey="score" radius={[2, 2, 0, 0]}>
-                  {zData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.score > 2 ? '#f59e0b' : entry.score > 0 ? '#10b981' : '#f43f5e'} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          ) : (
-            <div className="h-full w-full" />
-          )}
+          <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={1}>
+            <BarChart data={zData}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+              <XAxis dataKey="time" hide />
+              <Tooltip cursor={{ fill: '#1e293b' }} contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #334155', fontSize: '10px' }} />
+              <ReferenceLine y={0} stroke="#475569" />
+              <Bar dataKey="score" radius={[2, 2, 0, 0]}>
+                {zData.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={entry.score > 2 ? '#f59e0b' : entry.score > 0 ? '#10b981' : '#f43f5e'} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
         </div>
       </div>
 
@@ -673,10 +691,20 @@ function BottomPanel({
   narrative,
   confidence,
   latencyMs,
+  activeSymbol,
+  upsScore,
+  onSendTelegram,
+  onRunBacktest,
+  actionState,
 }: {
   narrative: string;
   confidence: ModelConfidenceResponse | null;
   latencyMs: number;
+  activeSymbol: string;
+  upsScore: number;
+  onSendTelegram: () => void;
+  onRunBacktest: () => void;
+  actionState: ActionState;
 }) {
   const label = confidence?.confidence_label || 'MEDIUM';
   const accuracy = Number(confidence?.accuracy_pct || 0);
@@ -731,14 +759,25 @@ function BottomPanel({
       <div className="w-48 flex flex-col bg-slate-950">
         <SectionHeader title="Actions" icon={Target} />
         <div className="p-3 grid grid-cols-1 gap-2">
-          <button className="flex items-center justify-center space-x-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold py-2 rounded transition-colors">
+          <button
+            onClick={onSendTelegram}
+            disabled={actionState.busy}
+            className="flex items-center justify-center space-x-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-xs font-bold py-2 rounded transition-colors"
+          >
             <Send className="w-3.5 h-3.5" />
             <span>Telegram Alert</span>
           </button>
-          <button className="flex items-center justify-center space-x-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold py-2 rounded transition-colors border border-slate-700">
+          <button
+            onClick={onRunBacktest}
+            disabled={actionState.busy}
+            className="flex items-center justify-center space-x-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-200 text-xs font-bold py-2 rounded transition-colors border border-slate-700"
+          >
             <Clock className="w-3.5 h-3.5" />
             <span>Backtest Rig</span>
           </button>
+          <div className="text-[9px] text-cyan-400 border border-slate-800 rounded px-2 py-1 bg-slate-900/40">
+            {actionState.message || `Ready: ${activeSymbol} | UPS ${Math.round(upsScore)}`}
+          </div>
           <div className="mt-2 pt-2 border-t border-slate-800 text-center">
             <span className="text-[9px] text-slate-600 block mb-1">SYSTEM LATENCY</span>
             <span className="text-[10px] text-emerald-500 font-mono">{latencyMs}ms</span>
@@ -758,11 +797,7 @@ export default function Home() {
   const [brokers, setBrokers] = useState<BrokerRow[]>(FALLBACK_BROKER);
   const [zData, setZData] = useState<ZScorePoint[]>(FALLBACK_BROKER.map((item) => ({ time: item.broker, score: item.z })));
   const [heatmapData, setHeatmapData] = useState<Array<{ price: number; volume: number; type: 'Bid' | 'Ask' }>>(
-    Array.from({ length: 40 }, (_, index) => ({
-      price: 9400 + index * 25,
-      volume: Math.floor(Math.random() * 5000) + 500,
-      type: index > 20 ? 'Ask' : 'Bid',
-    })),
+    FALLBACK_HEATMAP,
   );
 
   const [upsScore, setUpsScore] = useState(88);
@@ -770,6 +805,8 @@ export default function Home() {
   const [prediction, setPrediction] = useState<PredictionResponse | null>(null);
   const [narrative, setNarrative] = useState('System: Waiting for market stream...');
   const [latencyMs, setLatencyMs] = useState(12);
+  const [globalData, setGlobalData] = useState<GlobalCorrelationResponse | null>(null);
+  const [actionState, setActionState] = useState<ActionState>({ busy: false, message: null });
 
   const [infraStatus, setInfraStatus] = useState<{ sse: Tone; db: Tone; integrity: Tone }>({
     sse: 'good',
@@ -797,6 +834,7 @@ export default function Home() {
       fetch(`/api/model-confidence?symbol=${activeSymbol}`).then((response) => (response.ok ? response.json() : null)).catch(() => null),
       fetch(`/api/prediction?symbol=${activeSymbol}`).then((response) => (response.ok ? response.json() : null)).catch(() => null),
       fetch('/api/health').then((response) => (response.ok ? response.json() : null)).catch(() => null),
+      fetch('/api/global-correlation').then((response) => (response.ok ? response.json() : null)).catch(() => null),
     ]);
 
     const marketIntel = requests[0] as MarketIntelResponse | null;
@@ -806,6 +844,7 @@ export default function Home() {
     const confidence = requests[4] as ModelConfidenceResponse | null;
     const pred = requests[5] as PredictionResponse | null;
     const health = requests[6] as { sse_connected?: boolean; db_connected?: boolean; data_integrity?: boolean } | null;
+    const global = requests[7] as GlobalCorrelationResponse | null;
 
     const snapshotRows = (snapshots?.snapshots || [])
       .filter((row) => row.symbol === activeSymbol && typeof row.price === 'number')
@@ -852,6 +891,7 @@ export default function Home() {
     setUpsScore(nextUps);
     setModelConfidence(confidence);
     setPrediction(pred);
+    setGlobalData(global);
 
     if (health) {
       setInfraStatus({
@@ -887,18 +927,89 @@ export default function Home() {
   }, [activeSymbol, timeframe, marketData]);
 
   useEffect(() => {
-    fetchDashboard();
-    const timer = window.setInterval(fetchDashboard, 20_000);
-    return () => window.clearInterval(timer);
+    const run = () => {
+      void fetchDashboard();
+    };
+    const kickoff = window.setTimeout(run, 0);
+    const timer = window.setInterval(run, 20_000);
+    return () => {
+      window.clearTimeout(kickoff);
+      window.clearInterval(timer);
+    };
   }, [fetchDashboard]);
 
   const currentPrice = marketData[marketData.length - 1]?.price || FALLBACK_MARKET_DATA[FALLBACK_MARKET_DATA.length - 1].price;
   const basePrice = marketData[0]?.price || FALLBACK_MARKET_DATA[0].price;
   const priceChange = basePrice > 0 ? ((currentPrice - basePrice) / basePrice) * 100 : 0;
 
+  const sendTelegramAlert = useCallback(async () => {
+    setActionState({ busy: true, message: 'Sending Telegram alert...' });
+    try {
+      const response = await fetch('/api/telegram-alert', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'trading',
+          symbol: activeSymbol,
+          data: {
+            ups_score: Math.round(upsScore),
+            signal: signalLabel(upsScore).toUpperCase(),
+            price: currentPrice,
+            timeframe,
+          },
+        }),
+      });
+      const body = (await response.json()) as { success?: boolean; error?: string };
+      if (!response.ok || !body.success) {
+        throw new Error(body.error || 'Failed to send alert');
+      }
+      setActionState({ busy: false, message: `Telegram sent for ${activeSymbol}` });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to send alert';
+      setActionState({ busy: false, message: `Telegram failed: ${message}` });
+    }
+  }, [activeSymbol, currentPrice, timeframe, upsScore]);
+
+  const runBacktest = useCallback(async () => {
+    setActionState({ busy: true, message: 'Running backtest...' });
+    try {
+      const now = new Date();
+      const endDate = now.toISOString().slice(0, 10);
+      const startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+      const response = await fetch('/api/backtest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          symbol: activeSymbol,
+          start_date: startDate,
+          end_date: endDate,
+          strategy: 'default',
+        }),
+      });
+      const body = (await response.json()) as { success?: boolean; error?: string; result?: { win_rate?: number; total_trades?: number } };
+      if (!response.ok || !body.success) {
+        throw new Error(body.error || 'Backtest failed');
+      }
+      setActionState({
+        busy: false,
+        message: `Backtest done: ${Number(body.result?.win_rate || 0).toFixed(1)}% WR (${Number(body.result?.total_trades || 0)} trades)`,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Backtest failed';
+      setActionState({ busy: false, message: `Backtest failed: ${message}` });
+    }
+  }, [activeSymbol]);
+
   return (
     <div className="h-screen w-screen bg-black text-slate-200 selection:bg-cyan-500/30 overflow-hidden flex flex-col">
-      <TopNavigation symbolInput={symbolInput} setSymbolInput={setSymbolInput} applySymbol={applySymbol} infraStatus={infraStatus} />
+      <TopNavigation
+        symbolInput={symbolInput}
+        setSymbolInput={setSymbolInput}
+        applySymbol={applySymbol}
+        infraStatus={infraStatus}
+        globalData={globalData}
+      />
       <div className="flex-1 flex min-h-0">
         <LeftSidebar activeSymbol={activeSymbol} setActiveSymbol={(symbol) => setActiveSymbol(symbol.toUpperCase())} currentPrice={currentPrice} priceChangePct={priceChange} />
         <CenterPanel
@@ -914,7 +1025,16 @@ export default function Home() {
         />
         <RightSidebar brokers={brokers} zData={zData} />
       </div>
-      <BottomPanel narrative={narrative} confidence={modelConfidence} latencyMs={latencyMs} />
+      <BottomPanel
+        narrative={narrative}
+        confidence={modelConfidence}
+        latencyMs={latencyMs}
+        activeSymbol={activeSymbol}
+        upsScore={upsScore}
+        onSendTelegram={sendTelegramAlert}
+        onRunBacktest={runBacktest}
+        actionState={actionState}
+      />
     </div>
   );
 }
