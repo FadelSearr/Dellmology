@@ -291,6 +291,15 @@ interface IncompleteDataState {
   gapCount: number;
 }
 
+interface PriceCrossCheckState {
+  warning: boolean;
+  reason: string | null;
+  thresholdPct: number;
+  flaggedSymbols: string[];
+  maxDeviationPct: number;
+  checkedAt: string | null;
+}
+
 const FALLBACK_MARKET_DATA: ChartPoint[] = [
   { time: '09:00', price: 9200, volume: 4000 },
   { time: '09:30', price: 9250, volume: 3000 },
@@ -357,6 +366,7 @@ const SPOOFING_MIN_DISAPPEARED_WALLS = Math.max(1, Math.floor(envNumber('NEXT_PU
 const DASHBOARD_POLL_SECONDS = 20;
 const INCOMPLETE_DATA_GAP_SECONDS = envNumber('NEXT_PUBLIC_INCOMPLETE_DATA_GAP_SECONDS', 5);
 const INCOMPLETE_DATA_MIN_GAPS = Math.max(1, Math.floor(envNumber('NEXT_PUBLIC_INCOMPLETE_DATA_MIN_GAPS', 1)));
+const PRICE_CROSS_CHECK_THRESHOLD_PCT = envNumber('NEXT_PUBLIC_PRICE_CROSS_CHECK_THRESHOLD_PCT', 2);
 
 const ROADMAP_DEFAULTS = {
   killSwitchIhsgDropPct: -1.5,
@@ -443,6 +453,7 @@ function bandarmologyVoteFromFlow(
   lateEntryWarning = false,
   spoofingWarning = false,
   incompleteDataWarning = false,
+  crossCheckWarning = false,
 ): VoteSignal {
   if (brokers.length === 0) return 'NEUTRAL';
   if (artificialLiquidityWarning) return 'NEUTRAL';
@@ -450,6 +461,7 @@ function bandarmologyVoteFromFlow(
   if (lateEntryWarning) return 'NEUTRAL';
   if (spoofingWarning) return 'NEUTRAL';
   if (incompleteDataWarning) return 'NEUTRAL';
+  if (crossCheckWarning) return 'NEUTRAL';
 
   const whaleNet = brokers.filter((row) => row.type === 'Whale').reduce((sum, row) => sum + row.net, 0);
   const marketNet = brokers.reduce((sum, row) => sum + row.net, 0);
@@ -978,6 +990,7 @@ function RightSidebar({
   rocKillSwitch,
   spoofing,
   incompleteData,
+  priceCrossCheck,
 }: {
   brokers: BrokerRow[];
   zData: ZScorePoint[];
@@ -987,6 +1000,7 @@ function RightSidebar({
   rocKillSwitch: RocKillSwitchState;
   spoofing: SpoofingAlertState;
   incompleteData: IncompleteDataState;
+  priceCrossCheck: PriceCrossCheckState;
 }) {
   const canRenderChart = typeof window !== 'undefined';
   const hasAlert = zData.some((item) => item.score > 2 || item.score < -2);
@@ -1114,6 +1128,18 @@ function RightSidebar({
             {`MaxGap ${incompleteData.maxGapSeconds.toFixed(1)}s | Gaps ${incompleteData.gapCount}`}
           </div>
           {incompleteData.reason ? <div className="text-[9px] text-slate-500 font-mono mt-1">{incompleteData.reason}</div> : null}
+          <div
+            className={cn(
+              'text-[9px] font-mono border rounded px-2 py-1 mt-2',
+              priceCrossCheck.warning ? 'text-rose-300 border-rose-500/40 bg-rose-500/10' : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10',
+            )}
+          >
+            {priceCrossCheck.warning ? 'Cross-Check Lock' : 'Cross-Check OK'}
+          </div>
+          <div className="text-[9px] text-slate-500 font-mono mt-1">
+            {`MaxDev ${priceCrossCheck.maxDeviationPct.toFixed(2)}% | Thr ${priceCrossCheck.thresholdPct.toFixed(2)}%`}
+          </div>
+          {priceCrossCheck.reason ? <div className="text-[9px] text-slate-500 font-mono mt-1">{priceCrossCheck.reason}</div> : null}
         </div>
         <div className="flex-1 px-2 pb-2">
           {canRenderChart ? (
@@ -1650,6 +1676,14 @@ export default function Home() {
     maxGapSeconds: 0,
     gapCount: 0,
   });
+  const [priceCrossCheck, setPriceCrossCheck] = useState<PriceCrossCheckState>({
+    warning: false,
+    reason: null,
+    thresholdPct: PRICE_CROSS_CHECK_THRESHOLD_PCT,
+    flaggedSymbols: [],
+    maxDeviationPct: 0,
+    checkedAt: null,
+  });
   const bidWallAgesRef = useRef<Map<number, number>>(new Map());
   const spoofingStreakRef = useRef(0);
 
@@ -1690,6 +1724,11 @@ export default function Home() {
       fetch('/api/risk-config/audit/verify?limit=200').then((response) => (response.ok ? response.json() : null)).catch(() => null),
       fetch('/api/system-control/cooling-off').then((response) => (response.ok ? response.json() : null)).catch(() => null),
       fetch(`/api/system-control/deployment-gate?evaluate=1&symbol=${activeSymbol}&limit=100`)
+        .then((response) => (response.ok ? response.json() : null))
+        .catch(() => null),
+      fetch(
+        `/api/price-cross-check?symbols=${encodeURIComponent(Array.from(new Set([activeSymbol, 'BBCA', 'ASII', 'TLKM'])).join(','))}&thresholdPct=${PRICE_CROSS_CHECK_THRESHOLD_PCT}`,
+      )
         .then((response) => (response.ok ? response.json() : null))
         .catch(() => null),
     ]);
@@ -1736,6 +1775,13 @@ export default function Home() {
       blocked?: boolean;
       reason?: string | null;
       checked_at?: string | null;
+    } | null;
+    const crossCheck = requests[13] as {
+      lock_recommended?: boolean;
+      threshold_pct?: number;
+      flagged_symbols?: string[];
+      checked_at?: string;
+      rows?: Array<{ symbol?: string; deviation_pct?: number | null; flagged?: boolean }>;
     } | null;
 
     const snapshotRows = (snapshots?.snapshots || [])
@@ -1877,6 +1923,23 @@ export default function Home() {
         checkedAt: deployGate.checked_at || null,
       });
     }
+
+    const flaggedSymbols = (crossCheck?.flagged_symbols || []).filter((symbol): symbol is string => typeof symbol === 'string' && symbol.length > 0);
+    const maxDeviationPct = (crossCheck?.rows || []).reduce((max, row) => {
+      const value = typeof row.deviation_pct === 'number' ? row.deviation_pct : 0;
+      return value > max ? value : max;
+    }, 0);
+    const crossCheckWarning = Boolean(crossCheck?.lock_recommended) || flaggedSymbols.includes(activeSymbol);
+    setPriceCrossCheck({
+      warning: crossCheckWarning,
+      reason: crossCheckWarning
+        ? `Price mismatch > ${(Number(crossCheck?.threshold_pct || PRICE_CROSS_CHECK_THRESHOLD_PCT)).toFixed(2)}% pada ${flaggedSymbols.join(', ') || activeSymbol}.`
+        : null,
+      thresholdPct: Number(crossCheck?.threshold_pct || PRICE_CROSS_CHECK_THRESHOLD_PCT),
+      flaggedSymbols,
+      maxDeviationPct,
+      checkedAt: crossCheck?.checked_at || null,
+    });
 
     const ihsgChangePct = Number(global?.change_ihsg || 0);
     const runtimeIhsgDrop = Number(runtimeConfig?.config?.ihsg_risk_trigger_pct ?? KILL_SWITCH_IHSG_DROP_PCT);
@@ -2050,6 +2113,7 @@ export default function Home() {
       lateEntryWarning,
       spoofingWarning,
       incompleteDataWarning,
+      crossCheckWarning,
     );
     const preliminarySentimentVote = rocCritical
       ? 'NEUTRAL'
@@ -2080,12 +2144,13 @@ export default function Home() {
         `Volume Profile: ${lateEntryWarning ? 'Late Entry Warning' : 'Normal'}\n` +
         `Order Lifetime: ${spoofingWarning ? 'Spoofing Alert' : 'Stable'}\n` +
         `Data Integrity: ${incompleteDataWarning ? 'Incomplete Data' : 'Complete'}\n` +
+        `Cross-Check: ${crossCheckWarning ? 'LOCK' : 'OK'}\n` +
         `RoC Kill-Switch: ${rocCritical ? 'CRITICAL: VOLATILITY SPIKE' : 'Normal'}\n` +
         `Consensus: ${preliminaryConsensus.message}\n` +
         `Cooling-Off: ${coolingActive ? 'ACTIVE (Recommendation Locked)' : 'Clear'}\n` +
         `Whale Flow: ${topWhales || 'No dominant whale detected'}\n` +
         `Model Confidence: ${confLabel} (${Number(confidence?.accuracy_pct || 0).toFixed(1)}%)\n\n` +
-        `> Recommendation: ${coolingActive ? 'Cooling-off active. Stand down and review risk.' : incompleteDataWarning ? 'Data belum lengkap. Tunda aksi sampai stream normal.' : rocCritical ? 'CRITICAL volatility spike. Disable buy and wait stabilization.' : spoofingWarning ? 'Spoofing risk terdeteksi. Hindari entry impulsif.' : nextUps >= minUpsForLong ? 'Momentum entry on pullback.' : nextUps <= 40 ? 'Defensive mode, avoid aggressive entry.' : 'Wait for clearer confirmation.'}`,
+        `> Recommendation: ${coolingActive ? 'Cooling-off active. Stand down and review risk.' : crossCheckWarning ? 'Cross-check lock aktif. Tahan eksekusi sampai harga sinkron.' : incompleteDataWarning ? 'Data belum lengkap. Tunda aksi sampai stream normal.' : rocCritical ? 'CRITICAL volatility spike. Disable buy and wait stabilization.' : spoofingWarning ? 'Spoofing risk terdeteksi. Hindari entry impulsif.' : nextUps >= minUpsForLong ? 'Momentum entry on pullback.' : nextUps <= 40 ? 'Defensive mode, avoid aggressive entry.' : 'Wait for clearer confirmation.'}`,
     );
 
     try {
@@ -2422,6 +2487,14 @@ export default function Home() {
       return;
     }
 
+    if (priceCrossCheck.warning) {
+      setActionState({
+        busy: false,
+        message: `Alert blocked: cross-check lock (${priceCrossCheck.flaggedSymbols.join(', ') || activeSymbol})`,
+      });
+      return;
+    }
+
     if (incompleteData.warning) {
       setActionState({
         busy: false,
@@ -2540,6 +2613,14 @@ export default function Home() {
               max_gap_seconds: incompleteData.maxGapSeconds,
               gap_threshold_seconds: INCOMPLETE_DATA_GAP_SECONDS,
             },
+            price_cross_check: {
+              warning: priceCrossCheck.warning,
+              reason: priceCrossCheck.reason,
+              flagged_symbols: priceCrossCheck.flaggedSymbols,
+              threshold_pct: priceCrossCheck.thresholdPct,
+              max_deviation_pct: priceCrossCheck.maxDeviationPct,
+              checked_at: priceCrossCheck.checkedAt,
+            },
           },
         }),
       });
@@ -2603,6 +2684,12 @@ export default function Home() {
     incompleteData.reason,
     incompleteData.gapCount,
     incompleteData.maxGapSeconds,
+    priceCrossCheck.warning,
+    priceCrossCheck.reason,
+    priceCrossCheck.flaggedSymbols,
+    priceCrossCheck.thresholdPct,
+    priceCrossCheck.maxDeviationPct,
+    priceCrossCheck.checkedAt,
   ]);
 
   const runBacktest = useCallback(async () => {
@@ -2878,6 +2965,7 @@ export default function Home() {
           rocKillSwitch={rocKillSwitch}
           spoofing={spoofingAlert}
           incompleteData={incompleteData}
+          priceCrossCheck={priceCrossCheck}
         />
       </div>
       {!combatMode.active ? (
