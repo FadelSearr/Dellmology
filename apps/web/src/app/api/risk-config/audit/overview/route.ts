@@ -3,6 +3,39 @@ import { createHash } from 'crypto';
 import { db } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
+const OVERVIEW_CACHE_TTL_MS = 5_000;
+const OVERVIEW_THROTTLE_MS = 1_500;
+
+type OverviewPayload = {
+  success: boolean;
+  key: string;
+  chain: {
+    valid: boolean;
+    checked_rows: number;
+    hash_mismatches: number;
+    linkage_mismatches: number;
+    verified_at: string;
+  };
+  transition: { changed: boolean; event_type: 'LOCK' | 'UNLOCK' | null };
+  recent_events: LockEventRow[];
+  latest_audit: Record<string, unknown> | null;
+  alert_gate: {
+    cooldown_ms: number;
+    lock: {
+      last_alert_at: string | null;
+      remaining_ms: number;
+    };
+    unlock: {
+      last_alert_at: string | null;
+      remaining_ms: number;
+    };
+  };
+  state: Record<string, unknown> | null;
+};
+
+const overviewCache = new Map<string, { payload: OverviewPayload; expiresAt: number; createdAt: number }>();
+const overviewLastRequestAt = new Map<string, number>();
+const overviewInFlight = new Map<string, Promise<OverviewPayload>>();
 
 interface AuditRow {
   id: number;
@@ -35,70 +68,155 @@ export async function GET(request: Request) {
     const verifyLimit = Math.min(500, Math.max(1, Number(searchParams.get('verify_limit') || 200)));
     const eventLimit = Math.min(20, Math.max(1, Number(searchParams.get('event_limit') || 5)));
     const cooldownMs = Math.min(60 * 60 * 1000, Math.max(30 * 1000, Number(searchParams.get('cooldown_ms') || 10 * 60 * 1000)));
+    const cacheKey = `${key}:${verifyLimit}:${eventLimit}:${cooldownMs}`;
+    const now = Date.now();
+    const lastRequestAt = overviewLastRequestAt.get(cacheKey) || 0;
+    const cached = overviewCache.get(cacheKey);
 
-    await ensureConfigTables();
+    if (cached && cached.expiresAt > now) {
+      const isThrottled = now - lastRequestAt < OVERVIEW_THROTTLE_MS;
+      overviewLastRequestAt.set(cacheKey, now);
+      return NextResponse.json({
+        ...cached.payload,
+        meta: {
+          cached: true,
+          throttled: isThrottled,
+          cache_ttl_ms: OVERVIEW_CACHE_TTL_MS,
+          cache_age_ms: Math.max(0, now - cached.createdAt),
+        },
+      });
+    }
 
-    const auditResult = await db.query(
-      `
+    if (now - lastRequestAt < OVERVIEW_THROTTLE_MS && cached) {
+      overviewLastRequestAt.set(cacheKey, now);
+      return NextResponse.json({
+        ...cached.payload,
+        meta: {
+          cached: true,
+          throttled: true,
+          cache_ttl_ms: OVERVIEW_CACHE_TTL_MS,
+          cache_age_ms: Math.max(0, now - cached.createdAt),
+          stale_cache: true,
+        },
+      });
+    }
+
+    overviewLastRequestAt.set(cacheKey, now);
+
+    const existingInFlight = overviewInFlight.get(cacheKey);
+    const payloadPromise =
+      existingInFlight ||
+      buildOverviewPayload({
+        key,
+        verifyLimit,
+        eventLimit,
+        cooldownMs,
+      }).finally(() => {
+        overviewInFlight.delete(cacheKey);
+      });
+
+    if (!existingInFlight) {
+      overviewInFlight.set(cacheKey, payloadPromise);
+    }
+
+    const payload = await payloadPromise;
+
+    overviewCache.set(cacheKey, {
+      payload,
+      expiresAt: Date.now() + OVERVIEW_CACHE_TTL_MS,
+      createdAt: Date.now(),
+    });
+
+    return NextResponse.json({
+      ...payload,
+      meta: {
+        cached: false,
+        throttled: false,
+        deduped_in_flight: Boolean(existingInFlight),
+        cache_ttl_ms: OVERVIEW_CACHE_TTL_MS,
+        cache_age_ms: 0,
+      },
+    });
+  } catch (error) {
+    console.error('risk-config audit overview GET failed:', error);
+    return NextResponse.json({ error: 'Failed to fetch risk-config audit overview' }, { status: 500 });
+  }
+}
+
+async function buildOverviewPayload({
+  key,
+  verifyLimit,
+  eventLimit,
+  cooldownMs,
+}: {
+  key: string;
+  verifyLimit: number;
+  eventLimit: number;
+  cooldownMs: number;
+}): Promise<OverviewPayload> {
+  await ensureConfigTables();
+
+  const auditResult = await db.query(
+    `
         SELECT id, config_key, old_value, new_value, actor, source, payload_hash, previous_hash, record_hash, created_at
         FROM runtime_config_audit
         WHERE config_key = $1
         ORDER BY id ASC
         LIMIT $2
       `,
-      [key, verifyLimit],
+    [key, verifyLimit],
+  );
+
+  const rows = auditResult.rows as AuditRow[];
+
+  let previousRecordHash: string | null = null;
+  let hashMismatches = 0;
+  let linkageMismatches = 0;
+
+  for (const row of rows) {
+    const expectedRecordHash = sha256(
+      [
+        row.previous_hash || 'GENESIS',
+        row.config_key,
+        row.old_value ?? 'NULL',
+        row.new_value,
+        row.actor || '',
+        row.source || '',
+        row.payload_hash || '',
+      ].join('|'),
     );
 
-    const rows = auditResult.rows as AuditRow[];
-
-    let previousRecordHash: string | null = null;
-    let hashMismatches = 0;
-    let linkageMismatches = 0;
-
-    for (const row of rows) {
-      const expectedRecordHash = sha256(
-        [
-          row.previous_hash || 'GENESIS',
-          row.config_key,
-          row.old_value ?? 'NULL',
-          row.new_value,
-          row.actor || '',
-          row.source || '',
-          row.payload_hash || '',
-        ].join('|'),
-      );
-
-      if (expectedRecordHash !== row.record_hash) {
-        hashMismatches += 1;
-      }
-
-      if (row.previous_hash !== (previousRecordHash || null)) {
-        linkageMismatches += 1;
-      }
-
-      previousRecordHash = row.record_hash;
+    if (expectedRecordHash !== row.record_hash) {
+      hashMismatches += 1;
     }
 
-    const valid = hashMismatches === 0 && linkageMismatches === 0;
+    if (row.previous_hash !== (previousRecordHash || null)) {
+      linkageMismatches += 1;
+    }
 
-    const stateResult = await db.query(
-      `
+    previousRecordHash = row.record_hash;
+  }
+
+  const valid = hashMismatches === 0 && linkageMismatches === 0;
+
+  const stateResult = await db.query(
+    `
         SELECT is_valid, last_lock_alert_at, last_unlock_alert_at
         FROM runtime_config_chain_state
         WHERE chain_key = $1
         LIMIT 1
       `,
-      [key],
-    );
+    [key],
+  );
 
-    let transition: { changed: boolean; event_type: 'LOCK' | 'UNLOCK' | null } = {
-      changed: false,
-      event_type: null,
-    };
+  let transition: { changed: boolean; event_type: 'LOCK' | 'UNLOCK' | null } = {
+    changed: false,
+    event_type: null,
+  };
 
-    if (stateResult.rows.length === 0) {
-      await db.query(
-        `
+  if (stateResult.rows.length === 0) {
+    await db.query(
+      `
           INSERT INTO runtime_config_chain_state (
             chain_key,
             is_valid,
@@ -109,14 +227,14 @@ export async function GET(request: Request) {
             updated_at
           ) VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
         `,
-        [key, valid, rows.length, hashMismatches, linkageMismatches],
-      );
-    } else {
-      const previousValid = stateResult.rows[0]?.is_valid === true;
-      if (previousValid !== valid) {
-        const eventType: 'LOCK' | 'UNLOCK' = valid ? 'UNLOCK' : 'LOCK';
-        await db.query(
-          `
+      [key, valid, rows.length, hashMismatches, linkageMismatches],
+    );
+  } else {
+    const previousValid = stateResult.rows[0]?.is_valid === true;
+    if (previousValid !== valid) {
+      const eventType: 'LOCK' | 'UNLOCK' = valid ? 'UNLOCK' : 'LOCK';
+      await db.query(
+        `
             INSERT INTO runtime_config_lock_events (
               chain_key,
               event_type,
@@ -126,20 +244,20 @@ export async function GET(request: Request) {
               note
             ) VALUES ($1, $2, $3, $4, $5, $6)
           `,
-          [
-            key,
-            eventType,
-            rows.length,
-            hashMismatches,
-            linkageMismatches,
-            'overview-transition',
-          ],
-        );
-        transition = { changed: true, event_type: eventType };
-      }
+        [
+          key,
+          eventType,
+          rows.length,
+          hashMismatches,
+          linkageMismatches,
+          'overview-transition',
+        ],
+      );
+      transition = { changed: true, event_type: eventType };
+    }
 
-      await db.query(
-        `
+    await db.query(
+      `
           UPDATE runtime_config_chain_state
           SET
             is_valid = $2,
@@ -150,85 +268,81 @@ export async function GET(request: Request) {
             updated_at = NOW()
           WHERE chain_key = $1
         `,
-        [key, valid, rows.length, hashMismatches, linkageMismatches],
-      );
-    }
+      [key, valid, rows.length, hashMismatches, linkageMismatches],
+    );
+  }
 
-    const stateAfterResult = await db.query(
-      `
+  const stateAfterResult = await db.query(
+    `
         SELECT chain_key, is_valid, checked_rows, hash_mismatches, linkage_mismatches, last_verified_at, updated_at, last_lock_alert_at, last_unlock_alert_at
         FROM runtime_config_chain_state
         WHERE chain_key = $1
         LIMIT 1
       `,
-      [key],
-    );
+    [key],
+  );
 
-    const recentEventsResult = await db.query(
-      `
+  const recentEventsResult = await db.query(
+    `
         SELECT id, chain_key, event_type, checked_rows, hash_mismatches, linkage_mismatches, note, created_at
         FROM runtime_config_lock_events
         WHERE chain_key = $1
         ORDER BY id DESC
         LIMIT $2
       `,
-      [key, eventLimit],
-    );
+    [key, eventLimit],
+  );
 
-    const latestAuditResult = await db.query(
-      `
+  const latestAuditResult = await db.query(
+    `
         SELECT id, config_key, old_value, new_value, actor, source, record_hash, created_at
         FROM runtime_config_audit
         WHERE config_key = $1
         ORDER BY id DESC
         LIMIT 1
       `,
-      [key],
-    );
+    [key],
+  );
 
-    const state = stateAfterResult.rows[0] as {
-      last_lock_alert_at?: string | null;
-      last_unlock_alert_at?: string | null;
-      [k: string]: unknown;
-    } | undefined;
+  const state = stateAfterResult.rows[0] as {
+    last_lock_alert_at?: string | null;
+    last_unlock_alert_at?: string | null;
+    [k: string]: unknown;
+  } | undefined;
 
-    const now = Date.now();
-    const lockLastMs = state?.last_lock_alert_at ? new Date(String(state.last_lock_alert_at)).getTime() : 0;
-    const unlockLastMs = state?.last_unlock_alert_at ? new Date(String(state.last_unlock_alert_at)).getTime() : 0;
+  const now = Date.now();
+  const lockLastMs = state?.last_lock_alert_at ? new Date(String(state.last_lock_alert_at)).getTime() : 0;
+  const unlockLastMs = state?.last_unlock_alert_at ? new Date(String(state.last_unlock_alert_at)).getTime() : 0;
 
-    const lockRemainingMs = lockLastMs > 0 ? Math.max(0, cooldownMs - (now - lockLastMs)) : 0;
-    const unlockRemainingMs = unlockLastMs > 0 ? Math.max(0, cooldownMs - (now - unlockLastMs)) : 0;
+  const lockRemainingMs = lockLastMs > 0 ? Math.max(0, cooldownMs - (now - lockLastMs)) : 0;
+  const unlockRemainingMs = unlockLastMs > 0 ? Math.max(0, cooldownMs - (now - unlockLastMs)) : 0;
 
-    return NextResponse.json({
-      success: true,
-      key,
-      chain: {
-        valid,
-        checked_rows: rows.length,
-        hash_mismatches: hashMismatches,
-        linkage_mismatches: linkageMismatches,
-        verified_at: new Date().toISOString(),
+  return {
+    success: true,
+    key,
+    chain: {
+      valid,
+      checked_rows: rows.length,
+      hash_mismatches: hashMismatches,
+      linkage_mismatches: linkageMismatches,
+      verified_at: new Date().toISOString(),
+    },
+    transition,
+    recent_events: recentEventsResult.rows as LockEventRow[],
+    latest_audit: latestAuditResult.rows[0] || null,
+    alert_gate: {
+      cooldown_ms: cooldownMs,
+      lock: {
+        last_alert_at: state?.last_lock_alert_at || null,
+        remaining_ms: lockRemainingMs,
       },
-      transition,
-      recent_events: recentEventsResult.rows as LockEventRow[],
-      latest_audit: latestAuditResult.rows[0] || null,
-      alert_gate: {
-        cooldown_ms: cooldownMs,
-        lock: {
-          last_alert_at: state?.last_lock_alert_at || null,
-          remaining_ms: lockRemainingMs,
-        },
-        unlock: {
-          last_alert_at: state?.last_unlock_alert_at || null,
-          remaining_ms: unlockRemainingMs,
-        },
+      unlock: {
+        last_alert_at: state?.last_unlock_alert_at || null,
+        remaining_ms: unlockRemainingMs,
       },
-      state: stateAfterResult.rows[0] || null,
-    });
-  } catch (error) {
-    console.error('risk-config audit overview GET failed:', error);
-    return NextResponse.json({ error: 'Failed to fetch risk-config audit overview' }, { status: 500 });
-  }
+    },
+    state: (stateAfterResult.rows[0] as Record<string, unknown>) || null,
+  };
 }
 
 async function ensureConfigTables() {
