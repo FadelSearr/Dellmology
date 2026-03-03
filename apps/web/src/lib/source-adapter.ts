@@ -11,6 +11,13 @@ export interface SourceAdapterMeta {
   degraded: boolean;
   reason: string | null;
   fallback_delay_minutes: number;
+  diagnostics?: {
+    primary_latency_ms: number | null;
+    fallback_latency_ms: number | null;
+    primary_error: string | null;
+    selected_source: SourceProvider;
+    checked_at: string;
+  };
 }
 
 export function sourceMeta(input: {
@@ -18,12 +25,20 @@ export function sourceMeta(input: {
   degraded?: boolean;
   reason?: string | null;
   fallbackDelayMinutes?: number;
+  diagnostics?: {
+    primary_latency_ms: number | null;
+    fallback_latency_ms: number | null;
+    primary_error: string | null;
+    selected_source: SourceProvider;
+    checked_at: string;
+  };
 }): SourceAdapterMeta {
   return {
     provider: input.provider,
     degraded: Boolean(input.degraded),
     reason: input.reason ?? null,
     fallback_delay_minutes: Number(input.fallbackDelayMinutes || 0),
+    diagnostics: input.diagnostics,
   };
 }
 
