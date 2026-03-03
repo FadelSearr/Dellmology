@@ -227,6 +227,12 @@ interface CombatModeState {
   bullets: [string, string, string];
 }
 
+interface DeploymentGateState {
+  blocked: boolean;
+  reason: string | null;
+  checkedAt: string | null;
+}
+
 const FALLBACK_MARKET_DATA: ChartPoint[] = [
   { time: '09:00', price: 9200, volume: 4000 },
   { time: '09:30', price: 9250, volume: 3000 },
@@ -979,6 +985,7 @@ function BottomPanel({
   onRunBacktest,
   onResetDeadman,
   onResetCoolingOff,
+  onResetDeploymentGate,
   deadmanResetCooldown,
   actionState,
   tokenTelemetry,
@@ -1007,6 +1014,7 @@ function BottomPanel({
   staleAudit,
   coolingOff,
   modelConsensus,
+  deploymentGate,
 }: {
   narrative: string;
   adversarialNarrative: AdversarialNarrative;
@@ -1018,6 +1026,7 @@ function BottomPanel({
   onRunBacktest: () => void;
   onResetDeadman: () => void;
   onResetCoolingOff: () => void;
+  onResetDeploymentGate: () => void;
   deadmanResetCooldown: number;
   actionState: ActionState;
   tokenTelemetry: TokenTelemetry;
@@ -1046,6 +1055,7 @@ function BottomPanel({
   staleAudit: boolean;
   coolingOff: CoolingOffState;
   modelConsensus: ModelConsensus;
+  deploymentGate: DeploymentGateState;
 }) {
   const label = confidence?.confidence_label || 'MEDIUM';
   const accuracy = Number(confidence?.accuracy_pct || 0);
@@ -1240,7 +1250,7 @@ function BottomPanel({
           </button>
           <button
             onClick={onRunBacktest}
-            disabled={actionState.busy || coolingOff.active}
+            disabled={actionState.busy || coolingOff.active || deploymentGate.blocked}
             className="flex items-center justify-center space-x-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-200 text-xs font-bold py-2 rounded transition-colors border border-slate-700"
           >
             <Clock className="w-3.5 h-3.5" />
@@ -1262,6 +1272,14 @@ function BottomPanel({
             <RefreshCw className="w-3.5 h-3.5" />
             <span>Reset Cooling-Off</span>
           </button>
+          <button
+            onClick={onResetDeploymentGate}
+            disabled={actionState.busy || !deploymentGate.blocked}
+            className="flex items-center justify-center space-x-2 bg-rose-600/20 hover:bg-rose-600/30 disabled:opacity-50 text-rose-300 text-xs font-bold py-2 rounded transition-colors border border-rose-500/30"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            <span>Reset Deploy Gate</span>
+          </button>
           <div className="text-[9px] text-cyan-400 border border-slate-800 rounded px-2 py-1 bg-slate-900/40">
             {actionState.message || `Ready: ${activeSymbol} | UPS ${Math.round(upsScore)}`}
           </div>
@@ -1270,6 +1288,15 @@ function BottomPanel({
               ? `COOLING-OFF ACTIVE: ${Math.max(0, Math.floor(coolingOff.remainingSeconds / 60))}m left`
               : `Cooling-Off: streak ${coolingOff.breachStreak}/${runtimeCoolingOffRequiredBreaches}`}
           </div>
+          <div
+            className={cn(
+              'text-[9px] font-mono border rounded px-2 py-1',
+              deploymentGate.blocked ? 'text-rose-300 border-rose-500/40 bg-rose-500/10' : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10',
+            )}
+          >
+            {deploymentGate.blocked ? 'DEPLOY GATE: BLOCKED' : 'DEPLOY GATE: PASS'}
+          </div>
+          {deploymentGate.reason ? <div className="text-[9px] text-slate-500 font-mono">{deploymentGate.reason}</div> : null}
           <div
             className={cn(
               'text-[9px] font-mono border rounded px-2 py-1',
@@ -1394,6 +1421,11 @@ export default function Home() {
     status: 'CONFUSION',
     message: 'MARKET CONFUSION - STAND ASIDE',
   });
+  const [deploymentGate, setDeploymentGate] = useState<DeploymentGateState>({
+    blocked: false,
+    reason: null,
+    checkedAt: null,
+  });
 
   const [infraStatus, setInfraStatus] = useState<{ sse: Tone; db: Tone; integrity: Tone; token: Tone }>({
     sse: 'good',
@@ -1431,6 +1463,9 @@ export default function Home() {
       fetch('/api/risk-config/audit?limit=1').then((response) => (response.ok ? response.json() : null)).catch(() => null),
       fetch('/api/risk-config/audit/verify?limit=200').then((response) => (response.ok ? response.json() : null)).catch(() => null),
       fetch('/api/system-control/cooling-off').then((response) => (response.ok ? response.json() : null)).catch(() => null),
+      fetch(`/api/system-control/deployment-gate?evaluate=1&symbol=${activeSymbol}&limit=100`)
+        .then((response) => (response.ok ? response.json() : null))
+        .catch(() => null),
     ]);
 
     const marketIntel = requests[0] as MarketIntelResponse | null;
@@ -1470,6 +1505,11 @@ export default function Home() {
       remaining_seconds?: number;
       breach_streak?: number;
       reason?: string | null;
+    } | null;
+    const deployGate = requests[12] as {
+      blocked?: boolean;
+      reason?: string | null;
+      checked_at?: string | null;
     } | null;
 
     const snapshotRows = (snapshots?.snapshots || [])
@@ -1552,6 +1592,14 @@ export default function Home() {
         remainingSeconds: Math.max(0, Number(coolingState.remaining_seconds || 0)),
         breachStreak: Math.max(0, Number(coolingState.breach_streak || 0)),
         reason: coolingState.reason || null,
+      });
+    }
+
+    if (deployGate) {
+      setDeploymentGate({
+        blocked: Boolean(deployGate.blocked),
+        reason: deployGate.reason || null,
+        checkedAt: deployGate.checked_at || null,
       });
     }
 
@@ -1642,6 +1690,7 @@ export default function Home() {
         `AI: ${signalLabel(nextUps, minUpsForLong).toUpperCase()} BIAS DETECTED.\n` +
         `Price Move (${timeframe}): ${deltaPct >= 0 ? '+' : ''}${deltaPct.toFixed(2)}% | Volatility: ${volClass}\n` +
         `Risk Gate: ${riskGateLabel}\n` +
+        `Deploy Gate: ${deployGate?.blocked ? 'BLOCKED' : 'PASS'}\n` +
         `Consensus: ${preliminaryConsensus.message}\n` +
         `Cooling-Off: ${coolingActive ? 'ACTIVE (Recommendation Locked)' : 'Clear'}\n` +
         `Whale Flow: ${topWhales || 'No dominant whale detected'}\n` +
@@ -1983,6 +2032,14 @@ export default function Home() {
       return;
     }
 
+    if (deploymentGate.blocked) {
+      setActionState({
+        busy: false,
+        message: `Alert blocked: deploy gate (${deploymentGate.reason || 'logic regression failed'})`,
+      });
+      return;
+    }
+
     setActionState({ busy: true, message: 'Sending Telegram alert...' });
     try {
       const response = await fetch('/api/telegram-alert', {
@@ -2054,11 +2111,18 @@ export default function Home() {
     modelConsensus.sentiment,
     modelConsensus.status,
     modelConsensus.technical,
+    deploymentGate.blocked,
+    deploymentGate.reason,
   ]);
 
   const runBacktest = useCallback(async () => {
     if (coolingOff.active) {
       setActionState({ busy: false, message: 'Backtest locked: cooling-off active' });
+      return;
+    }
+
+    if (deploymentGate.blocked) {
+      setActionState({ busy: false, message: `Backtest locked: deploy gate (${deploymentGate.reason || 'blocked'})` });
       return;
     }
 
@@ -2157,6 +2221,8 @@ export default function Home() {
     systemicRisk.high,
     systemicRisk.threshold,
     coolingOff.active,
+    deploymentGate.blocked,
+    deploymentGate.reason,
     runtimeCoolingOffDrawdownPct,
     runtimeCoolingOffHours,
     runtimeCoolingOffRequiredBreaches,
@@ -2237,6 +2303,48 @@ export default function Home() {
     }
   }, [activeSymbol, coolingOff.active, fetchDashboard]);
 
+  const resetDeploymentGate = useCallback(async () => {
+    if (!deploymentGate.blocked) {
+      setActionState({ busy: false, message: 'Deployment gate already pass' });
+      return;
+    }
+
+    setActionState({ busy: true, message: 'Resetting deployment gate...' });
+    try {
+      const response = await fetch('/api/system-control/deployment-gate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'reset',
+          source: `operator:${activeSymbol}`,
+        }),
+      });
+
+      const body = (await response.json()) as {
+        success?: boolean;
+        error?: string;
+        blocked?: boolean;
+        reason?: string;
+        checked_at?: string;
+      };
+
+      if (!response.ok || !body.success) {
+        throw new Error(body.error || 'Deployment gate reset failed');
+      }
+
+      setDeploymentGate({
+        blocked: Boolean(body.blocked),
+        reason: body.reason || null,
+        checkedAt: body.checked_at || null,
+      });
+      setActionState({ busy: false, message: 'Deployment gate reset completed' });
+      void fetchDashboard();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Deployment gate reset failed';
+      setActionState({ busy: false, message: `Deployment gate reset failed: ${message}` });
+    }
+  }, [activeSymbol, deploymentGate.blocked, fetchDashboard]);
+
   return (
     <div className="h-screen w-screen bg-black text-slate-200 selection:bg-cyan-500/30 overflow-hidden flex flex-col">
       <TopNavigation
@@ -2285,6 +2393,7 @@ export default function Home() {
           onRunBacktest={runBacktest}
           onResetDeadman={resetDeadman}
           onResetCoolingOff={resetCoolingOff}
+          onResetDeploymentGate={resetDeploymentGate}
           deadmanResetCooldown={deadmanResetCooldown}
           actionState={actionState}
           tokenTelemetry={tokenTelemetry}
@@ -2313,6 +2422,7 @@ export default function Home() {
           staleAudit={staleAudit}
           coolingOff={coolingOff}
           modelConsensus={modelConsensus}
+          deploymentGate={deploymentGate}
         />
       ) : null}
     </div>
