@@ -897,6 +897,7 @@ function TopNavigation({
   mtfValidation,
   systemicRisk,
   portfolioBetaRisk,
+  brokerCharacter,
   artificialLiquidity,
   spoofing,
   washSaleRisk,
@@ -927,6 +928,7 @@ function TopNavigation({
   mtfValidation: MultiTimeframeValidationState;
   systemicRisk: SystemicRisk;
   portfolioBetaRisk: PortfolioBetaRisk;
+  brokerCharacter: BrokerCharacterState;
   artificialLiquidity: ArtificialLiquidityState;
   spoofing: SpoofingAlertState;
   washSaleRisk: WashSaleRiskState;
@@ -1115,6 +1117,15 @@ function TopNavigation({
           title={`Beta ${systemicRisk.betaEstimate.toFixed(2)}/${systemicRisk.threshold.toFixed(2)} | Portfolio ${portfolioBetaRisk.betaEstimate.toFixed(2)}/${portfolioBetaRisk.threshold.toFixed(2)} (${portfolioBetaRisk.contributingSymbols} symbols)`}
         >
           {`BETA ${portfolioBetaRisk.high ? 'PORT HIGH' : systemicRisk.high ? 'HIGH' : 'OK'}`}
+        </div>
+        <div
+          className={cn(
+            'text-[10px] font-mono border rounded px-2 py-1',
+            brokerCharacter.warning ? 'text-amber-300 border-amber-500/40 bg-amber-500/10' : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10',
+          )}
+          title={brokerCharacter.reason || `Risk ${brokerCharacter.riskCount}`}
+        >
+          {`BCP ${brokerCharacter.warning ? 'WARN' : 'OK'}`}
         </div>
         <div
           className={cn(
@@ -5184,6 +5195,7 @@ export default function Home() {
         mtfValidation={mtfValidation}
         systemicRisk={systemicRisk}
         portfolioBetaRisk={portfolioBetaRisk}
+        brokerCharacter={brokerCharacter}
         artificialLiquidity={artificialLiquidity}
         spoofing={spoofingAlert}
         washSaleRisk={washSaleRisk}
