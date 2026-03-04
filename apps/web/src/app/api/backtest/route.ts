@@ -1,19 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyRuntimeConfigAuditChain } from '@/lib/security/immutableAudit'
+import { buildImmutableAuditLockPayload } from '@/lib/security/lockPayloads'
 
 export async function POST(req: NextRequest) {
   try {
     const immutableAudit = await verifyRuntimeConfigAuditChain()
     if (!immutableAudit.valid) {
       return NextResponse.json(
-        {
-          success: false,
-          error: 'Immutable audit chain lock active; backtest blocked',
-          lock: true,
-          checked_rows: immutableAudit.checkedRows,
-          hash_mismatches: immutableAudit.hashMismatches,
-          linkage_mismatches: immutableAudit.linkageMismatches,
-        },
+        buildImmutableAuditLockPayload(immutableAudit, 'Immutable audit chain lock active; backtest blocked'),
         { status: 423 },
       )
     }

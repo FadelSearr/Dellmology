@@ -1,6 +1,7 @@
 import { db } from '@/lib/db';
 import { computeShortLivedExpiry, encryptSessionToken } from '@/lib/security/sessionTokenCrypto';
 import { verifyRuntimeConfigAuditChain } from '@/lib/security/immutableAudit';
+import { buildImmutableAuditLockPayload } from '@/lib/security/lockPayloads';
 import { NextResponse } from 'next/server';
 import { NextRequest } from 'next/server';
 
@@ -36,14 +37,7 @@ export async function POST(req: NextRequest) {
     const immutableAudit = await verifyRuntimeConfigAuditChain();
     if (!immutableAudit.valid) {
       return NextResponse.json(
-        {
-          success: false,
-          error: 'Immutable audit chain lock active; token update blocked',
-          lock: true,
-          checked_rows: immutableAudit.checkedRows,
-          hash_mismatches: immutableAudit.hashMismatches,
-          linkage_mismatches: immutableAudit.linkageMismatches,
-        },
+        buildImmutableAuditLockPayload(immutableAudit, 'Immutable audit chain lock active; token update blocked'),
         { status: 423, headers: { 'Access-Control-Allow-Origin': '*' } },
       );
     }

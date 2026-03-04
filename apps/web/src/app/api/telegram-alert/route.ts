@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyRuntimeConfigAuditChain } from '@/lib/security/immutableAudit';
+import { buildImmutableAuditLockPayload } from '@/lib/security/lockPayloads';
 
 interface AlertPayload {
   type: 'trading' | 'market' | 'broker' | 'wash_sale' | 'screener' | 'backtest';
@@ -15,16 +16,9 @@ export async function POST(req: NextRequest) {
   try {
     const immutableAudit = await verifyRuntimeConfigAuditChain();
     if (!immutableAudit.valid) {
-      return NextResponse.json(
-        {
-          error: 'Immutable audit chain lock active; telegram alert blocked',
-          lock: true,
-          checked_rows: immutableAudit.checkedRows,
-          hash_mismatches: immutableAudit.hashMismatches,
-          linkage_mismatches: immutableAudit.linkageMismatches,
-        },
-        { status: 423 },
-      );
+      return NextResponse.json(buildImmutableAuditLockPayload(immutableAudit, 'Immutable audit chain lock active; telegram alert blocked'), {
+        status: 423,
+      });
     }
 
     const payload: AlertPayload = await req.json();
