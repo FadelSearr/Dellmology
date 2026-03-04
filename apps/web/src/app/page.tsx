@@ -924,6 +924,7 @@ function TopNavigation({
   engineHeartbeat,
   goldenRecord,
   marketIntelAdapter,
+  sourceHealth,
   degradedSources,
   tokenTelemetry,
   infraStatus,
@@ -976,6 +977,7 @@ function TopNavigation({
   engineHeartbeat: EngineHeartbeatState;
   goldenRecord: GoldenRecordValidationState;
   marketIntelAdapter: AdapterHealthState;
+  sourceHealth: EndpointSourceHealthState[];
   degradedSources: string[];
   tokenTelemetry: TokenTelemetry;
   infraStatus: { sse: Tone; db: Tone; integrity: Tone; token: Tone };
@@ -993,6 +995,9 @@ function TopNavigation({
   const tokenAlert = tokenTelemetry.status !== 'fresh' || tokenTelemetry.deadmanTriggered;
   const negotiatedNotionalTotal = negotiatedFeed.reduce((total, item) => total + Math.max(0, Number(item.notional) || 0), 0);
   const negotiatedTop = negotiatedFeed[0] || null;
+  const degradedEndpointCount = sourceHealth.filter((item) => item.degraded).length;
+  const endpointPrimaryLatencies = sourceHealth.map((item) => (typeof item.primaryLatencyMs === 'number' ? item.primaryLatencyMs : null)).filter((value): value is number => value !== null);
+  const maxEndpointPrimaryLatency = endpointPrimaryLatencies.length > 0 ? Math.max(...endpointPrimaryLatencies) : null;
   const regimeLabel = !modelConsensus.pass ? 'SIDEWAYS' : modelConsensus.status === 'CONSENSUS_BULL' ? 'UPTREND' : 'DOWNTREND';
   const regimeTone = !modelConsensus.pass
     ? 'text-amber-300 border-amber-500/40 bg-amber-500/10'
@@ -1371,6 +1376,15 @@ function TopNavigation({
           title={`SRC ${marketIntelAdapter.selectedSource} | P ${marketIntelAdapter.primaryLatencyMs ?? '-'}ms | F ${marketIntelAdapter.fallbackLatencyMs ?? '-'}ms${marketIntelAdapter.primaryError ? ` | ${marketIntelAdapter.primaryError}` : ''}`}
         >
           {`ADAPTER ${marketIntelAdapter.degraded ? 'DEGRADED' : 'OK'}`}
+        </div>
+        <div
+          className={cn(
+            'text-[10px] font-mono border rounded px-2 py-1',
+            degradedEndpointCount > 0 ? 'text-amber-300 border-amber-500/40 bg-amber-500/10' : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10',
+          )}
+          title={`Endpoint degraded ${degradedEndpointCount}/${sourceHealth.length} | Max primary latency ${maxEndpointPrimaryLatency ?? '-'}ms`}
+        >
+          {`ENDPOINTS ${degradedEndpointCount > 0 ? `DEG ${degradedEndpointCount}` : 'OK'}${maxEndpointPrimaryLatency !== null ? ` ${Math.round(maxEndpointPrimaryLatency)}ms` : ''}`}
         </div>
         <div
           className={cn(
@@ -5413,6 +5427,7 @@ export default function Home() {
         engineHeartbeat={engineHeartbeat}
         goldenRecord={goldenRecordValidation}
         marketIntelAdapter={marketIntelAdapter}
+        sourceHealth={sourceHealth}
         degradedSources={degradedSources}
         tokenTelemetry={tokenTelemetry}
         infraStatus={infraStatus}
