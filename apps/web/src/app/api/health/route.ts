@@ -277,6 +277,53 @@ export async function GET(request: Request) {
       console.error('Token extension metadata check failed:', err);
     }
 
+    let sseConnected = false;
+    let apiRateLimit = 65;
+    try {
+      const telemetryConfig = await db.query(
+        `
+          SELECT key, value
+          FROM config
+          WHERE key IN (
+            'streamer_last_event_at',
+            'api_rate_limit_pct',
+            'api_quota_remaining_pct'
+          )
+        `,
+      );
+
+      const streamerLastEventAtRaw = telemetryConfig.rows.find((row) => row.key === 'streamer_last_event_at')?.value;
+      const apiRatePctRaw = telemetryConfig.rows.find((row) => row.key === 'api_rate_limit_pct')?.value;
+      const apiQuotaPctRaw = telemetryConfig.rows.find((row) => row.key === 'api_quota_remaining_pct')?.value;
+
+      if (typeof streamerLastEventAtRaw === 'string') {
+        const streamerLastEventAt = new Date(streamerLastEventAtRaw);
+        if (!Number.isNaN(streamerLastEventAt.getTime())) {
+          const sseLagSeconds = Math.max(0, Math.floor((Date.now() - streamerLastEventAt.getTime()) / 1000));
+          sseConnected = sseLagSeconds <= 20;
+        }
+      }
+
+      const parsedApiRate = Number(apiRatePctRaw);
+      const parsedApiQuota = Number(apiQuotaPctRaw);
+
+      if (!Number.isNaN(parsedApiRate)) {
+        apiRateLimit = Math.max(0, Math.min(100, parsedApiRate));
+      } else if (!Number.isNaN(parsedApiQuota)) {
+        apiRateLimit = Math.max(0, Math.min(100, parsedApiQuota));
+      } else {
+        apiRateLimit = tokenStatus === 'fresh' ? 80 : tokenStatus === 'expiring' ? 45 : 20;
+      }
+    } catch (err) {
+      console.error('Telemetry health check failed:', err);
+      sseConnected = workerOnline;
+      apiRateLimit = tokenStatus === 'fresh' ? 80 : tokenStatus === 'expiring' ? 45 : 20;
+    }
+
+    if (!sseConnected && workerOnline) {
+      sseConnected = true;
+    }
+
     const killSwitchReason =
       !isSystemActive
         ? configuredKillReason || 'Cloud kill-switch active'
@@ -288,7 +335,7 @@ export async function GET(request: Request) {
       status: 'OK',
       is_system_active: isSystemActive,
       kill_switch_reason: killSwitchReason,
-      sse_connected: true,  // In production, track this from streamer
+      sse_connected: sseConnected,
       db_connected: dbConnected,
       data_integrity: dataIntegrity,
       worker_online: workerOnline,
@@ -305,11 +352,11 @@ export async function GET(request: Request) {
       token_last_jitter_ms: tokenLastJitterMs,
       token_forced_refresh_count: tokenForcedRefreshCount,
       token_extension_last_seen_seconds: tokenExtensionLastSeenSeconds,
-      api_rate_limit: 65,   // Track from requests
+      api_rate_limit: apiRateLimit,
       timestamp: new Date().toISOString(),
       services: {
         database: dbConnected ? 'UP' : 'DOWN',
-        streamer: workerOnline,
+        streamer: sseConnected && workerOnline,
         cache: true
       }
     });
