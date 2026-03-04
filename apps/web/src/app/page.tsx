@@ -907,6 +907,7 @@ function TopNavigation({
   engineHeartbeat,
   goldenRecord,
   marketIntelAdapter,
+  degradedSources,
   infraStatus,
   globalData,
 }: {
@@ -940,6 +941,7 @@ function TopNavigation({
   engineHeartbeat: EngineHeartbeatState;
   goldenRecord: GoldenRecordValidationState;
   marketIntelAdapter: AdapterHealthState;
+  degradedSources: string[];
   infraStatus: { sse: Tone; db: Tone; integrity: Tone; token: Tone };
   globalData: GlobalCorrelationResponse | null;
 }) {
@@ -1198,6 +1200,15 @@ function TopNavigation({
           title={engineHeartbeat.reason || `Last ${engineHeartbeat.lastSeenSeconds ?? 0}s | Timeout ${engineHeartbeat.timeoutSeconds}s`}
         >
           {`ENGINE ${engineHeartbeat.checkedAt !== null && !engineHeartbeat.online ? 'OFFLINE' : 'ONLINE'}`}
+        </div>
+        <div
+          className={cn(
+            'text-[10px] font-mono border rounded px-2 py-1',
+            degradedSources.length > 0 ? 'text-amber-300 border-amber-500/40 bg-amber-500/10' : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10',
+          )}
+          title={degradedSources.length > 0 ? degradedSources.join(' | ') : 'All adapters healthy'}
+        >
+          {`SOURCES ${degradedSources.length > 0 ? `DEG ${degradedSources.length}` : 'OK'}`}
         </div>
         <div
           className={cn(
@@ -5232,6 +5243,7 @@ export default function Home() {
         engineHeartbeat={engineHeartbeat}
         goldenRecord={goldenRecordValidation}
         marketIntelAdapter={marketIntelAdapter}
+        degradedSources={degradedSources}
         infraStatus={infraStatus}
         globalData={globalData}
       />
