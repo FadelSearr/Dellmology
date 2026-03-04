@@ -713,6 +713,11 @@ function buildRuleEngineVersion(source: 'DB' | 'ENV', values: number[]) {
   return `RE-${source}-${hash.toString(16).padStart(8, '0').toUpperCase()}`;
 }
 
+function shortRuleVersion(version: string) {
+  if (version.length <= 16) return version;
+  return `${version.slice(0, 9)}..${version.slice(-4)}`;
+}
+
 function evaluateHistoricalModelConfidence(
   snapshots: SnapshotRow[],
   latestPrice: number,
@@ -2824,6 +2829,17 @@ function BottomPanel({
   );
   const filteredPostmortemAccuracy =
     filteredPostmortemSummary.evaluated > 0 ? (filteredPostmortemSummary.hits / filteredPostmortemSummary.evaluated) * 100 : 0;
+  const postmortemTrendRows = versionFilteredRows.slice(0, 3);
+  const postmortemBestRule =
+    versionFilteredRows.length > 0
+      ? versionFilteredRows.reduce((best, row) => (row.accuracy_pct > best.accuracy_pct ? row : best), versionFilteredRows[0])
+      : null;
+  const postmortemWorstRule =
+    versionFilteredRows.length > 0
+      ? versionFilteredRows.reduce((worst, row) => (row.accuracy_pct < worst.accuracy_pct ? row : worst), versionFilteredRows[0])
+      : null;
+  const postmortemAccuracySpread =
+    postmortemBestRule && postmortemWorstRule ? Math.max(0, postmortemBestRule.accuracy_pct - postmortemWorstRule.accuracy_pct) : 0;
   const coolingTriggerLabel = coolingTriggerFromReason(coolingOff.reason, coolingOff.active);
   const coolingLastTriggerLabel = coolingOff.lastBreachAt ? new Date(coolingOff.lastBreachAt).toLocaleString('id-ID') : '-';
   const engineHeartbeatLocked = engineHeartbeat.checkedAt !== null && !engineHeartbeat.online;
@@ -3001,6 +3017,30 @@ function BottomPanel({
               <div className="mt-1 text-slate-500">
                 {`Global Eval: ${ruleEnginePostmortem.summaryEvaluatedSignals} | Global Acc: ${ruleEnginePostmortem.summaryAccuracyPct.toFixed(1)}%`}
               </div>
+              {postmortemBestRule && postmortemWorstRule ? (
+                <div className="mt-1 text-slate-500">
+                  {`Spread: ${postmortemAccuracySpread.toFixed(1)}% | Best ${shortRuleVersion(postmortemBestRule.rule_engine_version)} (${postmortemBestRule.accuracy_pct.toFixed(1)}%)`}
+                </div>
+              ) : null}
+              {postmortemTrendRows.length > 0 ? (
+                <div className="mt-2 border border-slate-800 rounded px-2 py-1 bg-slate-900/40 space-y-1">
+                  <div className="text-slate-500 uppercase tracking-wider">Multi-Version Trend</div>
+                  {postmortemTrendRows.map((row, index) => {
+                    const previous = postmortemTrendRows[index + 1];
+                    const delta = previous ? row.accuracy_pct - previous.accuracy_pct : 0;
+                    const deltaLabel = previous ? `${delta >= 0 ? '+' : ''}${delta.toFixed(1)}%` : 'BASE';
+                    return (
+                      <div key={`${row.rule_engine_mode}-${row.rule_engine_version}-${index}`} className="flex items-center justify-between gap-2 text-[9px]">
+                        <span className="text-slate-400">{`${row.rule_engine_mode}:${shortRuleVersion(row.rule_engine_version)}`}</span>
+                        <span className="text-slate-500">{`${row.accuracy_pct.toFixed(1)}% (${row.evaluated_signals})`}</span>
+                        <span className={cn(delta > 0 ? 'text-emerald-300' : delta < 0 ? 'text-rose-300' : 'text-slate-500')}>
+                          {deltaLabel}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : null}
             </div>
             <div className="mt-2 border border-slate-800 rounded px-2 py-1 bg-slate-950/60 text-[9px] font-mono text-slate-400">
               <div>{`Daily Vol: ${liquidityGuard.dailyVolumeLots.toLocaleString()} lots`}</div>
