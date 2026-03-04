@@ -897,6 +897,7 @@ function TopNavigation({
   mtfValidation,
   systemicRisk,
   portfolioBetaRisk,
+  artificialLiquidity,
   goldenRecord,
   marketIntelAdapter,
   infraStatus,
@@ -922,6 +923,7 @@ function TopNavigation({
   mtfValidation: MultiTimeframeValidationState;
   systemicRisk: SystemicRisk;
   portfolioBetaRisk: PortfolioBetaRisk;
+  artificialLiquidity: ArtificialLiquidityState;
   goldenRecord: GoldenRecordValidationState;
   marketIntelAdapter: AdapterHealthState;
   infraStatus: { sse: Tone; db: Tone; integrity: Tone; token: Tone };
@@ -1105,6 +1107,15 @@ function TopNavigation({
           title={`Beta ${systemicRisk.betaEstimate.toFixed(2)}/${systemicRisk.threshold.toFixed(2)} | Portfolio ${portfolioBetaRisk.betaEstimate.toFixed(2)}/${portfolioBetaRisk.threshold.toFixed(2)} (${portfolioBetaRisk.contributingSymbols} symbols)`}
         >
           {`BETA ${portfolioBetaRisk.high ? 'PORT HIGH' : systemicRisk.high ? 'HIGH' : 'OK'}`}
+        </div>
+        <div
+          className={cn(
+            'text-[10px] font-mono border rounded px-2 py-1',
+            artificialLiquidity.warning ? 'text-rose-300 border-rose-500/40 bg-rose-500/10' : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10',
+          )}
+          title={artificialLiquidity.reason || `TopShare ${artificialLiquidity.topBuyerSharePct.toFixed(1)}% | CR ${artificialLiquidity.concentrationRatio.toFixed(2)} | Support ${artificialLiquidity.supportingBuyers}`}
+        >
+          {`LIQUIDITY ${artificialLiquidity.warning ? 'WARN' : 'OK'}`}
         </div>
         <div
           className={cn(
@@ -5129,6 +5140,7 @@ export default function Home() {
         mtfValidation={mtfValidation}
         systemicRisk={systemicRisk}
         portfolioBetaRisk={portfolioBetaRisk}
+        artificialLiquidity={artificialLiquidity}
         goldenRecord={goldenRecordValidation}
         marketIntelAdapter={marketIntelAdapter}
         infraStatus={infraStatus}
