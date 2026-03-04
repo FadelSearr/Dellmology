@@ -17,17 +17,60 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const limit = Math.min(100, Math.max(1, Number(searchParams.get('limit') || 20)));
+    const symbol = searchParams.get('symbol')?.trim().toUpperCase();
+    const timeframe = searchParams.get('timeframe')?.trim();
+    const signal = searchParams.get('signal')?.trim().toUpperCase();
+    const ruleEngineMode = searchParams.get('rule_engine_mode')?.trim().toUpperCase();
+    const ruleEngineVersion = searchParams.get('rule_engine_version')?.trim();
+    const configDrift = parseBooleanQuery(searchParams.get('config_drift'));
 
     await ensureSignalSnapshotsTable();
+
+    const whereClauses: string[] = [];
+    const values: Array<string | number | boolean> = [];
+
+    if (symbol) {
+      values.push(symbol);
+      whereClauses.push(`symbol = $${values.length}`);
+    }
+
+    if (timeframe) {
+      values.push(timeframe);
+      whereClauses.push(`timeframe = $${values.length}`);
+    }
+
+    if (signal) {
+      values.push(signal);
+      whereClauses.push(`signal = $${values.length}`);
+    }
+
+    if (ruleEngineMode) {
+      values.push(ruleEngineMode);
+      whereClauses.push(`COALESCE(payload->'snapshot_context'->'rule_engine'->>'mode', payload->'rule_engine_versioning'->>'mode') = $${values.length}`);
+    }
+
+    if (ruleEngineVersion) {
+      values.push(ruleEngineVersion);
+      whereClauses.push(`COALESCE(payload->'snapshot_context'->'rule_engine'->>'version', payload->'rule_engine_versioning'->>'version') = $${values.length}`);
+    }
+
+    if (typeof configDrift === 'boolean') {
+      values.push(configDrift);
+      whereClauses.push(`COALESCE((payload->'snapshot_context'->'rule_engine'->>'config_drift')::boolean, (payload->'rule_engine_versioning'->>'config_drift')::boolean) = $${values.length}`);
+    }
+
+    values.push(limit);
+    const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
 
     const result = await db.query(
       `
         SELECT id, symbol, timeframe, signal, price, unified_power_score, payload, payload_hash, previous_hash, record_hash, hash_version, created_at
         FROM signal_snapshots
+        ${whereSql}
         ORDER BY created_at DESC
-        LIMIT $1
+        LIMIT $${values.length}
       `,
-      [limit],
+      values,
     );
 
     return NextResponse.json({
@@ -183,4 +226,12 @@ function stableStringify(value: unknown): string {
   const objectValue = value as Record<string, unknown>;
   const keys = Object.keys(objectValue).sort();
   return `{${keys.map((key) => `${JSON.stringify(key)}:${stableStringify(objectValue[key])}`).join(',')}}`;
+}
+
+function parseBooleanQuery(value: string | null): boolean | null {
+  if (!value) return null;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'true' || normalized === '1') return true;
+  if (normalized === 'false' || normalized === '0') return false;
+  return null;
 }
