@@ -902,6 +902,9 @@ function TopNavigation({
   runtimeConfigSource,
   runtimeRuleEngineMode,
   runtimeRuleEngineVersion,
+  runtimeRiskAuditStaleHours,
+  staleAudit,
+  lastRiskAudit,
   championChallenger,
   modelConsensus,
   newsImpact,
@@ -950,6 +953,9 @@ function TopNavigation({
   runtimeConfigSource: 'DB' | 'ENV';
   runtimeRuleEngineMode: 'BASELINE' | 'CUSTOM';
   runtimeRuleEngineVersion: string;
+  runtimeRiskAuditStaleHours: number;
+  staleAudit: boolean;
+  lastRiskAudit: RiskAuditInfo;
   championChallenger: ChampionChallengerState;
   modelConsensus: ModelConsensus;
   newsImpact: NewsImpactState;
@@ -1151,6 +1157,19 @@ function TopNavigation({
           title={`Rule ${runtimeRuleEngineMode}:${runtimeRuleEngineVersion} | Source ${runtimeConfigSource}`}
         >
           {`RULE ${runtimeRuleEngineMode}${configDrift ? ' DRIFT' : ''}`}
+        </div>
+        <div
+          className={cn(
+            'text-[10px] font-mono border rounded px-2 py-1',
+            staleAudit ? 'text-amber-300 border-amber-500/40 bg-amber-500/10' : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10',
+          )}
+          title={
+            staleAudit
+              ? `No config update in >${runtimeRiskAuditStaleHours.toFixed(0)}h | Last ${lastRiskAudit.createdAt ? new Date(lastRiskAudit.createdAt).toLocaleString('id-ID') : '-'}`
+              : `Updated within ${runtimeRiskAuditStaleHours.toFixed(0)}h | Last ${lastRiskAudit.createdAt ? new Date(lastRiskAudit.createdAt).toLocaleString('id-ID') : '-'}`
+          }
+        >
+          {`AUDIT ${staleAudit ? 'STALE' : 'FRESH'}`}
         </div>
         <div
           className={cn(
@@ -5355,6 +5374,9 @@ export default function Home() {
         runtimeConfigSource={runtimeConfigSource}
         runtimeRuleEngineMode={runtimeRuleEngineMode}
         runtimeRuleEngineVersion={runtimeRuleEngineVersion}
+        runtimeRiskAuditStaleHours={runtimeRiskAuditStaleHours}
+        staleAudit={staleAudit}
+        lastRiskAudit={lastRiskAudit}
         championChallenger={championChallenger}
         modelConsensus={modelConsensus}
         newsImpact={newsImpact}
