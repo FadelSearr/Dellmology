@@ -6185,6 +6185,10 @@ export default function Home() {
     engineHeartbeat.checkedAt !== null &&
     !engineHeartbeat.online &&
     (marketIntelAdapter.degraded || degradedSources.length > 0 || fallbackDegradedCount > 0);
+  const coolingTriggerLabel = coolingTriggerFromReason(coolingOff.reason, coolingOff.active);
+  const coolingTriggerReason = coolingTriggerExplain(coolingTriggerLabel);
+  const coolingRemainingLabel = formatCoolingRemaining(coolingOff.remainingSeconds);
+  const coolingLastBreachLabel = coolingOff.lastBreachAt ? new Date(coolingOff.lastBreachAt).toLocaleString('id-ID') : '-';
 
   return (
     <div className="h-screen w-screen bg-black text-slate-200 selection:bg-cyan-500/30 overflow-hidden flex flex-col">
@@ -6269,6 +6273,11 @@ export default function Home() {
       {fallbackEmergencyActive ? (
         <div className="border-b border-amber-500/40 bg-amber-500/10 px-4 py-1.5 text-[10px] font-mono text-amber-300">
           {`FALLBACK EMERGENCY MODE | degraded ${fallbackDegradedCount}/${sourceHealth.length} endpoints | source ${marketIntelAdapter.selectedSource} | delay ${fallbackMaxDelayMinutes !== null ? `${Math.round(fallbackMaxDelayMinutes)}m` : '-'} | data may be delayed`}
+        </div>
+      ) : null}
+      {coolingOff.active ? (
+        <div className="border-b border-rose-500/40 bg-rose-500/10 px-4 py-1.5 text-[10px] font-mono text-rose-300">
+          {`FORCED COOLING-OFF LOCK | remaining ${coolingRemainingLabel} | trigger ${coolingTriggerLabel} (${coolingTriggerReason}) | streak ${coolingOff.breachStreak}/${Math.max(1, runtimeCoolingOffRequiredBreaches)} | last breach ${coolingLastBreachLabel} | screener/recommendation locked`}
         </div>
       ) : null}
       <div className="flex-1 flex min-h-0">
