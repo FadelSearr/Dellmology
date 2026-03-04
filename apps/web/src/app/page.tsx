@@ -1052,6 +1052,22 @@ function extractAdversarialNarrative(rawNarrative: string): { bullish: string; b
   };
 }
 
+function extractBearishRiskBullets(bearishText: string): string[] {
+  const normalized = (bearishText || '')
+    .replace(/\r/g, '\n')
+    .split(/\n+|\.|;|•|\-|\d+\)/)
+    .map((item) => item.trim())
+    .filter((item) => item.length >= 18)
+    .slice(0, 6);
+
+  const unique = Array.from(new Set(normalized.map((item) => item.replace(/\s+/g, ' '))));
+  if (unique.length > 0) {
+    return unique.slice(0, 3);
+  }
+
+  return ['Data bearish belum detail. Pakai size defensif.', 'Tunda entry sampai konfirmasi multi-timeframe.', 'Prioritaskan proteksi modal di atas agresivitas.'];
+}
+
 function technicalVoteFromUps(ups: number, minUpsForLong: number): VoteSignal {
   if (ups >= minUpsForLong) return 'BUY';
   if (ups <= 45) return 'SELL';
@@ -3232,6 +3248,7 @@ function BottomPanel({
       : null;
   const postmortemAccuracySpread =
     postmortemBestRule && postmortemWorstRule ? Math.max(0, postmortemBestRule.accuracy_pct - postmortemWorstRule.accuracy_pct) : 0;
+  const bearishRiskBullets = extractBearishRiskBullets(adversarialNarrative.bearish);
   const coolingTriggerLabel = coolingTriggerFromReason(coolingOff.reason, coolingOff.active);
   const coolingTriggerReason = coolingTriggerExplain(coolingTriggerLabel);
   const coolingRemainingLabel = formatCoolingRemaining(coolingOff.remainingSeconds);
@@ -3340,6 +3357,20 @@ function BottomPanel({
             <div className="border border-rose-500/30 rounded p-2 bg-rose-500/5">
               <div className="text-[9px] uppercase tracking-wider text-rose-400 font-bold mb-1">Bearish Case</div>
               <div className="font-mono text-[10px] text-rose-100/90 whitespace-pre-line leading-relaxed">{adversarialNarrative.bearish}</div>
+            </div>
+          </div>
+          <div className="border border-rose-500/30 rounded px-2 py-1 bg-rose-500/5">
+            <div className="text-[9px] uppercase tracking-wider text-rose-300 font-bold">Bearish Risk Triggers</div>
+            <div className="mt-1 grid grid-cols-1 gap-1">
+              {bearishRiskBullets.map((risk, index) => (
+                <div
+                  key={`bearish-risk-${index}`}
+                  className="text-[9px] font-mono text-rose-100/90 border border-rose-500/20 bg-rose-500/10 rounded px-2 py-1"
+                  title={risk}
+                >
+                  {`R${index + 1}: ${risk}`}
+                </div>
+              ))}
             </div>
           </div>
           <div className="text-[9px] text-slate-500 font-mono">{`Adversarial Source: ${adversarialNarrative.source.toUpperCase()}`}</div>
