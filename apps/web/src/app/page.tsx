@@ -75,6 +75,7 @@ interface BrokerRow {
   net: number;
   score: number;
   consistency: number;
+  dailyHeatmap: number[];
   action: 'Buy' | 'Sell';
   z: number;
   profile?: string;
@@ -553,12 +554,12 @@ const FALLBACK_WATCHLIST = [
 ] as WatchlistItem[];
 
 const FALLBACK_BROKER: BrokerRow[] = [
-  { broker: 'YP', type: 'Retail', net: -15.2e9, score: 20, consistency: 28, action: 'Sell', z: -1.2 },
-  { broker: 'BK', type: 'Whale', net: 42.5e9, score: 95, consistency: 91, action: 'Buy', z: 2.5 },
-  { broker: 'AK', type: 'Whale', net: 12.1e9, score: 88, consistency: 83, action: 'Buy', z: 1.4 },
-  { broker: 'CC', type: 'Retail', net: -5.4e9, score: 35, consistency: 44, action: 'Sell', z: -0.8 },
-  { broker: 'PD', type: 'Retail', net: -2.1e9, score: 40, consistency: 38, action: 'Sell', z: -0.5 },
-  { broker: 'ZP', type: 'Whale', net: 8.9e9, score: 82, consistency: 77, action: 'Buy', z: 1.1 },
+  { broker: 'YP', type: 'Retail', net: -15.2e9, score: 20, consistency: 28, dailyHeatmap: [22, 18, 30, 26, 20], action: 'Sell', z: -1.2 },
+  { broker: 'BK', type: 'Whale', net: 42.5e9, score: 95, consistency: 91, dailyHeatmap: [72, 81, 88, 94, 90], action: 'Buy', z: 2.5 },
+  { broker: 'AK', type: 'Whale', net: 12.1e9, score: 88, consistency: 83, dailyHeatmap: [64, 72, 79, 86, 82], action: 'Buy', z: 1.4 },
+  { broker: 'CC', type: 'Retail', net: -5.4e9, score: 35, consistency: 44, dailyHeatmap: [41, 35, 39, 33, 30], action: 'Sell', z: -0.8 },
+  { broker: 'PD', type: 'Retail', net: -2.1e9, score: 40, consistency: 38, dailyHeatmap: [37, 42, 35, 31, 29], action: 'Sell', z: -0.5 },
+  { broker: 'ZP', type: 'Whale', net: 8.9e9, score: 82, consistency: 77, dailyHeatmap: [58, 66, 73, 79, 76], action: 'Buy', z: 1.1 },
 ];
 
 const FALLBACK_HEATMAP = Array.from({ length: 40 }, (_, index) => ({
@@ -641,6 +642,14 @@ function formatCompactIDR(value: number) {
 function scoreFromNet(net: number) {
   const normalized = Math.min(100, Math.max(5, Math.abs(net) / 1_000_000_000));
   return Math.round(normalized);
+}
+
+function buildBrokerDailyHeatmap(consistency: number, zScore: number, action: 'Buy' | 'Sell') {
+  const zNormalized = Math.max(0, Math.min(100, 50 + zScore * 20));
+  const actionBias = action === 'Buy' ? 8 : -8;
+  const base = Math.max(0, Math.min(100, consistency * 0.7 + zNormalized * 0.3));
+  const offsets = [-12, -5, 0, 6, -2];
+  return offsets.map((offset) => Math.max(0, Math.min(100, base + actionBias + offset)));
 }
 
 function parsePercentLabel(value: string) {
@@ -1971,6 +1980,15 @@ function RightSidebar({
                 <div className="flex flex-col">
                   <span className="font-bold text-slate-200 text-xs">{broker.broker}</span>
                   {broker.profile ? <span className="text-[9px] text-slate-500 font-mono">{broker.profile}</span> : null}
+                  <div className="mt-1 flex items-end gap-0.5 h-3" title="Daily heatmap">
+                    {broker.dailyHeatmap.slice(0, 5).map((value, heatIndex) => (
+                      <span
+                        key={`${broker.broker}-heat-${heatIndex}`}
+                        className={cn('w-1 rounded-sm', broker.action === 'Buy' ? 'bg-emerald-500/80' : 'bg-rose-500/80')}
+                        style={{ height: `${Math.max(2, Math.round((Math.max(0, Math.min(100, value)) / 100) * 12))}px` }}
+                      />
+                    ))}
+                  </div>
                 </div>
               </div>
               <div className="text-center">
@@ -3528,6 +3546,7 @@ export default function Home() {
         net,
         score: scoreFromNet(net),
         consistency: normalizedConsistency,
+        dailyHeatmap: buildBrokerDailyHeatmap(normalizedConsistency, Number(item.z_score || 0), net >= 0 ? 'Buy' : 'Sell'),
         action: net >= 0 ? 'Buy' : 'Sell',
         z: Number(item.z_score || 0),
         profile: item.character_profile || undefined,
