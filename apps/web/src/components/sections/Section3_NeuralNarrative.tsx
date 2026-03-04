@@ -137,15 +137,7 @@ export const Section3_NeuralNarrative: React.FC<Section3Props> = ({
 
         {/* Screener Results */}
         <div className="p-4">
-          {screenerMode !== 'CUSTOM' && (
-            <AIScreener mode={screenerMode} />
-          )}
-          {screenerMode === 'CUSTOM' && (
-            <div className="text-center py-8 text-gray-400">
-              <p>Custom screener with filters: Rp {priceRange.min.toLocaleString()} - Rp {priceRange.max.toLocaleString()}</p>
-              <p className="text-sm mt-2">Loading custom results...</p>
-            </div>
-          )}
+          <AIScreener mode={screenerMode} customPriceRange={priceRange} hideInternalControls={true} />
         </div>
       </Card>
 

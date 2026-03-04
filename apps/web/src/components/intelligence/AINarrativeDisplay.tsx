@@ -18,12 +18,7 @@ interface AInarrative {
 interface BrokerNarrativePayload {
   type: 'broker' | 'regime' | 'screener' | 'swot';
   symbol: string;
-  data: {
-    whales?: Array<{ is_whale?: boolean }>;
-    wash_sale_score?: number;
-    consistency?: number;
-    period?: string;
-  };
+  data: Record<string, unknown>;
 }
 
 export const AINarrativeDisplay = ({ 
@@ -70,6 +65,58 @@ export const AINarrativeDisplay = ({
         } else if (type === 'regime') {
           const res = await fetch('/api/market-regime');
           requestPayload.data = await res.json();
+        } else if (type === 'swot') {
+          const [brokerRes, regimeRes, marketRes] = await Promise.all([
+            fetch(`/api/broker-flow?symbol=${symbol}&days=7&filter=mix`).catch(() => null),
+            fetch(`/api/market-regime?symbol=${symbol}`).catch(() => null),
+            fetch(`/api/market-intelligence?symbol=${symbol}&timeframe=1h`).catch(() => null),
+          ]);
+
+          const brokerData = brokerRes && brokerRes.ok ? await brokerRes.json() : null;
+          const regimeData = regimeRes && regimeRes.ok ? await regimeRes.json() : null;
+          const marketData = marketRes && marketRes.ok ? await marketRes.json() : null;
+
+          const washSaleScore = Number(brokerData?.stats?.wash_sale_score || 0);
+          const whaleCount = Array.isArray(brokerData?.brokers)
+            ? brokerData.brokers.filter((broker: any) => broker.is_whale).length
+            : 0;
+          const upsScore = Number(marketData?.unified_power_score?.score || 0);
+          const regime = String(regimeData?.regime || 'UNKNOWN');
+          const volatility = String(regimeData?.volatility || marketData?.volatility?.classification || 'UNKNOWN');
+
+          const strengths: string[] = [];
+          const weaknesses: string[] = [];
+          const opportunities: string[] = [];
+          const threats: string[] = [];
+
+          if (upsScore >= 70) strengths.push(`UPS kuat (${upsScore.toFixed(0)}) menunjukkan konfluensi sinyal`);
+          if (whaleCount >= 2) strengths.push(`Dukungan akumulasi dari ${whaleCount} broker whale`);
+          if (regime === 'UPTREND') strengths.push('Regime pasar mendukung skenario lanjutan bullish');
+
+          if (washSaleScore >= 50) weaknesses.push(`Wash-sale risk meningkat (${washSaleScore.toFixed(1)}%)`);
+          if (volatility === 'HIGH' || volatility === 'EXTREME') weaknesses.push(`Volatilitas ${volatility} meningkatkan risiko whipsaw`);
+          if (upsScore > 0 && upsScore < 55) weaknesses.push(`UPS moderat (${upsScore.toFixed(0)}) belum konfirmasi penuh`);
+
+          if (regime === 'UPTREND' && upsScore >= 60) opportunities.push('Momentum continuation berpeluang jika volume konfirmasi');
+          if (whaleCount > 0 && washSaleScore < 50) opportunities.push('Akumulasi broker berpotensi membuka swing setup');
+
+          if (regime === 'DOWNTREND') threats.push('Tekanan trend mayor dapat membatalkan entry agresif');
+          if (washSaleScore >= 65) threats.push('Risiko fake move dari churn tinggi tanpa akumulasi riil');
+          if (volatility === 'EXTREME') threats.push('Lonjakan volatilitas berpotensi trigger stop-loss beruntun');
+
+          requestPayload.data = {
+            strengths: strengths.length > 0 ? strengths : ['Data strength terbatas, perlu konfirmasi tambahan'],
+            weaknesses: weaknesses.length > 0 ? weaknesses : ['Belum ada kelemahan dominan dari data ringkas'],
+            opportunities: opportunities.length > 0 ? opportunities : ['Opportunity muncul jika ada konfirmasi volume lanjutan'],
+            threats: threats.length > 0 ? threats : ['Ancaman utama berasal dari perubahan sentimen makro mendadak'],
+            summary: {
+              ups_score: upsScore,
+              wash_sale_score: washSaleScore,
+              whale_count: whaleCount,
+              regime,
+              volatility,
+            },
+          };
         } else {
           // other types (screener, swot) may not require pre-fetched data
           requestPayload.data = {};
