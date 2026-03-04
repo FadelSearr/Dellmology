@@ -1463,6 +1463,31 @@ function TopNavigation({
   const infraCoreHealthyCount = infraCoreStatuses.filter((status) => status === 'good').length;
   const infraCoreIssueCount = infraCoreStatuses.length - infraCoreHealthyCount;
   const regimeLabel = !modelConsensus.pass ? 'SIDEWAYS' : modelConsensus.status === 'CONSENSUS_BULL' ? 'UPTREND' : 'DOWNTREND';
+  const searchInputNormalized = symbolInput.trim().toUpperCase();
+  const searchInputEmpty = searchInputNormalized.length === 0;
+  const searchInputMatchesActive = !searchInputEmpty && searchInputNormalized === activeSymbol.toUpperCase();
+  const searchPreviewLabel = searchInputEmpty ? 'IDLE' : searchInputMatchesActive ? 'LIVE' : 'PENDING';
+  const searchPreviewTone =
+    searchPreviewLabel === 'LIVE'
+      ? 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10'
+      : searchPreviewLabel === 'PENDING'
+        ? 'text-amber-300 border-amber-500/40 bg-amber-500/10'
+        : 'text-slate-500 border-slate-800 bg-slate-900/30';
+  const searchLockLabel = coolingOff.active
+    ? `LOCK COOLING ${coolingRemainingLabel}`
+    : activeLockGuards.length > 0
+      ? `LOCKED ${activeLockGuards.length}`
+      : 'READY';
+  const searchLockTone = coolingOff.active
+    ? 'text-amber-300 border-amber-500/40 bg-amber-500/10'
+    : activeLockGuards.length > 0
+      ? 'text-rose-300 border-rose-500/40 bg-rose-500/10'
+      : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10';
+  const searchPreviewTitle = searchInputMatchesActive
+    ? `${activeSymbol} ${currentPrice.toLocaleString('en-US', { maximumFractionDigits: 2 })} | ${regimeLabel}`
+    : searchInputEmpty
+      ? 'Type symbol then press Enter or APPLY'
+      : `Pending apply: ${searchInputNormalized}`;
   const regimeTone = !modelConsensus.pass
     ? 'text-amber-300 border-amber-500/40 bg-amber-500/10'
     : modelConsensus.status === 'CONSENSUS_BULL'
@@ -1537,6 +1562,17 @@ function TopNavigation({
           >
             APPLY
           </button>
+        </div>
+        <div className="hidden lg:flex items-center gap-2 text-[10px] font-mono">
+          <div className={cn('px-2 py-1 rounded border', searchPreviewTone)} title={searchPreviewTitle}>
+            {`SEARCH ${searchPreviewLabel}${searchInputMatchesActive ? ` ${activeSymbol}` : searchInputEmpty ? '' : ` ${searchInputNormalized}`}`}
+          </div>
+          <div
+            className={cn('px-2 py-1 rounded border', searchLockTone)}
+            title={activeLockGuards.length > 0 ? `Guard: ${activeLockGuards.join(' | ')}` : 'Search/apply path ready'}
+          >
+            {searchLockLabel}
+          </div>
         </div>
         <div className="hidden xl:flex items-center gap-2 text-[10px] font-mono">
           <div className="px-2 py-1 rounded border border-slate-800 bg-slate-900/40 text-slate-300">
