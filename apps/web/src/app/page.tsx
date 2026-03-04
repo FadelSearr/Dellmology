@@ -34,6 +34,8 @@ type Timeframe = '1m' | '5m' | '15m' | '1h' | '4h' | 'D';
 
 interface SnapshotRow {
   symbol: string;
+  timeframe?: string;
+  signal?: 'BUY' | 'SELL' | 'NEUTRAL' | string;
   price?: number;
   created_at: string;
   payload?: {
@@ -134,6 +136,16 @@ interface ModelConfidenceResponse {
   confidence_label?: 'LOW' | 'MEDIUM' | 'HIGH';
   accuracy_pct?: number;
   warning?: string | null;
+}
+
+interface ModelConfidenceTracking {
+  windowSize: number;
+  evaluated: number;
+  wins: number;
+  losses: number;
+  accuracyPct: number;
+  warning: boolean;
+  reason: string | null;
 }
 
 interface PredictionResponse {
@@ -533,6 +545,8 @@ const CHAMPION_CHALLENGER_DAYS = Math.max(14, Math.floor(envNumber('NEXT_PUBLIC_
 const CHAMPION_CHALLENGER_HORIZON_DAYS = Math.max(1, Math.floor(envNumber('NEXT_PUBLIC_CHAMPION_CHALLENGER_HORIZON_DAYS', 1)));
 const CHAMPION_CHALLENGER_ALERT_GAP_PCT = envNumber('NEXT_PUBLIC_CHAMPION_CHALLENGER_ALERT_GAP_PCT', 5);
 const WASH_SALE_SCORE_ALERT = envNumber('NEXT_PUBLIC_WASH_SALE_SCORE_ALERT', 60);
+const MODEL_CONFIDENCE_TRACK_WINDOW = Math.max(5, Math.floor(envNumber('NEXT_PUBLIC_MODEL_CONFIDENCE_TRACK_WINDOW', 10)));
+const MODEL_CONFIDENCE_TRACK_MAX_MISS = Math.max(1, Math.floor(envNumber('NEXT_PUBLIC_MODEL_CONFIDENCE_TRACK_MAX_MISS', 7)));
 
 const ROADMAP_DEFAULTS = {
   killSwitchIhsgDropPct: -1.5,
@@ -585,6 +599,55 @@ function coolingTriggerFromReason(reason: string | null, active: boolean) {
     return 'SYSTEM_GUARD' as const;
   }
   return 'NONE' as const;
+}
+
+function evaluateHistoricalModelConfidence(
+  snapshots: SnapshotRow[],
+  latestPrice: number,
+  windowSize: number,
+  maxMiss: number,
+): ModelConfidenceTracking {
+  if (latestPrice <= 0) {
+    return {
+      windowSize,
+      evaluated: 0,
+      wins: 0,
+      losses: 0,
+      accuracyPct: 0,
+      warning: false,
+      reason: null,
+    };
+  }
+
+  const directionalSnapshots = [...snapshots]
+    .filter((row) => (row.signal === 'BUY' || row.signal === 'SELL') && typeof row.price === 'number' && Number(row.price) > 0)
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    .slice(0, windowSize);
+
+  const evaluated = directionalSnapshots.length;
+  const wins = directionalSnapshots.reduce((sum, row) => {
+    const entryPrice = Number(row.price || 0);
+    if (entryPrice <= 0) {
+      return sum;
+    }
+    const win = row.signal === 'BUY' ? latestPrice >= entryPrice : latestPrice <= entryPrice;
+    return sum + (win ? 1 : 0);
+  }, 0);
+  const losses = Math.max(0, evaluated - wins);
+  const accuracyPct = evaluated > 0 ? (wins / evaluated) * 100 : 0;
+  const warning = evaluated >= windowSize && losses >= maxMiss;
+
+  return {
+    windowSize,
+    evaluated,
+    wins,
+    losses,
+    accuracyPct,
+    warning,
+    reason: warning
+      ? `AI CONFIDENCE: LOW - RE-CALIBRATION REQUIRED (${losses}/${windowSize} misses)`
+      : null,
+  };
 }
 
 function apiTimeframe(tf: Timeframe) {
@@ -1666,6 +1729,7 @@ function BottomPanel({
   narrative,
   adversarialNarrative,
   confidence,
+  confidenceTracking,
   latencyMs,
   activeSymbol,
   upsScore,
@@ -1710,6 +1774,7 @@ function BottomPanel({
   narrative: string;
   adversarialNarrative: AdversarialNarrative;
   confidence: ModelConfidenceResponse | null;
+  confidenceTracking: ModelConfidenceTracking;
   latencyMs: number;
   activeSymbol: string;
   upsScore: number;
@@ -1751,8 +1816,8 @@ function BottomPanel({
   deploymentGate: DeploymentGateState;
   systemKillSwitch: SystemKillSwitchState;
 }) {
-  const label = confidence?.confidence_label || 'MEDIUM';
-  const accuracy = Number(confidence?.accuracy_pct || 0);
+  const label = confidenceTracking.warning ? 'LOW' : confidence?.confidence_label || 'MEDIUM';
+  const accuracy = confidenceTracking.evaluated > 0 ? confidenceTracking.accuracyPct : Number(confidence?.accuracy_pct || 0);
   const coolingTriggerLabel = coolingTriggerFromReason(coolingOff.reason, coolingOff.active);
   const coolingLastTriggerLabel = coolingOff.lastBreachAt ? new Date(coolingOff.lastBreachAt).toLocaleString('id-ID') : '-';
 
@@ -1818,6 +1883,10 @@ function BottomPanel({
               <div className="h-full bg-cyan-500" style={{ width: `${Math.max(10, Math.min(100, accuracy))}%` }} />
             </div>
             <div className="text-[9px] text-slate-500 mt-1 text-right">Vol adjusted for liquidity safety</div>
+            <div className={cn('text-[9px] mt-1 font-mono', confidenceTracking.warning ? 'text-rose-400' : 'text-slate-500')}>
+              {`Hist Acc (${confidenceTracking.windowSize}): ${confidenceTracking.evaluated > 0 ? confidenceTracking.accuracyPct.toFixed(1) : '-'}% | W/L ${confidenceTracking.wins}/${confidenceTracking.losses}`}
+            </div>
+            {confidenceTracking.warning ? <div className="text-[9px] text-rose-400 font-bold mt-1">{confidenceTracking.reason}</div> : null}
             <div className="mt-2 border border-slate-800 rounded px-2 py-1 bg-slate-950/60 text-[9px] font-mono text-slate-400">
               <div>{`Daily Vol: ${liquidityGuard.dailyVolumeLots.toLocaleString()} lots`}</div>
               <div>{`Participation Cap: ${(liquidityGuard.capPct * 100).toFixed(1)}%`}</div>
@@ -2092,6 +2161,15 @@ export default function Home() {
 
   const [upsScore, setUpsScore] = useState(88);
   const [modelConfidence, setModelConfidence] = useState<ModelConfidenceResponse | null>(null);
+  const [confidenceTracking, setConfidenceTracking] = useState<ModelConfidenceTracking>({
+    windowSize: MODEL_CONFIDENCE_TRACK_WINDOW,
+    evaluated: 0,
+    wins: 0,
+    losses: 0,
+    accuracyPct: 0,
+    warning: false,
+    reason: null,
+  });
   const [prediction, setPrediction] = useState<PredictionResponse | null>(null);
   const [narrative, setNarrative] = useState('System: Waiting for market stream...');
   const [adversarialNarrative, setAdversarialNarrative] = useState<AdversarialNarrative>({
@@ -2532,7 +2610,9 @@ export default function Home() {
       toAdapterHealth('Exit Whale', exitWhaleRaw?.data_source || null, exitWhaleRaw?.degraded ? exitWhaleRaw?.reason || 'degraded response' : null),
     ]);
 
-    const snapshotRows = (snapshots?.snapshots || [])
+    const symbolSnapshots = (snapshots?.snapshots || []).filter((row) => row.symbol === activeSymbol);
+
+    const snapshotRows = symbolSnapshots
       .filter((row) => row.symbol === activeSymbol && typeof row.price === 'number')
       .slice(0, 32)
       .reverse();
@@ -2868,6 +2948,13 @@ export default function Home() {
     const firstPrice = Number(mainPriceSeries[0]?.price || marketData[0]?.price || FALLBACK_MARKET_DATA[0].price);
     const lastPrice = Number(mainPriceSeries[mainPriceSeries.length - 1]?.price || marketData[marketData.length - 1]?.price || FALLBACK_MARKET_DATA[FALLBACK_MARKET_DATA.length - 1].price);
     const deltaPct = firstPrice > 0 ? ((lastPrice - firstPrice) / firstPrice) * 100 : 0;
+    const nextConfidenceTracking = evaluateHistoricalModelConfidence(
+      symbolSnapshots,
+      lastPrice,
+      MODEL_CONFIDENCE_TRACK_WINDOW,
+      MODEL_CONFIDENCE_TRACK_MAX_MISS,
+    );
+    setConfidenceTracking(nextConfidenceTracking);
 
     const profileData = (mainPriceSeries.length >= 2
       ? mainPriceSeries.map((row) => ({ price: Number(row.price || 0), volume: Number(row.payload?.volume || 0) }))
@@ -2942,7 +3029,8 @@ export default function Home() {
 
     const volClass = marketIntel?.volatility?.classification || 'MEDIUM';
     const volPct = Math.abs(Number(marketIntel?.volatility?.percentage || 0));
-    const confLabel = confidence?.confidence_label || 'MEDIUM';
+    const confLabel = nextConfidenceTracking.warning ? 'LOW' : confidence?.confidence_label || 'MEDIUM';
+    const confidenceAccuracy = nextConfidenceTracking.evaluated > 0 ? nextConfidenceTracking.accuracyPct : Number(confidence?.accuracy_pct || 0);
     const hakiRatio = Math.max(0, Math.min(1, Number(marketIntel?.metrics?.haki_ratio || 0)));
     const coolingActive = Boolean(coolingState?.active);
     const betaDenominator = Math.max(0.2, Math.abs(ihsgChangePct));
@@ -3070,8 +3158,8 @@ export default function Home() {
         `Consensus: ${preliminaryConsensus.message}\n` +
         `Cooling-Off: ${coolingActive ? 'ACTIVE (Recommendation Locked)' : 'Clear'}\n` +
         `Whale Flow: ${topWhales || 'No dominant whale detected'}\n` +
-        `Model Confidence: ${confLabel} (${Number(confidence?.accuracy_pct || 0).toFixed(1)}%)\n\n` +
-        `> Recommendation: ${systemKillSwitch.active ? 'System kill-switch aktif. Hentikan rekomendasi dan lakukan verifikasi infrastruktur.' : coolingActive ? 'Cooling-off active. Stand down and review risk.' : sanityWarning ? 'Data contaminated. Lock sinyal hingga verifikasi ulang.' : crossCheckWarning ? 'Cross-check lock aktif. Tahan eksekusi sampai harga sinkron.' : incompleteDataWarning ? 'Data belum lengkap. Tunda aksi sampai stream normal.' : mtfWarning ? 'Konfirmasi multi-timeframe gagal. Tunda entry sampai trend 1h searah.' : newsImpactWarning ? 'News stress tinggi terdeteksi. Kurangi eksposur dan verifikasi red flags.' : championDriftWarning ? 'Model drift warning. Gunakan mode defensif sampai champion dikaji ulang.' : portfolioSystemicRiskHighLocal ? `Systemic Risk High: Portfolio beta ${portfolioBetaEstimateLocal.toFixed(2)} melebihi threshold ${runtimeSystemicRiskBetaThreshold.toFixed(2)}. Kurangi eksposur.` : systemicRiskHighLocal ? `Systemic risk tinggi: beta ${betaEstimateLocal.toFixed(2)} di atas threshold.` : rocCritical ? 'CRITICAL volatility spike. Disable buy and wait stabilization.' : spoofingWarning ? 'Spoofing risk terdeteksi. Hindari entry impulsif.' : exitWhaleWarning ? 'Exit whale / liquidity hunt terdeteksi. Hindari entry sampai tekanan distribusi mereda.' : washSaleWarning ? 'Wash-sale risk tinggi. Hindari entry sampai akumulasi net membaik.' : retailDivergenceWarning ? 'Retail sentiment divergence: hindari mengikuti euforia saat whale distribusi.' : nextUps >= minUpsForLong ? 'Momentum entry on pullback.' : nextUps <= 40 ? 'Defensive mode, avoid aggressive entry.' : 'Wait for clearer confirmation.'}`,
+        `Model Confidence: ${confLabel} (${confidenceAccuracy.toFixed(1)}%) | Hist ${nextConfidenceTracking.evaluated > 0 ? nextConfidenceTracking.accuracyPct.toFixed(1) : '-'}% (${nextConfidenceTracking.wins}/${nextConfidenceTracking.losses})\n\n` +
+        `> Recommendation: ${systemKillSwitch.active ? 'System kill-switch aktif. Hentikan rekomendasi dan lakukan verifikasi infrastruktur.' : coolingActive ? 'Cooling-off active. Stand down and review risk.' : sanityWarning ? 'Data contaminated. Lock sinyal hingga verifikasi ulang.' : crossCheckWarning ? 'Cross-check lock aktif. Tahan eksekusi sampai harga sinkron.' : incompleteDataWarning ? 'Data belum lengkap. Tunda aksi sampai stream normal.' : mtfWarning ? 'Konfirmasi multi-timeframe gagal. Tunda entry sampai trend 1h searah.' : newsImpactWarning ? 'News stress tinggi terdeteksi. Kurangi eksposur dan verifikasi red flags.' : championDriftWarning ? 'Model drift warning. Gunakan mode defensif sampai champion dikaji ulang.' : nextConfidenceTracking.warning ? 'AI confidence LOW. Re-calibration required sebelum entry agresif.' : portfolioSystemicRiskHighLocal ? `Systemic Risk High: Portfolio beta ${portfolioBetaEstimateLocal.toFixed(2)} melebihi threshold ${runtimeSystemicRiskBetaThreshold.toFixed(2)}. Kurangi eksposur.` : systemicRiskHighLocal ? `Systemic risk tinggi: beta ${betaEstimateLocal.toFixed(2)} di atas threshold.` : rocCritical ? 'CRITICAL volatility spike. Disable buy and wait stabilization.' : spoofingWarning ? 'Spoofing risk terdeteksi. Hindari entry impulsif.' : exitWhaleWarning ? 'Exit whale / liquidity hunt terdeteksi. Hindari entry sampai tekanan distribusi mereda.' : washSaleWarning ? 'Wash-sale risk tinggi. Hindari entry sampai akumulasi net membaik.' : retailDivergenceWarning ? 'Retail sentiment divergence: hindari mengikuti euforia saat whale distribusi.' : nextUps >= minUpsForLong ? 'Momentum entry on pullback.' : nextUps <= 40 ? 'Defensive mode, avoid aggressive entry.' : 'Wait for clearer confirmation.'}`,
     );
 
     try {
@@ -3780,6 +3868,16 @@ export default function Home() {
         portfolio_systemic_risk_high: portfolioBetaRisk.high,
         contributing_symbols: portfolioBetaRisk.contributingSymbols,
       },
+      model_confidence: {
+        label: confidenceTracking.warning ? 'LOW' : modelConfidence?.confidence_label || 'MEDIUM',
+        accuracy_pct: confidenceTracking.evaluated > 0 ? confidenceTracking.accuracyPct : Number(modelConfidence?.accuracy_pct || 0),
+        warning: confidenceTracking.warning,
+        reason: confidenceTracking.reason,
+        historical_window: confidenceTracking.windowSize,
+        historical_evaluated: confidenceTracking.evaluated,
+        historical_wins: confidenceTracking.wins,
+        historical_losses: confidenceTracking.losses,
+      },
       consensus: {
         status: modelConsensus.status,
         message: modelConsensus.message,
@@ -3979,6 +4077,15 @@ export default function Home() {
     systemicRisk.betaEstimate,
     systemicRisk.high,
     systemicRisk.threshold,
+    modelConfidence?.confidence_label,
+    modelConfidence?.accuracy_pct,
+    confidenceTracking.windowSize,
+    confidenceTracking.evaluated,
+    confidenceTracking.wins,
+    confidenceTracking.losses,
+    confidenceTracking.accuracyPct,
+    confidenceTracking.warning,
+    confidenceTracking.reason,
     portfolioBetaRisk.betaEstimate,
     portfolioBetaRisk.high,
     portfolioBetaRisk.threshold,
@@ -4395,6 +4502,7 @@ export default function Home() {
           narrative={narrative}
           adversarialNarrative={adversarialNarrative}
           confidence={modelConfidence}
+          confidenceTracking={confidenceTracking}
           latencyMs={latencyMs}
           activeSymbol={activeSymbol}
           upsScore={upsScore}
