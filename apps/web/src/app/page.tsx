@@ -2877,6 +2877,27 @@ function RightSidebar({
         )
       : null;
   const dominantBrokerSharePct = dominantBroker && brokerAbsNetTotal > 0 ? (Math.abs(Number(dominantBroker.net) || 0) / brokerAbsNetTotal) * 100 : 0;
+  const isLikelyAlgorithmicBuying = (broker: BrokerRow) => {
+    const bars = broker.dailyHeatmap.slice(0, 5).map((value) => Math.max(0, Math.min(100, Number(value) || 0)));
+    const avg = bars.length > 0 ? bars.reduce((sum, value) => sum + value, 0) / bars.length : 0;
+    const variance = bars.length > 0 ? bars.reduce((sum, value) => sum + (value - avg) ** 2, 0) / bars.length : 0;
+
+    return (
+      broker.type === 'Whale' &&
+      broker.action === 'Buy' &&
+      broker.consistency >= 65 &&
+      Math.abs(Number(broker.net) || 0) >= 1_000_000_000 &&
+      avg >= 42 &&
+      variance <= 220
+    );
+  };
+  const whaleCamouflageCount = brokers.filter((broker) => isLikelyAlgorithmicBuying(broker)).length;
+  const whaleCamouflageTone =
+    whaleCamouflageCount >= 3
+      ? 'text-rose-300 border-rose-500/40 bg-rose-500/10'
+      : whaleCamouflageCount >= 1
+        ? 'text-amber-300 border-amber-500/40 bg-amber-500/10'
+        : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10';
   const peakAbsZScore = zData.reduce((max, item) => Math.max(max, Math.abs(Number(item.score) || 0)), 0);
   const zScoreSeverityLabel: 'LOW' | 'MED' | 'HIGH' = peakAbsZScore >= 3 ? 'HIGH' : peakAbsZScore >= 2 ? 'MED' : 'LOW';
   const zScoreSeverityPct = Math.max(0, Math.min(100, (peakAbsZScore / 3) * 100));
@@ -2931,19 +2952,27 @@ function RightSidebar({
       <div className="flex-1 flex flex-col min-h-0 border-b border-slate-800">
         <div className="px-3 py-1.5 border-b border-slate-800 bg-slate-950/60 flex items-center justify-between text-[9px] font-mono">
           <span className="text-slate-500">Broker Dominance</span>
-          <span
-            className={cn(
-              'px-1.5 py-0.5 rounded border',
-              dominantBrokerSharePct >= 35
-                ? 'text-rose-300 border-rose-500/40 bg-rose-500/10'
-                : dominantBrokerSharePct >= 20
-                  ? 'text-amber-300 border-amber-500/40 bg-amber-500/10'
-                  : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10',
-            )}
-            title={dominantBroker ? `${dominantBroker.broker} dominates ${dominantBrokerSharePct.toFixed(1)}% of abs net flow` : 'No broker data'}
-          >
-            {dominantBroker ? `DOM ${dominantBroker.broker} ${dominantBrokerSharePct.toFixed(0)}%` : 'DOM N/A'}
-          </span>
+          <div className="flex items-center gap-1">
+            <span
+              className={cn(
+                'px-1.5 py-0.5 rounded border',
+                dominantBrokerSharePct >= 35
+                  ? 'text-rose-300 border-rose-500/40 bg-rose-500/10'
+                  : dominantBrokerSharePct >= 20
+                    ? 'text-amber-300 border-amber-500/40 bg-amber-500/10'
+                    : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10',
+              )}
+              title={dominantBroker ? `${dominantBroker.broker} dominates ${dominantBrokerSharePct.toFixed(1)}% of abs net flow` : 'No broker data'}
+            >
+              {dominantBroker ? `DOM ${dominantBroker.broker} ${dominantBrokerSharePct.toFixed(0)}%` : 'DOM N/A'}
+            </span>
+            <span
+              className={cn('px-1.5 py-0.5 rounded border', whaleCamouflageTone)}
+              title={`Whale camouflage hint count ${whaleCamouflageCount} | Detects repetitive high-consistency whale accumulation pattern`}
+            >
+              {`CAMO ${whaleCamouflageCount}`}
+            </span>
+          </div>
         </div>
         <div className="grid grid-cols-5 gap-1 px-3 py-2 bg-slate-900 text-[10px] text-slate-500 font-bold uppercase tracking-wider border-b border-slate-800">
           <span>Broker</span>
@@ -2953,7 +2982,10 @@ function RightSidebar({
           <span className="text-right">Cons</span>
         </div>
         <div className="overflow-y-auto custom-scrollbar flex-1">
-          {brokers.map((broker, index) => (
+          {brokers.map((broker, index) => {
+            const algorithmicBuyLikely = isLikelyAlgorithmicBuying(broker);
+
+            return (
             <div key={index} className="grid grid-cols-5 gap-1 px-3 py-2 border-b border-slate-800/50 hover:bg-slate-800/30 transition-colors items-center">
               <div className="flex items-center space-x-2">
                 <span className={cn('w-2 h-2 rounded-full', broker.action === 'Buy' ? 'bg-emerald-500' : 'bg-rose-500')} />
@@ -2987,6 +3019,11 @@ function RightSidebar({
                     >
                       {`CONS ${broker.consistency >= 75 ? 'A' : broker.consistency >= 55 ? 'B' : broker.consistency >= 35 ? 'C' : 'D'}`}
                     </span>
+                    {algorithmicBuyLikely ? (
+                      <span className="px-1 py-0.5 rounded border text-[8px] text-rose-300 border-rose-500/40 bg-rose-500/10" title="Potential split-order / algorithmic buying camouflage">
+                        ALG BUY
+                      </span>
+                    ) : null}
                   </div>
                 </div>
               </div>
@@ -3024,7 +3061,7 @@ function RightSidebar({
                 </div>
               </div>
             </div>
-          ))}
+          )})}
         </div>
       </div>
 
