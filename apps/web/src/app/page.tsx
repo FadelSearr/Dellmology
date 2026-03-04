@@ -891,6 +891,7 @@ function TopNavigation({
   rocKillSwitch,
   dataSanity,
   priceCrossCheck,
+  confidenceTracking,
   infraStatus,
   globalData,
 }: {
@@ -908,6 +909,7 @@ function TopNavigation({
   rocKillSwitch: RocKillSwitchState;
   dataSanity: DataSanityState;
   priceCrossCheck: PriceCrossCheckState;
+  confidenceTracking: ModelConfidenceTracking;
   infraStatus: { sse: Tone; db: Tone; integrity: Tone; token: Tone };
   globalData: GlobalCorrelationResponse | null;
 }) {
@@ -1033,6 +1035,15 @@ function TopNavigation({
           title={priceCrossCheck.reason || 'External price anchor cross-check pass'}
         >
           {`XCHECK ${priceCrossCheck.warning ? `LOCK ${priceCrossCheck.maxDeviationPct.toFixed(1)}%` : 'OK'}`}
+        </div>
+        <div
+          className={cn(
+            'text-[10px] font-mono border rounded px-2 py-1',
+            confidenceTracking.warning ? 'text-amber-300 border-amber-500/40 bg-amber-500/10' : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10',
+          )}
+          title={confidenceTracking.reason || 'AI confidence stable'}
+        >
+          {`AI ${confidenceTracking.warning ? 'LOW' : 'OK'} ${confidenceTracking.accuracyPct.toFixed(0)}%`}
         </div>
         <div
           className={cn(
@@ -5033,6 +5044,7 @@ export default function Home() {
         rocKillSwitch={rocKillSwitch}
         dataSanity={dataSanity}
         priceCrossCheck={priceCrossCheck}
+        confidenceTracking={confidenceTracking}
         infraStatus={infraStatus}
         globalData={globalData}
       />
