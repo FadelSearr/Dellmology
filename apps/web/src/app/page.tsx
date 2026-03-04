@@ -1735,6 +1735,16 @@ function BottomPanel({
 }) {
   const label = confidence?.confidence_label || 'MEDIUM';
   const accuracy = Number(confidence?.accuracy_pct || 0);
+  const coolingReasonText = (coolingOff.reason || '').toLowerCase();
+  const coolingTriggerLabel = coolingReasonText.includes('portfolio-beta-guard') || coolingReasonText.includes('portfolio beta')
+    ? 'PORTFOLIO_BETA_STREAK'
+    : coolingReasonText.includes('backtest-rig') || coolingReasonText.includes('drawdown')
+      ? 'DRAWDOWN_BREACH'
+      : coolingReasonText.includes('manual reset')
+        ? 'MANUAL'
+        : coolingOff.active
+          ? 'SYSTEM_GUARD'
+          : 'NONE';
 
   return (
     <Card className="h-48 border-t border-slate-800 rounded-none shrink-0 flex flex-row">
@@ -1984,6 +1994,20 @@ function BottomPanel({
             {coolingOff.active
               ? `COOLING-OFF ACTIVE: ${Math.max(0, Math.floor(coolingOff.remainingSeconds / 60))}m left`
               : `Cooling-Off: streak ${coolingOff.breachStreak}/${runtimeCoolingOffRequiredBreaches}`}
+          </div>
+          <div
+            className={cn(
+              'text-[9px] font-mono border rounded px-2 py-1',
+              coolingTriggerLabel === 'PORTFOLIO_BETA_STREAK'
+                ? 'text-amber-300 border-amber-500/40 bg-amber-500/10'
+                : coolingTriggerLabel === 'DRAWDOWN_BREACH'
+                  ? 'text-rose-300 border-rose-500/40 bg-rose-500/10'
+                  : coolingTriggerLabel === 'MANUAL'
+                    ? 'text-cyan-300 border-cyan-500/40 bg-cyan-500/10'
+                    : 'text-slate-500 border-slate-800 bg-slate-900/30',
+            )}
+          >
+            {`Cooling Trigger: ${coolingTriggerLabel}`}
           </div>
           <div
             className={cn(
