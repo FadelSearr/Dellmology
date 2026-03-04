@@ -2321,6 +2321,7 @@ function CenterPanel({
 function RightSidebar({
   brokers,
   zData,
+  combatMode,
   artificialLiquidity,
   brokerCharacter,
   divergence,
@@ -2345,6 +2346,7 @@ function RightSidebar({
 }: {
   brokers: BrokerRow[];
   zData: ZScorePoint[];
+  combatMode: CombatModeState;
   artificialLiquidity: ArtificialLiquidityState;
   brokerCharacter: BrokerCharacterState;
   divergence: VolumeProfileDivergenceState;
@@ -2396,6 +2398,32 @@ function RightSidebar({
         : negotiatedBuySharePct <= 40
           ? 'SELL DOM'
           : 'BALANCED';
+
+  if (combatMode.active) {
+    return (
+      <Card className="h-full border-l border-t-0 border-r-0 border-b-0 rounded-none w-80 flex flex-col">
+        <SectionHeader title="Whale & Flow Engine" icon={Database} />
+        <div className="p-3 space-y-2">
+          <div className="text-[9px] text-rose-300 font-mono border border-rose-500/40 bg-rose-500/10 rounded px-2 py-1 uppercase">
+            Combat Mode: technical logs hidden
+          </div>
+          <div className={cn('text-[10px] font-mono border rounded px-2 py-1', exitWhale.warning ? 'text-rose-300 border-rose-500/40 bg-rose-500/10' : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10')}>
+            {`EXIT ${exitWhale.warning ? 'WARN' : 'OK'} | ${exitWhale.signal}`}
+          </div>
+          <div className={cn('text-[10px] font-mono border rounded px-2 py-1', rocKillSwitch.active ? 'text-rose-300 border-rose-500/40 bg-rose-500/10' : 'text-slate-500 border-slate-800 bg-slate-900/30')}>
+            {`ROC ${rocKillSwitch.active ? 'SPIKE' : 'NORMAL'} | WASH ${washSaleRisk.warning ? 'WARN' : 'OK'} | SPOOF ${spoofing.warning ? 'WARN' : 'OK'}`}
+          </div>
+          <div className={cn('text-[10px] font-mono border rounded px-2 py-1', coolingOff.active ? 'text-amber-300 border-amber-500/40 bg-amber-500/10' : 'text-slate-500 border-slate-800 bg-slate-900/30')}>
+            {`COOL ${coolingOff.active ? coolingRemainingLabel : `${coolingOff.breachStreak}/${Math.max(1, runtimeCoolingOffRequiredBreaches)}`} | ${coolingTriggerLabel}`}
+          </div>
+          <div className={cn('text-[10px] font-mono border rounded px-2 py-1', negotiatedFeed.length > 0 ? 'text-amber-300 border-amber-500/40 bg-amber-500/10' : 'text-slate-500 border-slate-800 bg-slate-900/30')}>
+            {`NEGO ${negotiatedFlowLabel} | ${negotiatedFeed.length} tx | ${Math.round(negotiatedTotalNotional / 1_000_000)}M`}
+          </div>
+          <div className="text-[9px] text-slate-500 font-mono">{combatMode.bullets.join(' • ')}</div>
+        </div>
+      </Card>
+    );
+  }
 
   return (
     <Card className="h-full border-l border-t-0 border-r-0 border-b-0 rounded-none w-80 flex flex-col">
@@ -6317,6 +6345,7 @@ export default function Home() {
         <RightSidebar
           brokers={brokers}
           zData={zData}
+          combatMode={combatMode}
           artificialLiquidity={artificialLiquidity}
           brokerCharacter={brokerCharacter}
           divergence={volumeProfileDivergence}
