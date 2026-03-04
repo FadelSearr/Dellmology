@@ -331,6 +331,24 @@ interface DeploymentGateState {
   checkedAt: string | null;
 }
 
+interface GoldenRecordAnchorState {
+  symbol: string;
+  internalPrice: number;
+  externalPrice: number;
+  deviationPct: number;
+  isValid: boolean;
+}
+
+interface GoldenRecordValidationState {
+  safe: boolean;
+  triggerKillSwitch: boolean;
+  maxAllowedDeviationPct: number;
+  failedSymbols: string[];
+  checkedAt: string | null;
+  anchors: GoldenRecordAnchorState[];
+  reason: string | null;
+}
+
 interface SystemKillSwitchState {
   active: boolean;
   reason: string | null;
@@ -1398,6 +1416,7 @@ function RightSidebar({
   championChallenger,
   newsImpact,
   mtfValidation,
+  goldenRecord,
   marketIntelAdapter,
   sourceHealth,
   negotiatedFeed,
@@ -1418,6 +1437,7 @@ function RightSidebar({
   championChallenger: ChampionChallengerState;
   newsImpact: NewsImpactState;
   mtfValidation: MultiTimeframeValidationState;
+  goldenRecord: GoldenRecordValidationState;
   marketIntelAdapter: AdapterHealthState;
   sourceHealth: EndpointSourceHealthState[];
   negotiatedFeed: Array<{ symbol: string; trade_type: string; volume: number; notional: number }>;
@@ -1600,6 +1620,23 @@ function RightSidebar({
             {`MaxDev ${priceCrossCheck.maxDeviationPct.toFixed(2)}% | Thr ${priceCrossCheck.thresholdPct.toFixed(2)}%`}
           </div>
           {priceCrossCheck.reason ? <div className="text-[9px] text-slate-500 font-mono mt-1">{priceCrossCheck.reason}</div> : null}
+          <div
+            className={cn(
+              'text-[9px] font-mono border rounded px-2 py-1 mt-2',
+              goldenRecord.safe ? 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10' : 'text-rose-300 border-rose-500/40 bg-rose-500/10',
+            )}
+          >
+            {goldenRecord.safe ? 'Golden-Record Anchor OK' : 'Golden-Record Anchor Failed'}
+          </div>
+          <div className="text-[9px] text-slate-500 font-mono mt-1">
+            {`Fail ${goldenRecord.failedSymbols.length} | Thr ${goldenRecord.maxAllowedDeviationPct.toFixed(2)}%`}
+          </div>
+          {goldenRecord.anchors.slice(0, 3).map((anchor) => (
+            <div key={anchor.symbol} className="text-[9px] text-slate-500 font-mono mt-1">
+              {`${anchor.symbol} dev ${anchor.deviationPct.toFixed(3)}% (${anchor.isValid ? 'OK' : 'FAIL'})`}
+            </div>
+          ))}
+          {goldenRecord.reason ? <div className="text-[9px] text-slate-500 font-mono mt-1">{goldenRecord.reason}</div> : null}
           <div
             className={cn(
               'text-[9px] font-mono border rounded px-2 py-1 mt-2',
@@ -2274,6 +2311,15 @@ export default function Home() {
     reason: null,
     checkedAt: null,
   });
+  const [goldenRecordValidation, setGoldenRecordValidation] = useState<GoldenRecordValidationState>({
+    safe: true,
+    triggerKillSwitch: false,
+    maxAllowedDeviationPct: 2,
+    failedSymbols: [],
+    checkedAt: null,
+    anchors: [],
+    reason: null,
+  });
   const [systemKillSwitch, setSystemKillSwitch] = useState<SystemKillSwitchState>({
     active: false,
     reason: null,
@@ -2462,6 +2508,7 @@ export default function Home() {
       fetch(`/api/market-intelligence?symbol=${activeSymbol}&timeframe=1h`).then((response) => (response.ok ? response.json() : null)).catch(() => null),
       fetch(`/api/negotiated-monitor?symbol=${activeSymbol}&limit=25`).then((response) => (response.ok ? response.json() : null)).catch(() => null),
       fetch(`/api/exit-whale?symbol=${activeSymbol}&days=7`).then((response) => (response.ok ? response.json() : null)).catch(() => null),
+      fetch('/api/golden-record').then((response) => (response.ok ? response.json() : null)).catch(() => null),
     ]);
 
     const marketIntel = requests[0] as (MarketIntelResponse & { data_source?: SourceAdapterMetaClient }) | null;
@@ -2515,6 +2562,11 @@ export default function Home() {
       blocked?: boolean;
       reason?: string | null;
       checked_at?: string | null;
+      golden_record?: {
+        pass?: boolean;
+        failed_symbols?: string[];
+        max_allowed_deviation_pct?: number;
+      };
     } | null;
     const crossCheck = requests[13] as {
       lock_recommended?: boolean;
@@ -2579,6 +2631,20 @@ export default function Home() {
       data_source?: SourceAdapterMetaClient;
       degraded?: boolean;
       reason?: string;
+    } | null;
+    const goldenRecordRaw = requests[21] as {
+      anchors?: Array<{
+        symbol?: string;
+        internal_price?: number;
+        external_price?: number;
+        deviation_pct?: number;
+        is_valid?: boolean;
+      }>;
+      is_system_safe?: boolean;
+      trigger_kill_switch?: boolean;
+      max_allowed_deviation_pct?: number;
+      failed_symbols?: string[];
+      checked_at?: string;
     } | null;
 
     const nextDegradedSources: string[] = [];
@@ -2843,6 +2909,39 @@ export default function Home() {
         reason: deployGate.reason || null,
         checkedAt: deployGate.checked_at || null,
       });
+    }
+
+    if (goldenRecordRaw) {
+      const anchors = (goldenRecordRaw.anchors || []).map((row) => ({
+        symbol: String(row.symbol || '-'),
+        internalPrice: Number(row.internal_price || 0),
+        externalPrice: Number(row.external_price || 0),
+        deviationPct: Number(row.deviation_pct || 0),
+        isValid: Boolean(row.is_valid),
+      }));
+      setGoldenRecordValidation({
+        safe: Boolean(goldenRecordRaw.is_system_safe),
+        triggerKillSwitch: Boolean(goldenRecordRaw.trigger_kill_switch),
+        maxAllowedDeviationPct: Number(goldenRecordRaw.max_allowed_deviation_pct || deployGate?.golden_record?.max_allowed_deviation_pct || 2),
+        failedSymbols: (goldenRecordRaw.failed_symbols || []).filter((symbol): symbol is string => typeof symbol === 'string' && symbol.length > 0),
+        checkedAt: goldenRecordRaw.checked_at || deployGate?.checked_at || null,
+        anchors,
+        reason:
+          goldenRecordRaw.trigger_kill_switch === true
+            ? `Golden record failed (${(goldenRecordRaw.failed_symbols || []).join(', ') || 'unknown'})`
+            : null,
+      });
+    } else if (deployGate?.golden_record) {
+      const failedSymbols = (deployGate.golden_record.failed_symbols || []).filter((symbol): symbol is string => typeof symbol === 'string' && symbol.length > 0);
+      setGoldenRecordValidation((prev) => ({
+        ...prev,
+        safe: Boolean(deployGate.golden_record?.pass),
+        triggerKillSwitch: !Boolean(deployGate.golden_record?.pass),
+        maxAllowedDeviationPct: Number(deployGate.golden_record?.max_allowed_deviation_pct || prev.maxAllowedDeviationPct),
+        failedSymbols,
+        checkedAt: deployGate.checked_at || prev.checkedAt,
+        reason: !Boolean(deployGate.golden_record?.pass) ? `Golden record failed (${failedSymbols.join(', ') || 'unknown'})` : null,
+      }));
     }
 
     const flaggedSymbols = (crossCheck?.flagged_symbols || []).filter((symbol): symbol is string => typeof symbol === 'string' && symbol.length > 0);
@@ -3165,6 +3264,7 @@ export default function Home() {
         `Data Integrity: ${incompleteDataWarning ? 'Incomplete Data' : 'Complete'}\n` +
         `Cross-Check: ${crossCheckWarning ? 'LOCK' : 'OK'}\n` +
         `Data Sanity: ${sanityWarning ? 'DATA CONTAMINATED' : 'PASS'}\n` +
+        `Golden Record: ${goldenRecordRaw?.is_system_safe === false ? 'FAILED' : 'PASS'}\n` +
         `Champion-Challenger: ${championDriftWarning ? 'DRIFT WARNING' : 'STABLE'}\n` +
         `News Overlay: ${newsImpactWarning ? `RISK (${newsRiskLabel}, UPS-${newsPenaltyUps.toFixed(0)})` : 'NORMAL'}\n` +
         `Retail Divergence: ${retailDivergenceWarning ? 'WARNING' : 'NORMAL'}\n` +
@@ -3826,6 +3926,14 @@ export default function Home() {
       return;
     }
 
+    if (goldenRecordValidation.triggerKillSwitch) {
+      setActionState({
+        busy: false,
+        message: `Alert blocked: golden-record failed (${goldenRecordValidation.failedSymbols.join(', ') || 'anchor mismatch'})`,
+      });
+      return;
+    }
+
     setActionState({ busy: true, message: 'Sending Telegram alert...' });
     const coolingTrigger = coolingTriggerFromReason(coolingOff.reason, coolingOff.active);
     const alertData = {
@@ -3894,6 +4002,20 @@ export default function Home() {
         historical_evaluated: confidenceTracking.evaluated,
         historical_wins: confidenceTracking.wins,
         historical_losses: confidenceTracking.losses,
+      },
+      golden_record_validation: {
+        safe: goldenRecordValidation.safe,
+        trigger_kill_switch: goldenRecordValidation.triggerKillSwitch,
+        failed_symbols: goldenRecordValidation.failedSymbols,
+        max_allowed_deviation_pct: goldenRecordValidation.maxAllowedDeviationPct,
+        checked_at: goldenRecordValidation.checkedAt,
+        anchors: goldenRecordValidation.anchors.map((anchor) => ({
+          symbol: anchor.symbol,
+          internal_price: anchor.internalPrice,
+          external_price: anchor.externalPrice,
+          deviation_pct: anchor.deviationPct,
+          is_valid: anchor.isValid,
+        })),
       },
       compliance: {
         disclaimer: PERSONAL_RESEARCH_ONLY_DISCLAIMER,
@@ -4126,6 +4248,12 @@ export default function Home() {
     modelConsensus.technical,
     deploymentGate.blocked,
     deploymentGate.reason,
+    goldenRecordValidation.safe,
+    goldenRecordValidation.triggerKillSwitch,
+    goldenRecordValidation.failedSymbols,
+    goldenRecordValidation.maxAllowedDeviationPct,
+    goldenRecordValidation.checkedAt,
+    goldenRecordValidation.anchors,
     artificialLiquidity.warning,
     artificialLiquidity.reason,
     artificialLiquidity.topBuyerSharePct,
@@ -4513,6 +4641,7 @@ export default function Home() {
           championChallenger={championChallenger}
           newsImpact={newsImpact}
           mtfValidation={mtfValidation}
+          goldenRecord={goldenRecordValidation}
           marketIntelAdapter={marketIntelAdapter}
           sourceHealth={sourceHealth}
           negotiatedFeed={negotiatedFeed}
