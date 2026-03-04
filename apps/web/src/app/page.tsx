@@ -6306,6 +6306,19 @@ export default function Home() {
   const coolingTriggerReason = coolingTriggerExplain(coolingTriggerLabel);
   const coolingRemainingLabel = formatCoolingRemaining(coolingOff.remainingSeconds);
   const coolingLastBreachLabel = coolingOff.lastBreachAt ? new Date(coolingOff.lastBreachAt).toLocaleString('id-ID') : '-';
+  const combatCriticalLocks = [
+    coolingOff.active ? `COOL ${coolingRemainingLabel}` : null,
+    engineHeartbeat.checkedAt !== null && !engineHeartbeat.online ? 'ENGINE OFFLINE' : null,
+    deploymentGate.blocked ? 'DEPLOY BLOCK' : null,
+    !modelConsensus.pass ? 'VOTE CONFUSE' : null,
+    systemKillSwitch.active ? 'SYS KILL' : null,
+    dataSanity.warning ? 'DATA WARN' : null,
+    riskConfigLocked ? 'RISKCFG LOCK' : null,
+  ].filter((value): value is string => value !== null);
+  const combatRiskTone =
+    combatCriticalLocks.length > 0
+      ? 'border-rose-500/40 bg-rose-500/10 text-rose-300'
+      : 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300';
 
   return (
     <div className="h-screen w-screen bg-black text-slate-200 selection:bg-cyan-500/30 overflow-hidden flex flex-col">
@@ -6513,7 +6526,16 @@ export default function Home() {
           backtestSummary={backtestSummary}
           signalAudit={signalAudit}
         />
-      ) : null}
+      ) : (
+        <div className={cn('border-t px-4 py-2 text-[10px] font-mono flex items-center justify-between gap-3', combatRiskTone)}>
+          <span>
+            {combatCriticalLocks.length > 0
+              ? `COMBAT RISK STRIP | ${combatCriticalLocks.join(' | ')}`
+              : 'COMBAT RISK STRIP | ALL CORE GUARDS NORMAL'}
+          </span>
+          <span className="text-slate-500">{`UPS ${Math.round(upsScore)} | ${activeSymbol}`}</span>
+        </div>
+      )}
     </div>
   );
 }
