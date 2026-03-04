@@ -897,6 +897,7 @@ function TopNavigation({
   mtfValidation,
   systemicRisk,
   portfolioBetaRisk,
+  marketIntelAdapter,
   infraStatus,
   globalData,
 }: {
@@ -920,6 +921,7 @@ function TopNavigation({
   mtfValidation: MultiTimeframeValidationState;
   systemicRisk: SystemicRisk;
   portfolioBetaRisk: PortfolioBetaRisk;
+  marketIntelAdapter: AdapterHealthState;
   infraStatus: { sse: Tone; db: Tone; integrity: Tone; token: Tone };
   globalData: GlobalCorrelationResponse | null;
 }) {
@@ -1101,6 +1103,15 @@ function TopNavigation({
           title={`Beta ${systemicRisk.betaEstimate.toFixed(2)}/${systemicRisk.threshold.toFixed(2)} | Portfolio ${portfolioBetaRisk.betaEstimate.toFixed(2)}/${portfolioBetaRisk.threshold.toFixed(2)} (${portfolioBetaRisk.contributingSymbols} symbols)`}
         >
           {`BETA ${portfolioBetaRisk.high ? 'PORT HIGH' : systemicRisk.high ? 'HIGH' : 'OK'}`}
+        </div>
+        <div
+          className={cn(
+            'text-[10px] font-mono border rounded px-2 py-1',
+            marketIntelAdapter.degraded ? 'text-amber-300 border-amber-500/40 bg-amber-500/10' : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10',
+          )}
+          title={`SRC ${marketIntelAdapter.selectedSource} | P ${marketIntelAdapter.primaryLatencyMs ?? '-'}ms | F ${marketIntelAdapter.fallbackLatencyMs ?? '-'}ms${marketIntelAdapter.primaryError ? ` | ${marketIntelAdapter.primaryError}` : ''}`}
+        >
+          {`ADAPTER ${marketIntelAdapter.degraded ? 'DEGRADED' : 'OK'}`}
         </div>
         <div
           className={cn(
@@ -5107,6 +5118,7 @@ export default function Home() {
         mtfValidation={mtfValidation}
         systemicRisk={systemicRisk}
         portfolioBetaRisk={portfolioBetaRisk}
+        marketIntelAdapter={marketIntelAdapter}
         infraStatus={infraStatus}
         globalData={globalData}
       />
