@@ -1662,6 +1662,7 @@ function BottomPanel({
   liquidityGuard,
   systemicRisk,
   portfolioBetaRisk,
+  portfolioBetaBreachStreak,
   configDrift,
   runtimeConfigSource,
   runtimeIhsgDrop,
@@ -1705,6 +1706,7 @@ function BottomPanel({
   liquidityGuard: LiquidityGuard;
   systemicRisk: SystemicRisk;
   portfolioBetaRisk: PortfolioBetaRisk;
+  portfolioBetaBreachStreak: number;
   configDrift: boolean;
   runtimeConfigSource: 'DB' | 'ENV';
   runtimeIhsgDrop: number;
@@ -1815,6 +1817,9 @@ function BottomPanel({
               </div>
               <div className={cn('mt-1', portfolioBetaRisk.high ? 'text-rose-400' : 'text-emerald-400')}>
                 {`Portfolio Beta: ${portfolioBetaRisk.betaEstimate.toFixed(2)} / ${portfolioBetaRisk.threshold.toFixed(2)} ${portfolioBetaRisk.high ? '(Systemic Risk High)' : '(Normal)'} | ${portfolioBetaRisk.contributingSymbols} symbols`}
+              </div>
+              <div className={cn('mt-1', portfolioBetaRisk.high ? 'text-amber-400' : 'text-slate-500')}>
+                {`Portfolio Beta Streak: ${portfolioBetaBreachStreak}/${Math.max(1, runtimeCoolingOffRequiredBreaches)} (auto cool-off trigger)`}
               </div>
               <div className={cn('mt-1 text-[9px] font-bold', configDrift ? 'text-amber-400' : 'text-emerald-400')}>
                 {configDrift ? 'CONFIG DRIFT: runtime thresholds differ from roadmap defaults' : 'CONFIG BASELINE: roadmap defaults'}
@@ -2264,6 +2269,7 @@ export default function Home() {
   const spoofingStreakRef = useRef(0);
   const portfolioBetaBreachStreakRef = useRef(0);
   const portfolioBetaCoolingEvaluateInFlightRef = useRef(false);
+  const [portfolioBetaBreachStreak, setPortfolioBetaBreachStreak] = useState(0);
 
   const [infraStatus, setInfraStatus] = useState<{ sse: Tone; db: Tone; integrity: Tone; token: Tone }>({
     sse: 'good',
@@ -3290,18 +3296,21 @@ export default function Home() {
 
   useEffect(() => {
     if (coolingOff.active) {
+      setPortfolioBetaBreachStreak(0);
       portfolioBetaCoolingEvaluateInFlightRef.current = false;
       return;
     }
 
     if (!portfolioBetaRisk.high) {
       portfolioBetaBreachStreakRef.current = 0;
+      setPortfolioBetaBreachStreak(0);
       portfolioBetaCoolingEvaluateInFlightRef.current = false;
       return;
     }
 
     portfolioBetaBreachStreakRef.current += 1;
     const requiredBreaches = Math.max(1, runtimeCoolingOffRequiredBreaches);
+    setPortfolioBetaBreachStreak(Math.min(portfolioBetaBreachStreakRef.current, requiredBreaches));
     if (portfolioBetaBreachStreakRef.current < requiredBreaches) {
       return;
     }
@@ -3339,6 +3348,8 @@ export default function Home() {
           portfolioBetaCoolingEvaluateInFlightRef.current = false;
           return;
         }
+
+        setPortfolioBetaBreachStreak(Math.max(0, Number(body.breach_streak || 0)));
 
         setCoolingOff({
           active: Boolean(body.active),
@@ -4341,6 +4352,7 @@ export default function Home() {
           liquidityGuard={liquidityGuard}
           systemicRisk={systemicRisk}
           portfolioBetaRisk={portfolioBetaRisk}
+          portfolioBetaBreachStreak={portfolioBetaBreachStreak}
           configDrift={configDrift}
           runtimeConfigSource={runtimeConfigSource}
           runtimeIhsgDrop={runtimeIhsgDrop}
