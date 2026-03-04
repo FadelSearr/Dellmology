@@ -58,7 +58,7 @@ export const MarketIntelligenceCanvas = ({ symbol, timeframe = '1h' }: { symbol:
   const [loading, setLoading] = useState(true);
   const [isExplaining, setIsExplaining] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [trainingStatus, setTrainingStatus] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [actionStatus, setActionStatus] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const lastAlertRef = useRef<{ symbol: string; signal: string; time: number } | null>(null);
 
   useEffect(() => {
@@ -230,12 +230,43 @@ export const MarketIntelligenceCanvas = ({ symbol, timeframe = '1h' }: { symbol:
         </div>
         <div className="flex items-center gap-4">
           <button
-            onClick={() => {
-              fetch(`/api/cnn`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: 'predict', symbol }),
-              }).then(() => fetch(`/api/prediction?symbol=${symbol}`)).catch(console.error);
+            onClick={async () => {
+              try {
+                setActionStatus(null);
+                const refreshResponse = await fetch(`/api/cnn`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ action: 'predict', symbol }),
+                });
+
+                if (!refreshResponse.ok) {
+                  let message = 'Refresh CNN failed';
+                  try {
+                    const body = (await refreshResponse.json()) as { error?: string };
+                    if (body?.error) {
+                      message = body.error;
+                    }
+                  } catch {
+                    message = 'Refresh CNN failed';
+                  }
+                  throw new Error(message);
+                }
+
+                const predictionResponse = await fetch(`/api/prediction?symbol=${symbol}`);
+                if (!predictionResponse.ok) {
+                  throw new Error('Prediction fetch failed');
+                }
+
+                const predictionJson = await predictionResponse.json();
+                if (predictionJson?.success && predictionJson?.data) {
+                  setPrediction(predictionJson.data);
+                }
+
+                setActionStatus({ type: 'success', text: 'CNN refreshed' });
+              } catch (e) {
+                console.error(e);
+                setActionStatus({ type: 'error', text: e instanceof Error ? e.message : 'Refresh CNN failed' });
+              }
             }}
             className="px-2 py-1 bg-blue-600 hover:bg-blue-700 rounded text-xs"
           >
@@ -243,7 +274,7 @@ export const MarketIntelligenceCanvas = ({ symbol, timeframe = '1h' }: { symbol:
           </button>
           <button
             onClick={() => {
-              setTrainingStatus(null);
+              setActionStatus(null);
               fetch(`/api/cnn`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -262,11 +293,11 @@ export const MarketIntelligenceCanvas = ({ symbol, timeframe = '1h' }: { symbol:
                     }
                     throw new Error(message);
                   }
-                  setTrainingStatus({ type: 'success', text: 'Training started' });
+                  setActionStatus({ type: 'success', text: 'Training started' });
                 })
                 .catch((e) => {
                   console.error(e);
-                  setTrainingStatus({ type: 'error', text: 'Training failed' });
+                  setActionStatus({ type: 'error', text: e instanceof Error ? e.message : 'Training failed' });
                 });
             }}
             className="px-2 py-1 bg-green-600 hover:bg-green-700 rounded text-xs"
@@ -289,12 +320,24 @@ export const MarketIntelligenceCanvas = ({ symbol, timeframe = '1h' }: { symbol:
             onClick={async () => {
               try {
                 setIsExplaining(true);
+                setActionStatus(null);
                 const r = await fetch('/api/xai', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({ symbol, top_k: 8 }),
                 });
-                if (!r.ok) throw new Error('XAI request failed');
+                if (!r.ok) {
+                  let message = 'XAI request failed';
+                  try {
+                    const body = (await r.json()) as { error?: string };
+                    if (body?.error) {
+                      message = body.error;
+                    }
+                  } catch {
+                    message = 'XAI request failed';
+                  }
+                  throw new Error(message);
+                }
                 const j = await r.json();
                 setData((prev) => {
                   if (!prev) return prev;
@@ -303,8 +346,10 @@ export const MarketIntelligenceCanvas = ({ symbol, timeframe = '1h' }: { symbol:
                     xai: j.explanation,
                   };
                 });
+                setActionStatus({ type: 'success', text: 'Explanation updated' });
               } catch (e) {
                 console.error('XAI fetch failed', e);
+                setActionStatus({ type: 'error', text: e instanceof Error ? e.message : 'XAI request failed' });
               } finally {
                 setIsExplaining(false);
               }
@@ -316,15 +361,15 @@ export const MarketIntelligenceCanvas = ({ symbol, timeframe = '1h' }: { symbol:
         </div>
       </div>
 
-      {trainingStatus && (
+      {actionStatus && (
         <div
           className={`rounded border px-3 py-2 text-xs ${
-            trainingStatus.type === 'success'
+            actionStatus.type === 'success'
               ? 'border-green-700 bg-green-900/20 text-green-300'
               : 'border-red-700 bg-red-900/20 text-red-300'
           }`}
         >
-          {trainingStatus.text}
+          {actionStatus.text}
         </div>
       )}
 

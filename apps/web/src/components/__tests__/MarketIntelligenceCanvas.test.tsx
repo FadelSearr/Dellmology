@@ -11,7 +11,11 @@ describe('MarketIntelligenceCanvas', () => {
     jest.clearAllMocks();
   });
 
-  it('shows inline success message when Train CNN starts', async () => {
+  const mockBaseFetch = (overrides?: {
+    cnnResponse?: (init?: RequestInit) => Response;
+    xaiResponse?: () => Response;
+    predictionResponse?: () => Response;
+  }) => {
     global.fetch = jest.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
 
@@ -48,13 +52,18 @@ describe('MarketIntelligenceCanvas', () => {
       }
 
       if (url.includes('/api/prediction')) {
-        return {
-          ok: true,
-          json: async () => ({ success: false }),
-        } as Response;
+        return overrides?.predictionResponse?.() ||
+          ({
+            ok: true,
+            json: async () => ({ success: false }),
+          } as Response);
       }
 
       if (url.includes('/api/cnn')) {
+        if (overrides?.cnnResponse) {
+          return overrides.cnnResponse(init);
+        }
+
         const body = init?.body ? JSON.parse(String(init.body)) : {};
         if (body.action === 'train') {
           return {
@@ -69,11 +78,23 @@ describe('MarketIntelligenceCanvas', () => {
         } as Response;
       }
 
+      if (url.includes('/api/xai')) {
+        return overrides?.xaiResponse?.() ||
+          ({
+            ok: true,
+            json: async () => ({ explanation: { top_features: [] } }),
+          } as Response);
+      }
+
       return {
         ok: true,
         json: async () => ({}),
       } as Response;
     }) as jest.Mock;
+  };
+
+  it('shows inline success message when Train CNN starts', async () => {
+    mockBaseFetch();
 
     render(<MarketIntelligenceCanvas symbol="BBCA" timeframe="1h" />);
 
@@ -86,5 +107,58 @@ describe('MarketIntelligenceCanvas', () => {
     await waitFor(() => {
       expect(screen.getByText('Training started')).toBeInTheDocument();
     });
+  });
+
+  it('shows inline success message when Refresh CNN completes', async () => {
+    mockBaseFetch({
+      predictionResponse: () =>
+        ({
+          ok: true,
+          json: async () => ({
+            success: true,
+            data: {
+              prediction: 'UP',
+              confidence_up: 0.74,
+            },
+          }),
+        } as Response),
+    });
+
+    render(<MarketIntelligenceCanvas symbol="BBCA" timeframe="1h" />);
+
+    await waitFor(() => {
+      expect(screen.getByText('BBCA')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /Refresh CNN/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText('CNN refreshed')).toBeInTheDocument();
+    });
+  });
+
+  it('shows inline lock message when Explain API is locked', async () => {
+    const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    mockBaseFetch({
+      xaiResponse: () =>
+        ({
+          ok: false,
+          json: async () => ({ error: 'Explain locked by cooling-off' }),
+        } as Response),
+    });
+
+    render(<MarketIntelligenceCanvas symbol="BBCA" timeframe="1h" />);
+
+    await waitFor(() => {
+      expect(screen.getByText('BBCA')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /Explain/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Explain locked by cooling-off')).toBeInTheDocument();
+    });
+
+    consoleSpy.mockRestore();
   });
 });
