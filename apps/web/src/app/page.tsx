@@ -2570,6 +2570,11 @@ function BottomPanel({
               <div className={cn('mt-1', portfolioBetaRisk.high ? 'text-rose-400' : 'text-emerald-400')}>
                 {`Portfolio Beta: ${portfolioBetaRisk.betaEstimate.toFixed(2)} / ${portfolioBetaRisk.threshold.toFixed(2)} ${portfolioBetaRisk.high ? '(Systemic Risk High)' : '(Normal)'} | ${portfolioBetaRisk.contributingSymbols} symbols`}
               </div>
+              {portfolioBetaRisk.high ? (
+                <div className="mt-1 text-[9px] font-bold text-rose-300 border border-rose-500/40 bg-rose-500/10 rounded px-2 py-1">
+                  Systemic Risk High: Portfolio too sensitive to Market Crash.
+                </div>
+              ) : null}
               <div className={cn('mt-1', portfolioBetaRisk.high ? 'text-amber-400' : 'text-slate-500')}>
                 {`Portfolio Beta Streak: ${portfolioBetaBreachStreak}/${Math.max(1, runtimeCoolingOffRequiredBreaches)} (auto cool-off trigger)`}
               </div>
