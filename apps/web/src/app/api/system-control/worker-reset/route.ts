@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { verifyRuntimeConfigAuditChain } from '@/lib/security/immutableAudit';
+import { buildImmutableAuditLockPayload } from '@/lib/security/lockPayloads';
 
 export const dynamic = 'force-dynamic';
 
@@ -49,14 +50,7 @@ export async function POST(request: Request) {
     const immutableAudit = await verifyRuntimeConfigAuditChain();
     if (!immutableAudit.valid) {
       return NextResponse.json(
-        {
-          success: false,
-          error: 'Immutable audit chain lock active; worker reset blocked',
-          lock: true,
-          checked_rows: immutableAudit.checkedRows,
-          hash_mismatches: immutableAudit.hashMismatches,
-          linkage_mismatches: immutableAudit.linkageMismatches,
-        },
+        buildImmutableAuditLockPayload(immutableAudit, 'Immutable audit chain lock active; worker reset blocked'),
         { status: 423 },
       );
     }
