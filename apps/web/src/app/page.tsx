@@ -1368,6 +1368,11 @@ function TopNavigation({
             placeholder="Search Emiten (e.g. BBCA)..."
             value={symbolInput}
             disabled={coolingOffActive}
+            title={
+              coolingOffActive
+                ? `Locked by cooling-off ${coolingRemainingLabel} | Trigger ${coolingTriggerLabel} (${coolingTriggerReason})`
+                : 'Search and apply active symbol'
+            }
             onChange={(event) => setSymbolInput(event.target.value.toUpperCase())}
             onKeyDown={(event) => {
               if (event.key === 'Enter') applySymbol();
@@ -1376,6 +1381,11 @@ function TopNavigation({
           <button
             onClick={applySymbol}
             disabled={coolingOffActive}
+            title={
+              coolingOffActive
+                ? `Apply disabled: cooling-off ${coolingRemainingLabel} | Trigger ${coolingTriggerLabel}`
+                : 'Apply active symbol'
+            }
             className="absolute inset-y-0 right-0 px-3 text-[10px] text-cyan-400 font-mono border-l border-slate-800 hover:text-cyan-300 disabled:opacity-50"
           >
             APPLY
