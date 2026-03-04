@@ -3061,6 +3061,8 @@ function BottomPanel({
     dataSanityReason: dataSanity.reason,
     riskConfigLocked,
   });
+  const telegramLockDetail = actionDockBlockReasons.telegram.join(' | ');
+  const backtestLockDetail = actionDockBlockReasons.backtest.join(' | ');
 
   return (
     <Card className="h-48 border-t border-slate-800 rounded-none shrink-0 flex flex-row">
@@ -3365,7 +3367,7 @@ function BottomPanel({
                 'text-[9px] font-mono border rounded px-2 py-1 text-center',
                 telegramBlocked ? 'text-amber-300 border-amber-500/40 bg-amber-500/10' : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10',
               )}
-              title="Telegram action readiness"
+              title={telegramBlocked ? `Telegram blocked: ${telegramLockDetail || 'guardrail active'}` : 'Telegram action ready'}
             >
               {`TG ${telegramBlocked ? 'BLOCK' : 'READY'}`}
             </div>
@@ -3374,7 +3376,7 @@ function BottomPanel({
                 'text-[9px] font-mono border rounded px-2 py-1 text-center',
                 backtestBlocked ? 'text-amber-300 border-amber-500/40 bg-amber-500/10' : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10',
               )}
-              title="Backtest action readiness"
+              title={backtestBlocked ? `Backtest blocked: ${backtestLockDetail || 'guardrail active'}` : 'Backtest action ready'}
             >
               {`BT ${backtestBlocked ? 'BLOCK' : 'READY'}`}
             </div>
@@ -3394,9 +3396,15 @@ function BottomPanel({
               {`Extra locks → TG:${Math.max(0, actionDockBlockReasons.telegram.length - 1)} | BT:${Math.max(0, actionDockBlockReasons.backtest.length - 1)}`}
             </div>
           ) : null}
+          {(telegramBlocked && actionDockBlockReasons.telegram.length > 1) || (backtestBlocked && actionDockBlockReasons.backtest.length > 1) ? (
+            <div className="text-[9px] text-slate-500 font-mono">
+              {`Detail → TG: ${actionDockBlockReasons.telegram.slice(0, 2).join(' + ') || '-'} | BT: ${actionDockBlockReasons.backtest.slice(0, 2).join(' + ') || '-'}`}
+            </div>
+          ) : null}
           <button
             onClick={onSendTelegram}
             disabled={telegramBlocked}
+            title={telegramBlocked ? `Locked: ${telegramLockDetail || 'guardrail active'}` : 'Send AI narrative and risk context to Telegram'}
             className="flex items-center justify-center space-x-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-xs font-bold py-2 rounded transition-colors"
           >
             <Send className="w-3.5 h-3.5" />
@@ -3405,6 +3413,7 @@ function BottomPanel({
           <button
             onClick={onRunBacktest}
             disabled={backtestBlocked}
+            title={backtestBlocked ? `Locked: ${backtestLockDetail || 'guardrail active'}` : 'Run backtesting rig with current signal context'}
             className="flex items-center justify-center space-x-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-200 text-xs font-bold py-2 rounded transition-colors border border-slate-700"
           >
             <Clock className="w-3.5 h-3.5" />
