@@ -2134,7 +2134,7 @@ function BottomPanel({
           </button>
           <button
             onClick={onRunBacktest}
-            disabled={actionState.busy || coolingOff.active || deploymentGate.blocked || systemKillSwitch.active || engineHeartbeatLocked || dataSanity.warning}
+            disabled={actionState.busy || coolingOff.active || deploymentGate.blocked || systemKillSwitch.active || engineHeartbeatLocked || dataSanity.warning || riskConfigLocked}
             className="flex items-center justify-center space-x-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-200 text-xs font-bold py-2 rounded transition-colors border border-slate-700"
           >
             <Clock className="w-3.5 h-3.5" />
@@ -4558,6 +4558,14 @@ export default function Home() {
       return;
     }
 
+    if (riskConfigLocked) {
+      setActionState({
+        busy: false,
+        message: `Backtest locked: immutable audit chain broken (${riskConfigLockReason || 'runtime config audit'})`,
+      });
+      return;
+    }
+
     if (dataSanity.warning) {
       setActionState({
         busy: false,
@@ -4612,6 +4620,10 @@ export default function Home() {
         error?: string;
         result?: { win_rate?: number; total_trades?: number; max_drawdown?: number };
       };
+      if (response.status === 423) {
+        setActionState({ busy: false, message: `Backtest locked: ${body.error || 'immutable audit chain lock active'}` });
+        return;
+      }
       if (!response.ok || !body.success) {
         throw new Error(body.error || 'Backtest failed');
       }
@@ -4685,6 +4697,8 @@ export default function Home() {
     coolingOff.active,
     deploymentGate.blocked,
     deploymentGate.reason,
+    riskConfigLocked,
+    riskConfigLockReason,
     dataSanity.warning,
     dataSanity.reason,
     dataSanity.issueCount,
