@@ -1718,12 +1718,28 @@ function LeftSidebar({
                 <span className="text-xs font-mono text-slate-300">{item.price.toLocaleString()}</span>
                 <div className="flex items-center space-x-1 mt-1">
                   <span className="text-[9px] text-slate-500">PWR</span>
+                  <span
+                    className={cn(
+                      'text-[9px] px-1 py-0.5 rounded font-mono border',
+                      item.score > 70
+                        ? 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10'
+                        : item.score > 40
+                          ? 'text-amber-300 border-amber-500/40 bg-amber-500/10'
+                          : 'text-rose-300 border-rose-500/40 bg-rose-500/10',
+                    )}
+                    title="Unified Power Score"
+                  >
+                    {`${Math.round(item.score)}/100`}
+                  </span>
                   <div className="w-12 h-1 bg-slate-800 rounded-full overflow-hidden">
                     <div
                       className={cn('h-full rounded-full', item.score > 70 ? 'bg-emerald-500' : item.score > 40 ? 'bg-amber-500' : 'bg-rose-500')}
                       style={{ width: `${item.score}%` }}
                     />
                   </div>
+                </div>
+                <div className="text-[9px] text-slate-500 font-mono mt-0.5">
+                  {item.score >= 85 ? 'Strong Buy' : item.score >= 65 ? 'Buy Bias' : item.score >= 45 ? 'Neutral' : 'Sell Risk'}
                 </div>
               </div>
             </div>
