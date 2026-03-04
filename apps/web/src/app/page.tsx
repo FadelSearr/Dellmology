@@ -349,6 +349,19 @@ interface DeploymentGateState {
   blocked: boolean;
   reason: string | null;
   checkedAt: string | null;
+  regression: {
+    checkedCases: number;
+    mismatches: number;
+    pass: boolean;
+    ruleEngineHealth: Array<{
+      mode: string;
+      version: string;
+      checkedCases: number;
+      mismatches: number;
+      pass: boolean;
+      mismatchRatePct: number;
+    }>;
+  } | null;
 }
 
 interface GoldenRecordAnchorState {
@@ -1843,6 +1856,8 @@ function BottomPanel({
   const coolingTriggerLabel = coolingTriggerFromReason(coolingOff.reason, coolingOff.active);
   const coolingLastTriggerLabel = coolingOff.lastBreachAt ? new Date(coolingOff.lastBreachAt).toLocaleString('id-ID') : '-';
   const engineHeartbeatLocked = engineHeartbeat.checkedAt !== null && !engineHeartbeat.online;
+  const deploymentGateTopRuleEngine =
+    deploymentGate.regression?.ruleEngineHealth.find((row) => row.mismatches > 0) || deploymentGate.regression?.ruleEngineHealth[0] || null;
 
   return (
     <Card className="h-48 border-t border-slate-800 rounded-none shrink-0 flex flex-row">
@@ -2194,6 +2209,16 @@ function BottomPanel({
           </div>
           {systemKillSwitch.reason ? <div className="text-[9px] text-slate-500 font-mono">{systemKillSwitch.reason}</div> : null}
           {engineHeartbeat.reason ? <div className="text-[9px] text-slate-500 font-mono">{engineHeartbeat.reason}</div> : null}
+          {deploymentGate.regression ? (
+            <div className="text-[9px] text-slate-500 font-mono">
+              {`Gate Regression: ${deploymentGate.regression.mismatches}/${deploymentGate.regression.checkedCases} mismatch | ${deploymentGate.regression.pass ? 'PASS' : 'FAIL'}`}
+            </div>
+          ) : null}
+          {deploymentGateTopRuleEngine ? (
+            <div className={cn('text-[9px] font-mono', deploymentGateTopRuleEngine.mismatches > 0 ? 'text-rose-300' : 'text-slate-500')}>
+              {`Top Rule: ${deploymentGateTopRuleEngine.mode}@${deploymentGateTopRuleEngine.version} | ${deploymentGateTopRuleEngine.mismatches}/${deploymentGateTopRuleEngine.checkedCases} | ${deploymentGateTopRuleEngine.mismatchRatePct.toFixed(1)}%`}
+            </div>
+          ) : null}
           {deploymentGate.reason ? <div className="text-[9px] text-slate-500 font-mono">{deploymentGate.reason}</div> : null}
           {immutableAuditAlert.lastTransition ? (
             <div className={cn('text-[9px] font-mono', immutableAuditAlert.lastTransition.dispatched ? 'text-slate-500' : 'text-amber-300')}>
@@ -2374,6 +2399,7 @@ export default function Home() {
     blocked: false,
     reason: null,
     checkedAt: null,
+    regression: null,
   });
   const [goldenRecordValidation, setGoldenRecordValidation] = useState<GoldenRecordValidationState>({
     safe: true,
@@ -2653,6 +2679,19 @@ export default function Home() {
       blocked?: boolean;
       reason?: string | null;
       checked_at?: string | null;
+      regression?: {
+        checked_cases?: number;
+        mismatches?: number;
+        pass?: boolean;
+        rule_engine_health?: Array<{
+          mode?: string;
+          version?: string;
+          checked_cases?: number;
+          mismatches?: number;
+          pass?: boolean;
+          mismatch_rate_pct?: number;
+        }>;
+      };
       golden_record?: {
         pass?: boolean;
         failed_symbols?: string[];
@@ -3037,10 +3076,26 @@ export default function Home() {
     }
 
     if (deployGate) {
+      const regressionHealth = (deployGate.regression?.rule_engine_health || []).map((row) => ({
+        mode: String(row.mode || 'UNKNOWN').toUpperCase(),
+        version: String(row.version || 'UNKNOWN'),
+        checkedCases: Number(row.checked_cases || 0),
+        mismatches: Number(row.mismatches || 0),
+        pass: Boolean(row.pass),
+        mismatchRatePct: Number(row.mismatch_rate_pct || 0),
+      }));
       setDeploymentGate({
         blocked: Boolean(deployGate.blocked),
         reason: deployGate.reason || null,
         checkedAt: deployGate.checked_at || null,
+        regression: deployGate.regression
+          ? {
+              checkedCases: Number(deployGate.regression.checked_cases || 0),
+              mismatches: Number(deployGate.regression.mismatches || 0),
+              pass: Boolean(deployGate.regression.pass),
+              ruleEngineHealth: regressionHealth,
+            }
+          : null,
       });
     }
 
@@ -4791,6 +4846,7 @@ export default function Home() {
         blocked: Boolean(body.blocked),
         reason: body.reason || null,
         checkedAt: body.checked_at || null,
+        regression: null,
       });
       setActionState({ busy: false, message: 'Deployment gate reset completed' });
       void fetchDashboard();
