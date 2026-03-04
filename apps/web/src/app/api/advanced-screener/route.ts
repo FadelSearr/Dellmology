@@ -42,12 +42,59 @@ export interface ScreeningResult {
   };
 }
 
+interface CoolingOffLockState {
+  active: boolean;
+  activeUntil: string | null;
+  remainingSeconds: number;
+}
+
+async function getCoolingOffLockState(request: NextRequest): Promise<CoolingOffLockState | null> {
+  try {
+    const response = await fetch(`${request.nextUrl.origin}/api/system-control/cooling-off`, {
+      cache: 'no-store',
+      headers: { accept: 'application/json' },
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const body = (await response.json()) as {
+      active?: boolean;
+      active_until?: string | null;
+      remaining_seconds?: number;
+    };
+
+    return {
+      active: Boolean(body.active),
+      activeUntil: body.active_until || null,
+      remainingSeconds: Math.max(0, Number(body.remaining_seconds || 0)),
+    };
+  } catch {
+    return null;
+  }
+}
+
 /**
  * POST /api/advanced-screener
  * Run advanced multi-factor stock screening
  */
 export async function POST(request: NextRequest) {
   try {
+    const coolingOff = await getCoolingOffLockState(request);
+    if (coolingOff?.active) {
+      return NextResponse.json(
+        {
+          error: 'Cooling-off active: screener temporarily locked',
+          lock: {
+            active_until: coolingOff.activeUntil,
+            remaining_seconds: coolingOff.remainingSeconds,
+          },
+        },
+        { status: 423 },
+      );
+    }
+
     const body = await request.json();
     const mode = body.mode || 'DAYTRADE';
     const minScore = body.minScore || 0.6;
@@ -100,6 +147,20 @@ export async function POST(request: NextRequest) {
  */
 export async function GET(request: NextRequest) {
   try {
+    const coolingOff = await getCoolingOffLockState(request);
+    if (coolingOff?.active) {
+      return NextResponse.json(
+        {
+          error: 'Cooling-off active: screener temporarily locked',
+          lock: {
+            active_until: coolingOff.activeUntil,
+            remaining_seconds: coolingOff.remainingSeconds,
+          },
+        },
+        { status: 423 },
+      );
+    }
+
     const { searchParams } = new URL(request.url);
     const mode = searchParams.get('mode') || 'DAYTRADE';
     const minScore = parseFloat(searchParams.get('minScore') || '0.6');
