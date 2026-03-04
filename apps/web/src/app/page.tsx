@@ -900,6 +900,7 @@ function TopNavigation({
   artificialLiquidity,
   spoofing,
   washSaleRisk,
+  icebergRisk,
   goldenRecord,
   marketIntelAdapter,
   infraStatus,
@@ -928,6 +929,7 @@ function TopNavigation({
   artificialLiquidity: ArtificialLiquidityState;
   spoofing: SpoofingAlertState;
   washSaleRisk: WashSaleRiskState;
+  icebergRisk: IcebergRiskState;
   goldenRecord: GoldenRecordValidationState;
   marketIntelAdapter: AdapterHealthState;
   infraStatus: { sse: Tone; db: Tone; integrity: Tone; token: Tone };
@@ -1138,6 +1140,15 @@ function TopNavigation({
           title={washSaleRisk.reason || `Score ${washSaleRisk.score.toFixed(1)} | Thr ${washSaleRisk.threshold.toFixed(1)}`}
         >
           {`WASH ${washSaleRisk.warning ? 'WARN' : 'OK'}`}
+        </div>
+        <div
+          className={cn(
+            'text-[10px] font-mono border rounded px-2 py-1',
+            icebergRisk.warning ? 'text-rose-300 border-rose-500/40 bg-rose-500/10' : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10',
+          )}
+          title={icebergRisk.reason || `Score ${icebergRisk.score.toFixed(0)} | ${icebergRisk.riskLevel} | Absorb ${icebergRisk.absorptionClusters}`}
+        >
+          {`ICEBERG ${icebergRisk.warning ? 'WARN' : 'OK'}`}
         </div>
         <div
           className={cn(
@@ -5165,6 +5176,7 @@ export default function Home() {
         artificialLiquidity={artificialLiquidity}
         spoofing={spoofingAlert}
         washSaleRisk={washSaleRisk}
+        icebergRisk={icebergRisk}
         goldenRecord={goldenRecordValidation}
         marketIntelAdapter={marketIntelAdapter}
         infraStatus={infraStatus}
