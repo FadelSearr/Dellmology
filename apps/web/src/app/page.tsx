@@ -104,6 +104,14 @@ interface ZScorePoint {
   score: number;
 }
 
+interface WatchlistItem {
+  symbol: string;
+  price: number;
+  change: string;
+  score: number;
+  status: string;
+}
+
 interface MarketIntelResponse {
   symbol?: string;
   metrics?: {
@@ -222,6 +230,13 @@ interface SystemicRisk {
   betaEstimate: number;
   threshold: number;
   high: boolean;
+}
+
+interface PortfolioBetaRisk {
+  betaEstimate: number;
+  threshold: number;
+  high: boolean;
+  contributingSymbols: number;
 }
 
 interface RuntimeRiskConfig {
@@ -458,7 +473,7 @@ const FALLBACK_WATCHLIST = [
   { symbol: 'BMRI', price: 6200, change: '+0.75%', score: 72, status: 'Neutral' },
   { symbol: 'TLKM', price: 3980, change: '-1.10%', score: 30, status: 'Panic Sell' },
   { symbol: 'GOTO', price: 68, change: '+4.60%', score: 92, status: 'HAKA Flow' },
-];
+] as WatchlistItem[];
 
 const FALLBACK_BROKER: BrokerRow[] = [
   { broker: 'YP', type: 'Retail', net: -15.2e9, score: 20, action: 'Sell', z: -1.2 },
@@ -546,6 +561,12 @@ function formatCompactIDR(value: number) {
 function scoreFromNet(net: number) {
   const normalized = Math.min(100, Math.max(5, Math.abs(net) / 1_000_000_000));
   return Math.round(normalized);
+}
+
+function parsePercentLabel(value: string) {
+  const normalized = value.replace('%', '').replace('+', '').trim();
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 function apiTimeframe(tf: Timeframe) {
@@ -906,15 +927,17 @@ function LeftSidebar({
   currentPrice,
   priceChangePct,
   coolingOffActive,
+  onWatchlistUpdate,
 }: {
   activeSymbol: string;
   setActiveSymbol: (symbol: string) => void;
   currentPrice: number;
   priceChangePct: number;
   coolingOffActive: boolean;
+  onWatchlistUpdate: (items: WatchlistItem[]) => void;
 }) {
   const [activeTab, setActiveTab] = useState<'day' | 'swing' | 'custom'>('day');
-  const [watchlist, setWatchlist] = useState(FALLBACK_WATCHLIST);
+  const [watchlist, setWatchlist] = useState<WatchlistItem[]>(FALLBACK_WATCHLIST);
   const [screenerLoading, setScreenerLoading] = useState(false);
 
   useEffect(() => {
@@ -989,6 +1012,10 @@ function LeftSidebar({
       cancelled = true;
     };
   }, [activeTab, activeSymbol, currentPrice, priceChangePct]);
+
+  useEffect(() => {
+    onWatchlistUpdate(watchlist);
+  }, [onWatchlistUpdate, watchlist]);
 
   return (
     <Card className="h-full border-r border-t-0 border-l-0 border-b-0 rounded-none w-64 flex flex-col">
@@ -1634,6 +1661,7 @@ function BottomPanel({
   tokenTelemetry,
   liquidityGuard,
   systemicRisk,
+  portfolioBetaRisk,
   configDrift,
   runtimeConfigSource,
   runtimeIhsgDrop,
@@ -1676,6 +1704,7 @@ function BottomPanel({
   tokenTelemetry: TokenTelemetry;
   liquidityGuard: LiquidityGuard;
   systemicRisk: SystemicRisk;
+  portfolioBetaRisk: PortfolioBetaRisk;
   configDrift: boolean;
   runtimeConfigSource: 'DB' | 'ENV';
   runtimeIhsgDrop: number;
@@ -1783,6 +1812,9 @@ function BottomPanel({
               {liquidityGuard.highImpactOrder ? <div className="text-rose-400 mt-1 font-bold">High Impact Order - Liquidity Risk!</div> : null}
               <div className={cn('mt-1', systemicRisk.high ? 'text-rose-400' : 'text-emerald-400')}>
                 {`Beta: ${systemicRisk.betaEstimate.toFixed(2)} / ${systemicRisk.threshold.toFixed(2)} ${systemicRisk.high ? '(Systemic Risk High)' : '(Normal)'}`}
+              </div>
+              <div className={cn('mt-1', portfolioBetaRisk.high ? 'text-rose-400' : 'text-emerald-400')}>
+                {`Portfolio Beta: ${portfolioBetaRisk.betaEstimate.toFixed(2)} / ${portfolioBetaRisk.threshold.toFixed(2)} ${portfolioBetaRisk.high ? '(Systemic Risk High)' : '(Normal)'} | ${portfolioBetaRisk.contributingSymbols} symbols`}
               </div>
               <div className={cn('mt-1 text-[9px] font-bold', configDrift ? 'text-amber-400' : 'text-emerald-400')}>
                 {configDrift ? 'CONFIG DRIFT: runtime thresholds differ from roadmap defaults' : 'CONFIG BASELINE: roadmap defaults'}
@@ -2008,6 +2040,7 @@ export default function Home() {
   const [symbolInput, setSymbolInput] = useState('BBCA');
   const [activeSymbol, setActiveSymbol] = useState('BBCA');
   const [timeframe, setTimeframe] = useState<Timeframe>('15m');
+  const [watchlist, setWatchlist] = useState<WatchlistItem[]>(FALLBACK_WATCHLIST);
 
   const [marketData, setMarketData] = useState<ChartPoint[]>(FALLBACK_MARKET_DATA);
   const [brokers, setBrokers] = useState<BrokerRow[]>(FALLBACK_BROKER);
@@ -3228,6 +3261,18 @@ export default function Home() {
     threshold: betaThreshold,
     high: betaEstimate > betaThreshold,
   };
+  const watchlistWeightBase = Math.max(1, watchlist.reduce((sum, item) => sum + Math.max(1, Number(item.score || 0)), 0));
+  const portfolioWeightedDeltaPct = watchlist.reduce((sum, item) => {
+    const weight = Math.max(1, Number(item.score || 0)) / watchlistWeightBase;
+    return sum + Math.abs(parsePercentLabel(item.change)) * weight;
+  }, 0);
+  const portfolioBetaEstimate = portfolioWeightedDeltaPct / betaDenominator;
+  const portfolioBetaRisk: PortfolioBetaRisk = {
+    betaEstimate: portfolioBetaEstimate,
+    threshold: betaThreshold,
+    high: portfolioBetaEstimate > betaThreshold,
+    contributingSymbols: watchlist.length,
+  };
 
   useEffect(() => {
     if (riskDraftDirty) {
@@ -3409,6 +3454,14 @@ export default function Home() {
       return;
     }
 
+    if (hardGateSystemicRisk && portfolioBetaRisk.high) {
+      setActionState({
+        busy: false,
+        message: `Alert blocked: portfolio systemic risk high (beta ${portfolioBetaRisk.betaEstimate.toFixed(2)} > ${portfolioBetaRisk.threshold.toFixed(2)})`,
+      });
+      return;
+    }
+
     if (!modelConsensus.pass) {
       setActionState({
         busy: false,
@@ -3567,6 +3620,9 @@ export default function Home() {
         beta_estimate: systemicRisk.betaEstimate,
         beta_threshold: systemicRisk.threshold,
         systemic_risk_high: systemicRisk.high,
+        portfolio_beta_estimate: portfolioBetaRisk.betaEstimate,
+        portfolio_systemic_risk_high: portfolioBetaRisk.high,
+        contributing_symbols: portfolioBetaRisk.contributingSymbols,
       },
       consensus: {
         status: modelConsensus.status,
@@ -3767,6 +3823,10 @@ export default function Home() {
     systemicRisk.betaEstimate,
     systemicRisk.high,
     systemicRisk.threshold,
+    portfolioBetaRisk.betaEstimate,
+    portfolioBetaRisk.high,
+    portfolioBetaRisk.threshold,
+    portfolioBetaRisk.contributingSymbols,
     timeframe,
     upsScore,
     coolingOff.active,
@@ -3904,6 +3964,9 @@ export default function Home() {
             beta_estimate: systemicRisk.betaEstimate,
             beta_threshold: systemicRisk.threshold,
             systemic_risk_high: systemicRisk.high,
+            portfolio_beta_estimate: portfolioBetaRisk.betaEstimate,
+            portfolio_systemic_risk_high: portfolioBetaRisk.high,
+            contributing_symbols: portfolioBetaRisk.contributingSymbols,
           },
         }),
       });
@@ -3973,6 +4036,9 @@ export default function Home() {
     systemicRisk.betaEstimate,
     systemicRisk.high,
     systemicRisk.threshold,
+    portfolioBetaRisk.betaEstimate,
+    portfolioBetaRisk.high,
+    portfolioBetaRisk.contributingSymbols,
     coolingOff.active,
     deploymentGate.blocked,
     deploymentGate.reason,
@@ -4124,6 +4190,7 @@ export default function Home() {
           currentPrice={currentPrice}
           priceChangePct={priceChange}
           coolingOffActive={coolingOff.active}
+          onWatchlistUpdate={setWatchlist}
         />
         <CenterPanel
           activeSymbol={activeSymbol}
@@ -4177,6 +4244,7 @@ export default function Home() {
           tokenTelemetry={tokenTelemetry}
           liquidityGuard={liquidityGuard}
           systemicRisk={systemicRisk}
+          portfolioBetaRisk={portfolioBetaRisk}
           configDrift={configDrift}
           runtimeConfigSource={runtimeConfigSource}
           runtimeIhsgDrop={runtimeIhsgDrop}
