@@ -3063,6 +3063,9 @@ function BottomPanel({
   });
   const telegramLockDetail = actionDockBlockReasons.telegram.join(' | ');
   const backtestLockDetail = actionDockBlockReasons.backtest.join(' | ');
+  const riskEditorLockDetail =
+    riskConfigLockReason ||
+    `Runtime risk config locked (chain=${riskConfigLockMeta.checkedRows}, hash=${riskConfigLockMeta.hashMismatches}, linkage=${riskConfigLockMeta.linkageMismatches})`;
 
   return (
     <Card className="h-48 border-t border-slate-800 rounded-none shrink-0 flex flex-row">
@@ -3253,7 +3256,14 @@ function BottomPanel({
               </div>
               <div className="mt-2 border border-slate-800 rounded px-2 py-2 bg-slate-900/30 space-y-1">
                 <div className="text-[9px] text-slate-500 uppercase tracking-wider">Risk Config Editor</div>
-                <div className="grid grid-cols-2 gap-1">
+                <div
+                  className="grid grid-cols-2 gap-1"
+                  title={
+                    riskConfigLocked
+                      ? `Draft editable, apply/reset locked: ${riskEditorLockDetail}`
+                      : 'Edit runtime risk thresholds before apply'
+                  }
+                >
                   <input
                     value={riskDraft.ihsgRiskTriggerPct}
                     onChange={(event) => onRiskDraftChange('ihsgRiskTriggerPct', event.target.value)}
@@ -3319,6 +3329,13 @@ function BottomPanel({
                   <button
                     onClick={onApplyRiskConfig}
                     disabled={actionState.busy || riskConfigLocked}
+                    title={
+                      actionState.busy
+                        ? 'Apply blocked: action in progress'
+                        : riskConfigLocked
+                          ? `Apply blocked: ${riskEditorLockDetail}`
+                          : 'Apply draft into runtime risk config'
+                    }
                     className="bg-cyan-600/20 hover:bg-cyan-600/30 disabled:opacity-50 text-cyan-300 text-[10px] font-bold py-1 rounded border border-cyan-500/30"
                   >
                     Apply Risk
@@ -3326,11 +3343,21 @@ function BottomPanel({
                   <button
                     onClick={onResetRiskDraft}
                     disabled={actionState.busy || riskConfigLocked}
+                    title={
+                      actionState.busy
+                        ? 'Reset blocked: action in progress'
+                        : riskConfigLocked
+                          ? `Reset blocked: ${riskEditorLockDetail}`
+                          : 'Reset draft fields to active runtime config'
+                    }
                     className="bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-300 text-[10px] font-bold py-1 rounded border border-slate-700"
                   >
                     Reset Draft
                   </button>
                 </div>
+                {actionState.busy && !riskConfigLocked ? (
+                  <div className="text-[9px] text-amber-300 font-mono">Risk config action in progress...</div>
+                ) : null}
                 {riskConfigLocked ? (
                   <div className="space-y-1">
                     <div className="text-[9px] text-rose-400 font-mono">{`LOCKED: ${riskConfigLockReason || 'Runtime config audit chain broken'}`}</div>
