@@ -887,6 +887,9 @@ function TopNavigation({
   incompleteData,
   immutableAuditAlert,
   deploymentGate,
+  riskConfigLocked,
+  riskConfigLockReason,
+  riskConfigLockMeta,
   systemKillSwitch,
   rocKillSwitch,
   dataSanity,
@@ -921,6 +924,9 @@ function TopNavigation({
   incompleteData: IncompleteDataState;
   immutableAuditAlert: ImmutableAuditAlertState;
   deploymentGate: DeploymentGateState;
+  riskConfigLocked: boolean;
+  riskConfigLockReason: string | null;
+  riskConfigLockMeta: RiskConfigLockMeta;
   systemKillSwitch: SystemKillSwitchState;
   rocKillSwitch: RocKillSwitchState;
   dataSanity: DataSanityState;
@@ -1029,6 +1035,18 @@ function TopNavigation({
           title={deploymentGate.reason || 'Deployment gate pass'}
         >
           {`DEPLOY ${deploymentGate.blocked ? 'BLOCK' : 'PASS'}${deploymentGate.regression ? ` ${deploymentGate.regression.mismatches}/${deploymentGate.regression.checkedCases}` : ''}`}
+        </div>
+        <div
+          className={cn(
+            'text-[10px] font-mono border rounded px-2 py-1',
+            riskConfigLocked ? 'text-rose-300 border-rose-500/40 bg-rose-500/10' : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10',
+          )}
+          title={
+            riskConfigLockReason ||
+            `Chain checked=${riskConfigLockMeta.checkedRows} hash=${riskConfigLockMeta.hashMismatches} linkage=${riskConfigLockMeta.linkageMismatches}`
+          }
+        >
+          {`RISKCFG ${riskConfigLocked ? 'LOCK' : 'OK'}${riskConfigLocked ? ` ${riskConfigLockMeta.hashMismatches + riskConfigLockMeta.linkageMismatches}` : ''}`}
         </div>
         <div
           className={cn(
@@ -5223,6 +5241,9 @@ export default function Home() {
         incompleteData={incompleteData}
         immutableAuditAlert={immutableAuditAlert}
         deploymentGate={deploymentGate}
+        riskConfigLocked={riskConfigLocked}
+        riskConfigLockReason={riskConfigLockReason}
+        riskConfigLockMeta={riskConfigLockMeta}
         systemKillSwitch={systemKillSwitch}
         rocKillSwitch={rocKillSwitch}
         dataSanity={dataSanity}
