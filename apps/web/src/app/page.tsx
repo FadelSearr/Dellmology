@@ -905,6 +905,7 @@ function TopNavigation({
   runtimeRiskAuditStaleHours,
   staleAudit,
   lastRiskAudit,
+  ruleEnginePostmortem,
   championChallenger,
   modelConsensus,
   newsImpact,
@@ -956,6 +957,7 @@ function TopNavigation({
   runtimeRiskAuditStaleHours: number;
   staleAudit: boolean;
   lastRiskAudit: RiskAuditInfo;
+  ruleEnginePostmortem: RuleEnginePostmortemState;
   championChallenger: ChampionChallengerState;
   modelConsensus: ModelConsensus;
   newsImpact: NewsImpactState;
@@ -1170,6 +1172,21 @@ function TopNavigation({
           }
         >
           {`AUDIT ${staleAudit ? 'STALE' : 'FRESH'}`}
+        </div>
+        <div
+          className={cn(
+            'text-[10px] font-mono border rounded px-2 py-1',
+            ruleEnginePostmortem.summaryEvaluatedSignals <= 0
+              ? 'text-slate-500 border-slate-800 bg-slate-900/30'
+              : ruleEnginePostmortem.summaryAccuracyPct < 55
+                ? 'text-rose-300 border-rose-500/40 bg-rose-500/10'
+                : ruleEnginePostmortem.summaryAccuracyPct < 70
+                  ? 'text-amber-300 border-amber-500/40 bg-amber-500/10'
+                  : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10',
+          )}
+          title={`Post-mortem acc ${ruleEnginePostmortem.summaryAccuracyPct.toFixed(1)}% | eval ${ruleEnginePostmortem.summaryEvaluatedSignals} | gen ${ruleEnginePostmortem.generatedAt ? new Date(ruleEnginePostmortem.generatedAt).toLocaleString('id-ID') : '-'}`}
+        >
+          {`XAI ${ruleEnginePostmortem.summaryEvaluatedSignals > 0 ? `${ruleEnginePostmortem.summaryAccuracyPct.toFixed(0)}%` : 'NO DATA'}`}
         </div>
         <div
           className={cn(
@@ -5377,6 +5394,7 @@ export default function Home() {
         runtimeRiskAuditStaleHours={runtimeRiskAuditStaleHours}
         staleAudit={staleAudit}
         lastRiskAudit={lastRiskAudit}
+        ruleEnginePostmortem={ruleEnginePostmortem}
         championChallenger={championChallenger}
         modelConsensus={modelConsensus}
         newsImpact={newsImpact}
