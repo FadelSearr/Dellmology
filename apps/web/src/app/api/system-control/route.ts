@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { verifyRuntimeConfigAuditChain } from '@/lib/security/immutableAudit';
 
 export const dynamic = 'force-dynamic';
 
@@ -42,6 +43,22 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
+    const immutableAudit = await verifyRuntimeConfigAuditChain();
+    if (!immutableAudit.valid) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Runtime config audit chain verification failed',
+          lock: {
+            checked_rows: immutableAudit.checkedRows,
+            hash_mismatches: immutableAudit.hashMismatches,
+            linkage_mismatches: immutableAudit.linkageMismatches,
+          },
+        },
+        { status: 423 },
+      );
+    }
+
     const body = (await request.json()) as { is_system_active?: boolean; reason?: string };
     if (typeof body.is_system_active !== 'boolean') {
       return NextResponse.json({ success: false, error: 'is_system_active boolean is required' }, { status: 400 });

@@ -2158,7 +2158,7 @@ function BottomPanel({
           </button>
           <button
             onClick={onResetDeploymentGate}
-            disabled={actionState.busy || !deploymentGate.blocked}
+            disabled={actionState.busy || !deploymentGate.blocked || riskConfigLocked}
             className="flex items-center justify-center space-x-2 bg-rose-600/20 hover:bg-rose-600/30 disabled:opacity-50 text-rose-300 text-xs font-bold py-2 rounded transition-colors border border-rose-500/30"
           >
             <RefreshCw className="w-3.5 h-3.5" />
@@ -4817,6 +4817,11 @@ export default function Home() {
         reason?: string;
         checked_at?: string;
       };
+
+      if (response.status === 423) {
+        setActionState({ busy: false, message: `Deployment gate reset locked: ${body.error || 'immutable audit chain lock active'}` });
+        return;
+      }
 
       if (!response.ok || !body.success) {
         throw new Error(body.error || 'Deployment gate reset failed');
