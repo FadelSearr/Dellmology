@@ -354,6 +354,14 @@ interface SystemKillSwitchState {
   reason: string | null;
 }
 
+interface EngineHeartbeatState {
+  online: boolean;
+  lastSeenSeconds: number | null;
+  timeoutSeconds: number;
+  reason: string | null;
+  checkedAt: string | null;
+}
+
 interface ArtificialLiquidityState {
   warning: boolean;
   reason: string | null;
@@ -1800,6 +1808,7 @@ function BottomPanel({
   deadmanResetCooldown,
   actionState,
   tokenTelemetry,
+  engineHeartbeat,
   liquidityGuard,
   systemicRisk,
   portfolioBetaRisk,
@@ -1847,6 +1856,7 @@ function BottomPanel({
   deadmanResetCooldown: number;
   actionState: ActionState;
   tokenTelemetry: TokenTelemetry;
+  engineHeartbeat: EngineHeartbeatState;
   liquidityGuard: LiquidityGuard;
   systemicRisk: SystemicRisk;
   portfolioBetaRisk: PortfolioBetaRisk;
@@ -1883,6 +1893,7 @@ function BottomPanel({
   const accuracy = confidenceTracking.evaluated > 0 ? confidenceTracking.accuracyPct : Number(confidence?.accuracy_pct || 0);
   const coolingTriggerLabel = coolingTriggerFromReason(coolingOff.reason, coolingOff.active);
   const coolingLastTriggerLabel = coolingOff.lastBreachAt ? new Date(coolingOff.lastBreachAt).toLocaleString('id-ID') : '-';
+  const engineHeartbeatLocked = engineHeartbeat.checkedAt !== null && !engineHeartbeat.online;
 
   return (
     <Card className="h-48 border-t border-slate-800 rounded-none shrink-0 flex flex-row">
@@ -2094,7 +2105,7 @@ function BottomPanel({
         <div className="p-3 grid grid-cols-1 gap-2">
           <button
             onClick={onSendTelegram}
-            disabled={actionState.busy || coolingOff.active || !modelConsensus.pass || systemKillSwitch.active}
+            disabled={actionState.busy || coolingOff.active || !modelConsensus.pass || systemKillSwitch.active || engineHeartbeatLocked}
             className="flex items-center justify-center space-x-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-xs font-bold py-2 rounded transition-colors"
           >
             <Send className="w-3.5 h-3.5" />
@@ -2102,7 +2113,7 @@ function BottomPanel({
           </button>
           <button
             onClick={onRunBacktest}
-            disabled={actionState.busy || coolingOff.active || deploymentGate.blocked || systemKillSwitch.active}
+            disabled={actionState.busy || coolingOff.active || deploymentGate.blocked || systemKillSwitch.active || engineHeartbeatLocked}
             className="flex items-center justify-center space-x-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-200 text-xs font-bold py-2 rounded transition-colors border border-slate-700"
           >
             <Clock className="w-3.5 h-3.5" />
@@ -2170,7 +2181,18 @@ function BottomPanel({
           >
             {systemKillSwitch.active ? 'SYSTEM SWITCH: OFFLINE LOCK' : 'SYSTEM SWITCH: ACTIVE'}
           </div>
+          <div
+            className={cn(
+              'text-[9px] font-mono border rounded px-2 py-1',
+              engineHeartbeatLocked ? 'text-rose-300 border-rose-500/40 bg-rose-500/10' : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10',
+            )}
+          >
+            {engineHeartbeatLocked
+              ? `ENGINE HEARTBEAT: OFFLINE >${engineHeartbeat.timeoutSeconds}s`
+              : `ENGINE HEARTBEAT: ONLINE (${engineHeartbeat.lastSeenSeconds ?? 0}s)`}
+          </div>
           {systemKillSwitch.reason ? <div className="text-[9px] text-slate-500 font-mono">{systemKillSwitch.reason}</div> : null}
+          {engineHeartbeat.reason ? <div className="text-[9px] text-slate-500 font-mono">{engineHeartbeat.reason}</div> : null}
           {deploymentGate.reason ? <div className="text-[9px] text-slate-500 font-mono">{deploymentGate.reason}</div> : null}
           <div
             className={cn(
@@ -2294,6 +2316,13 @@ export default function Home() {
     deadmanTriggered: false,
     deadmanLastAlertSeconds: null,
     deadmanCooldownSeconds: null,
+  });
+  const [engineHeartbeat, setEngineHeartbeat] = useState<EngineHeartbeatState>({
+    online: true,
+    lastSeenSeconds: null,
+    timeoutSeconds: 60,
+    reason: null,
+    checkedAt: null,
   });
   const [deadmanResetCooldown, setDeadmanResetCooldown] = useState(0);
   const [coolingOff, setCoolingOff] = useState<CoolingOffState>({
@@ -2542,6 +2571,10 @@ export default function Home() {
       sse_connected?: boolean;
       db_connected?: boolean;
       data_integrity?: boolean;
+      worker_online?: boolean;
+      worker_last_seen_seconds?: number | null;
+      heartbeat_timeout_seconds?: number;
+      timestamp?: string;
       token_status?: 'fresh' | 'expiring' | 'expired' | 'missing';
       token_last_sync_reason?: string | null;
       token_last_jitter_ms?: number | null;
@@ -3037,6 +3070,16 @@ export default function Home() {
       checkedAt: new Date().toISOString(),
     });
 
+    const heartbeatTimeoutSeconds = Math.max(1, Number(health?.heartbeat_timeout_seconds || 60));
+    const workerLastSeenSeconds = typeof health?.worker_last_seen_seconds === 'number' ? health.worker_last_seen_seconds : null;
+    const workerOnline = Boolean(health?.worker_online);
+    const workerHeartbeatLocked = Boolean(health) && !workerOnline;
+    const workerHeartbeatReason = workerHeartbeatLocked
+      ? workerLastSeenSeconds !== null
+        ? `Engine offline: last heartbeat ${workerLastSeenSeconds}s ago (threshold ${heartbeatTimeoutSeconds}s)`
+        : `Engine offline: heartbeat unavailable (threshold ${heartbeatTimeoutSeconds}s)`
+      : null;
+
     if (health) {
       const systemInactive = health.is_system_active === false;
       setSystemKillSwitch({
@@ -3066,6 +3109,14 @@ export default function Home() {
           typeof health.deadman_last_alert_seconds === 'number' ? health.deadman_last_alert_seconds : null,
         deadmanCooldownSeconds:
           typeof health.deadman_alert_cooldown_seconds === 'number' ? health.deadman_alert_cooldown_seconds : null,
+      });
+
+      setEngineHeartbeat({
+        online: workerOnline,
+        lastSeenSeconds: workerLastSeenSeconds,
+        timeoutSeconds: heartbeatTimeoutSeconds,
+        reason: workerHeartbeatReason,
+        checkedAt: health.timestamp || new Date().toISOString(),
       });
     }
 
@@ -3267,6 +3318,7 @@ export default function Home() {
         `Risk Gate: ${riskGateLabel}\n` +
         `Rule Engine: ${runtimeRuleEngineMode} (${runtimeRuleEngineVersion})\n` +
         `System Switch: ${systemKillSwitch.active ? `LOCK (${systemKillSwitch.reason || 'inactive'})` : 'ACTIVE'}\n` +
+        `Engine Heartbeat: ${workerHeartbeatLocked ? `OFFLINE >${heartbeatTimeoutSeconds}s (${workerLastSeenSeconds ?? '-'}s)` : 'ONLINE'}\n` +
         `Deploy Gate: ${deployGate?.blocked ? 'BLOCKED' : 'PASS'}\n` +
         `Flow Integrity: ${artificialLiquidityWarning ? 'Artificial Liquidity Warning' : 'Healthy'}\n` +
         `BCP: ${brokerCharacterWarning ? 'Risk Profile Detected' : 'Stable'}\n` +
@@ -3290,7 +3342,7 @@ export default function Home() {
         `Whale Flow: ${topWhales || 'No dominant whale detected'}\n` +
         `Model Confidence: ${confLabel} (${confidenceAccuracy.toFixed(1)}%) | Hist ${nextConfidenceTracking.evaluated > 0 ? nextConfidenceTracking.accuracyPct.toFixed(1) : '-'}% (${nextConfidenceTracking.wins}/${nextConfidenceTracking.losses})\n` +
         `Disclaimer: ${PERSONAL_RESEARCH_ONLY_DISCLAIMER}\n\n` +
-        `> Recommendation: ${systemKillSwitch.active ? 'System kill-switch aktif. Hentikan rekomendasi dan lakukan verifikasi infrastruktur.' : coolingActive ? 'Cooling-off active. Stand down and review risk.' : sanityWarning ? 'Data contaminated. Lock sinyal hingga verifikasi ulang.' : crossCheckWarning ? 'Cross-check lock aktif. Tahan eksekusi sampai harga sinkron.' : incompleteDataWarning ? 'Data belum lengkap. Tunda aksi sampai stream normal.' : mtfWarning ? 'Konfirmasi multi-timeframe gagal. Tunda entry sampai trend 1h searah.' : newsImpactWarning ? 'News stress tinggi terdeteksi. Kurangi eksposur dan verifikasi red flags.' : championDriftWarning ? 'Model drift warning. Gunakan mode defensif sampai champion dikaji ulang.' : nextConfidenceTracking.warning ? 'AI confidence LOW. Re-calibration required sebelum entry agresif.' : portfolioSystemicRiskHighLocal ? `Systemic Risk High: Portfolio beta ${portfolioBetaEstimateLocal.toFixed(2)} melebihi threshold ${runtimeSystemicRiskBetaThreshold.toFixed(2)}. Kurangi eksposur.` : systemicRiskHighLocal ? `Systemic risk tinggi: beta ${betaEstimateLocal.toFixed(2)} di atas threshold.` : rocCritical ? 'CRITICAL volatility spike. Disable buy and wait stabilization.' : spoofingWarning ? 'Spoofing risk terdeteksi. Hindari entry impulsif.' : exitWhaleWarning ? 'Exit whale / liquidity hunt terdeteksi. Hindari entry sampai tekanan distribusi mereda.' : washSaleWarning ? 'Wash-sale risk tinggi. Hindari entry sampai akumulasi net membaik.' : retailDivergenceWarning ? 'Retail sentiment divergence: hindari mengikuti euforia saat whale distribusi.' : nextUps >= minUpsForLong ? 'Momentum entry on pullback.' : nextUps <= 40 ? 'Defensive mode, avoid aggressive entry.' : 'Wait for clearer confirmation.'}`,
+        `> Recommendation: ${systemKillSwitch.active ? 'System kill-switch aktif. Hentikan rekomendasi dan lakukan verifikasi infrastruktur.' : workerHeartbeatLocked ? `Engine offline >${heartbeatTimeoutSeconds}s. Hentikan alert/eksekusi dan verifikasi worker heartbeat.` : coolingActive ? 'Cooling-off active. Stand down and review risk.' : sanityWarning ? 'Data contaminated. Lock sinyal hingga verifikasi ulang.' : crossCheckWarning ? 'Cross-check lock aktif. Tahan eksekusi sampai harga sinkron.' : incompleteDataWarning ? 'Data belum lengkap. Tunda aksi sampai stream normal.' : mtfWarning ? 'Konfirmasi multi-timeframe gagal. Tunda entry sampai trend 1h searah.' : newsImpactWarning ? 'News stress tinggi terdeteksi. Kurangi eksposur dan verifikasi red flags.' : championDriftWarning ? 'Model drift warning. Gunakan mode defensif sampai champion dikaji ulang.' : nextConfidenceTracking.warning ? 'AI confidence LOW. Re-calibration required sebelum entry agresif.' : portfolioSystemicRiskHighLocal ? `Systemic Risk High: Portfolio beta ${portfolioBetaEstimateLocal.toFixed(2)} melebihi threshold ${runtimeSystemicRiskBetaThreshold.toFixed(2)}. Kurangi eksposur.` : systemicRiskHighLocal ? `Systemic risk tinggi: beta ${betaEstimateLocal.toFixed(2)} di atas threshold.` : rocCritical ? 'CRITICAL volatility spike. Disable buy and wait stabilization.' : spoofingWarning ? 'Spoofing risk terdeteksi. Hindari entry impulsif.' : exitWhaleWarning ? 'Exit whale / liquidity hunt terdeteksi. Hindari entry sampai tekanan distribusi mereda.' : washSaleWarning ? 'Wash-sale risk tinggi. Hindari entry sampai akumulasi net membaik.' : retailDivergenceWarning ? 'Retail sentiment divergence: hindari mengikuti euforia saat whale distribusi.' : nextUps >= minUpsForLong ? 'Momentum entry on pullback.' : nextUps <= 40 ? 'Defensive mode, avoid aggressive entry.' : 'Wait for clearer confirmation.'}`,
     );
 
     try {
@@ -3808,6 +3860,14 @@ export default function Home() {
   }, [fetchDashboard, riskDraft]);
 
   const sendTelegramAlert = useCallback(async () => {
+    if (engineHeartbeat.checkedAt !== null && !engineHeartbeat.online) {
+      setActionState({
+        busy: false,
+        message: `Alert blocked: engine offline >${engineHeartbeat.timeoutSeconds}s (${engineHeartbeat.lastSeenSeconds ?? '-'}s)` ,
+      });
+      return;
+    }
+
     if (systemKillSwitch.active) {
       setActionState({ busy: false, message: `Alert blocked: ${systemKillSwitch.reason || 'system inactive'}` });
       return;
@@ -3977,6 +4037,13 @@ export default function Home() {
       system_control: {
         is_system_active: !systemKillSwitch.active,
         reason: systemKillSwitch.reason,
+      },
+      engine_heartbeat: {
+        online: engineHeartbeat.online,
+        last_seen_seconds: engineHeartbeat.lastSeenSeconds,
+        timeout_seconds: engineHeartbeat.timeoutSeconds,
+        reason: engineHeartbeat.reason,
+        checked_at: engineHeartbeat.checkedAt,
       },
       cooling_off: {
         active: coolingOff.active,
@@ -4232,6 +4299,11 @@ export default function Home() {
   }, [
     activeSymbol,
     currentPrice,
+    engineHeartbeat.online,
+    engineHeartbeat.lastSeenSeconds,
+    engineHeartbeat.timeoutSeconds,
+    engineHeartbeat.reason,
+    engineHeartbeat.checkedAt,
     systemKillSwitch.active,
     systemKillSwitch.reason,
     marketIntelAdapter.selectedSource,
@@ -4368,6 +4440,14 @@ export default function Home() {
   ]);
 
   const runBacktest = useCallback(async () => {
+    if (engineHeartbeat.checkedAt !== null && !engineHeartbeat.online) {
+      setActionState({
+        busy: false,
+        message: `Backtest locked: engine offline >${engineHeartbeat.timeoutSeconds}s (${engineHeartbeat.lastSeenSeconds ?? '-'}s)`,
+      });
+      return;
+    }
+
     if (systemKillSwitch.active) {
       setActionState({ busy: false, message: `Backtest locked: ${systemKillSwitch.reason || 'system inactive'}` });
       return;
@@ -4478,6 +4558,10 @@ export default function Home() {
     }
   }, [
     activeSymbol,
+    engineHeartbeat.online,
+    engineHeartbeat.lastSeenSeconds,
+    engineHeartbeat.timeoutSeconds,
+    engineHeartbeat.checkedAt,
     systemKillSwitch.active,
     systemKillSwitch.reason,
     ihsgChangePct,
@@ -4702,6 +4786,7 @@ export default function Home() {
           deadmanResetCooldown={deadmanResetCooldown}
           actionState={actionState}
           tokenTelemetry={tokenTelemetry}
+          engineHeartbeat={engineHeartbeat}
           liquidityGuard={liquidityGuard}
           systemicRisk={systemicRisk}
           portfolioBetaRisk={portfolioBetaRisk}
