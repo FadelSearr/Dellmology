@@ -2948,6 +2948,7 @@ function BottomPanel({
   runtimeConfigSource,
   runtimeRuleEngineMode,
   runtimeRuleEngineVersion,
+  ihsgChangePct,
   runtimeIhsgDrop,
   runtimeNormalUps,
   runtimeRiskUps,
@@ -3007,6 +3008,7 @@ function BottomPanel({
   runtimeConfigSource: 'DB' | 'ENV';
   runtimeRuleEngineMode: 'BASELINE' | 'CUSTOM';
   runtimeRuleEngineVersion: string;
+  ihsgChangePct: number;
   runtimeIhsgDrop: number;
   runtimeNormalUps: number;
   runtimeRiskUps: number;
@@ -3122,6 +3124,21 @@ function BottomPanel({
     dataSanityReason: dataSanity.reason,
     riskConfigLocked,
   });
+  const globalLockGuards = buildActiveLockGuards({
+    coolingOffActive: coolingOff.active,
+    coolingRemainingLabel,
+    deploymentGateBlocked: deploymentGate.blocked,
+    riskConfigLocked,
+    systemKillSwitchActive: systemKillSwitch.active,
+    engineOffline: engineHeartbeatLocked,
+    engineHeartbeatTimeoutSeconds: engineHeartbeat.timeoutSeconds,
+    killSwitchActive,
+    ihsgChangePct,
+    modelConsensusPass: modelConsensus.pass,
+    dataSanityWarning: dataSanity.warning,
+    dataSanityLockActive: dataSanity.lockActive,
+  });
+  const globalLockDetail = globalLockGuards.join(' | ');
   const telegramLockDetail = actionDockBlockReasons.telegram.join(' | ');
   const backtestLockDetail = actionDockBlockReasons.backtest.join(' | ');
   const riskEditorLockDetail =
@@ -3455,7 +3472,7 @@ function BottomPanel({
                 'text-[9px] font-mono border rounded px-2 py-1 text-center',
                 telegramBlocked ? 'text-amber-300 border-amber-500/40 bg-amber-500/10' : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10',
               )}
-              title={telegramBlocked ? `Telegram blocked: ${telegramLockDetail || 'guardrail active'}` : 'Telegram action ready'}
+              title={telegramBlocked ? `Telegram blocked: ${telegramLockDetail || 'guardrail active'} | Global locks: ${globalLockDetail || 'none'}` : `Telegram action ready | Global locks: ${globalLockDetail || 'none'}`}
             >
               {`TG ${telegramBlocked ? 'BLOCK' : 'READY'}`}
             </div>
@@ -3464,10 +3481,19 @@ function BottomPanel({
                 'text-[9px] font-mono border rounded px-2 py-1 text-center',
                 backtestBlocked ? 'text-amber-300 border-amber-500/40 bg-amber-500/10' : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10',
               )}
-              title={backtestBlocked ? `Backtest blocked: ${backtestLockDetail || 'guardrail active'}` : 'Backtest action ready'}
+              title={backtestBlocked ? `Backtest blocked: ${backtestLockDetail || 'guardrail active'} | Global locks: ${globalLockDetail || 'none'}` : `Backtest action ready | Global locks: ${globalLockDetail || 'none'}`}
             >
               {`BT ${backtestBlocked ? 'BLOCK' : 'READY'}`}
             </div>
+          </div>
+          <div
+            className={cn(
+              'text-[9px] font-mono border rounded px-2 py-1 text-center',
+              globalLockGuards.length > 0 ? 'text-rose-300 border-rose-500/40 bg-rose-500/10' : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10',
+            )}
+            title={globalLockGuards.length > 0 ? `Global lock guards (${globalLockGuards.length}): ${globalLockDetail}` : 'No active global lock guard'}
+          >
+            {`GLOBAL LOCKS ${globalLockGuards.length}`}
           </div>
           {telegramBlocked ? (
             <div className="text-[9px] text-amber-300 border border-amber-500/30 rounded px-2 py-1 bg-amber-500/10">
@@ -3492,7 +3518,7 @@ function BottomPanel({
           <button
             onClick={onSendTelegram}
             disabled={telegramBlocked}
-            title={telegramBlocked ? `Locked: ${telegramLockDetail || 'guardrail active'}` : 'Send AI narrative and risk context to Telegram'}
+            title={telegramBlocked ? `Locked: ${telegramLockDetail || 'guardrail active'} | Global: ${globalLockDetail || 'none'}` : `Send AI narrative and risk context to Telegram | Global locks: ${globalLockDetail || 'none'}`}
             className="flex items-center justify-center space-x-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-xs font-bold py-2 rounded transition-colors"
           >
             <Send className="w-3.5 h-3.5" />
@@ -3501,7 +3527,7 @@ function BottomPanel({
           <button
             onClick={onRunBacktest}
             disabled={backtestBlocked}
-            title={backtestBlocked ? `Locked: ${backtestLockDetail || 'guardrail active'}` : 'Run backtesting rig with current signal context'}
+            title={backtestBlocked ? `Locked: ${backtestLockDetail || 'guardrail active'} | Global: ${globalLockDetail || 'none'}` : `Run backtesting rig with current signal context | Global locks: ${globalLockDetail || 'none'}`}
             className="flex items-center justify-center space-x-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-200 text-xs font-bold py-2 rounded transition-colors border border-slate-700"
           >
             <Clock className="w-3.5 h-3.5" />
@@ -6559,6 +6585,7 @@ export default function Home() {
           runtimeConfigSource={runtimeConfigSource}
           runtimeRuleEngineMode={runtimeRuleEngineMode}
           runtimeRuleEngineVersion={runtimeRuleEngineVersion}
+          ihsgChangePct={ihsgChangePct}
           runtimeIhsgDrop={runtimeIhsgDrop}
           runtimeNormalUps={runtimeNormalUps}
           runtimeRiskUps={runtimeRiskUps}
