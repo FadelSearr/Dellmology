@@ -2902,6 +2902,13 @@ export default function Home() {
     const betaDenominator = Math.max(0.2, Math.abs(ihsgChangePct));
     const betaEstimateLocal = Math.abs(deltaPct) / betaDenominator;
     const systemicRiskHighLocal = betaEstimateLocal > runtimeSystemicRiskBetaThreshold;
+    const watchlistWeightBaseLocal = Math.max(1, watchlist.reduce((sum, item) => sum + Math.max(1, Number(item.score || 0)), 0));
+    const portfolioWeightedDeltaPctLocal = watchlist.reduce((sum, item) => {
+      const weight = Math.max(1, Number(item.score || 0)) / watchlistWeightBaseLocal;
+      return sum + Math.abs(parsePercentLabel(item.change)) * weight;
+    }, 0);
+    const portfolioBetaEstimateLocal = portfolioWeightedDeltaPctLocal / betaDenominator;
+    const portfolioSystemicRiskHighLocal = portfolioBetaEstimateLocal > runtimeSystemicRiskBetaThreshold;
     const riskGateLabel = killSwitchActive
       ? `KILL-SWITCH ACTIVE (IHSG ${ihsgChangePct.toFixed(2)}%, min UPS ${minUpsForLong})`
       : `NORMAL (${minUpsForLong} UPS gate)`;
@@ -3013,11 +3020,12 @@ export default function Home() {
         `Retail Divergence: ${retailDivergenceWarning ? 'WARNING' : 'NORMAL'}\n` +
         `MTF Validation: ${mtfWarning ? 'CONFLICT (15m vs 1h)' : 'ALIGNED'}\n` +
         `RoC Kill-Switch: ${rocCritical ? 'CRITICAL: VOLATILITY SPIKE' : 'Normal'}\n` +
+        `Portfolio Beta: ${portfolioBetaEstimateLocal.toFixed(2)} / ${runtimeSystemicRiskBetaThreshold.toFixed(2)} ${portfolioSystemicRiskHighLocal ? '(Systemic Risk High)' : '(Normal)'}\n` +
         `Consensus: ${preliminaryConsensus.message}\n` +
         `Cooling-Off: ${coolingActive ? 'ACTIVE (Recommendation Locked)' : 'Clear'}\n` +
         `Whale Flow: ${topWhales || 'No dominant whale detected'}\n` +
         `Model Confidence: ${confLabel} (${Number(confidence?.accuracy_pct || 0).toFixed(1)}%)\n\n` +
-        `> Recommendation: ${systemKillSwitch.active ? 'System kill-switch aktif. Hentikan rekomendasi dan lakukan verifikasi infrastruktur.' : coolingActive ? 'Cooling-off active. Stand down and review risk.' : sanityWarning ? 'Data contaminated. Lock sinyal hingga verifikasi ulang.' : crossCheckWarning ? 'Cross-check lock aktif. Tahan eksekusi sampai harga sinkron.' : incompleteDataWarning ? 'Data belum lengkap. Tunda aksi sampai stream normal.' : mtfWarning ? 'Konfirmasi multi-timeframe gagal. Tunda entry sampai trend 1h searah.' : newsImpactWarning ? 'News stress tinggi terdeteksi. Kurangi eksposur dan verifikasi red flags.' : championDriftWarning ? 'Model drift warning. Gunakan mode defensif sampai champion dikaji ulang.' : rocCritical ? 'CRITICAL volatility spike. Disable buy and wait stabilization.' : spoofingWarning ? 'Spoofing risk terdeteksi. Hindari entry impulsif.' : exitWhaleWarning ? 'Exit whale / liquidity hunt terdeteksi. Hindari entry sampai tekanan distribusi mereda.' : washSaleWarning ? 'Wash-sale risk tinggi. Hindari entry sampai akumulasi net membaik.' : retailDivergenceWarning ? 'Retail sentiment divergence: hindari mengikuti euforia saat whale distribusi.' : nextUps >= minUpsForLong ? 'Momentum entry on pullback.' : nextUps <= 40 ? 'Defensive mode, avoid aggressive entry.' : 'Wait for clearer confirmation.'}`,
+        `> Recommendation: ${systemKillSwitch.active ? 'System kill-switch aktif. Hentikan rekomendasi dan lakukan verifikasi infrastruktur.' : coolingActive ? 'Cooling-off active. Stand down and review risk.' : sanityWarning ? 'Data contaminated. Lock sinyal hingga verifikasi ulang.' : crossCheckWarning ? 'Cross-check lock aktif. Tahan eksekusi sampai harga sinkron.' : incompleteDataWarning ? 'Data belum lengkap. Tunda aksi sampai stream normal.' : mtfWarning ? 'Konfirmasi multi-timeframe gagal. Tunda entry sampai trend 1h searah.' : newsImpactWarning ? 'News stress tinggi terdeteksi. Kurangi eksposur dan verifikasi red flags.' : championDriftWarning ? 'Model drift warning. Gunakan mode defensif sampai champion dikaji ulang.' : portfolioSystemicRiskHighLocal ? `Systemic Risk High: Portfolio beta ${portfolioBetaEstimateLocal.toFixed(2)} melebihi threshold ${runtimeSystemicRiskBetaThreshold.toFixed(2)}. Kurangi eksposur.` : systemicRiskHighLocal ? `Systemic risk tinggi: beta ${betaEstimateLocal.toFixed(2)} di atas threshold.` : rocCritical ? 'CRITICAL volatility spike. Disable buy and wait stabilization.' : spoofingWarning ? 'Spoofing risk terdeteksi. Hindari entry impulsif.' : exitWhaleWarning ? 'Exit whale / liquidity hunt terdeteksi. Hindari entry sampai tekanan distribusi mereda.' : washSaleWarning ? 'Wash-sale risk tinggi. Hindari entry sampai akumulasi net membaik.' : retailDivergenceWarning ? 'Retail sentiment divergence: hindari mengikuti euforia saat whale distribusi.' : nextUps >= minUpsForLong ? 'Momentum entry on pullback.' : nextUps <= 40 ? 'Defensive mode, avoid aggressive entry.' : 'Wait for clearer confirmation.'}`,
     );
 
     try {
@@ -3066,6 +3074,8 @@ export default function Home() {
         const fallbackBullish = `Bias utama: ${signalLabel(nextUps, minUpsForLong)} | Whale: ${topWhales || 'belum dominan'}.`;
         const fallbackBearish = coolingActive
           ? 'Cooling-off aktif, semua rekomendasi ditahan sementara sampai lock selesai.'
+          : portfolioSystemicRiskHighLocal
+            ? `Systemic Risk High: portfolio beta ${portfolioBetaEstimateLocal.toFixed(2)} melebihi threshold ${runtimeSystemicRiskBetaThreshold.toFixed(2)}.`
           : systemicRiskHighLocal
             ? `Systemic risk tinggi: beta ${betaEstimateLocal.toFixed(2)} di atas threshold.`
             : 'Risiko downside tetap ada jika volume tidak konfirmasi dan IHSG melemah.';
@@ -3098,6 +3108,8 @@ export default function Home() {
       const fallbackBullish = `Bias utama: ${signalLabel(nextUps, minUpsForLong)} | Whale: ${topWhales || 'belum dominan'}.`;
       const fallbackBearish = coolingActive
         ? 'Cooling-off aktif, semua rekomendasi ditahan sementara sampai lock selesai.'
+        : portfolioSystemicRiskHighLocal
+          ? `Systemic Risk High: portfolio beta ${portfolioBetaEstimateLocal.toFixed(2)} melebihi threshold ${runtimeSystemicRiskBetaThreshold.toFixed(2)}.`
         : systemicRiskHighLocal
           ? `Systemic risk tinggi: beta ${betaEstimateLocal.toFixed(2)} di atas threshold.`
           : 'Risiko downside tetap ada jika volume tidak konfirmasi dan IHSG melemah.';
@@ -3126,7 +3138,7 @@ export default function Home() {
         source: 'fallback',
       });
     }
-  }, [activeSymbol, timeframe, marketData]);
+  }, [activeSymbol, timeframe, marketData, watchlist]);
 
   useEffect(() => {
     const run = () => {
