@@ -1403,6 +1403,13 @@ function TopNavigation({
     : fallbackEndpointCount > 0 || marketIntelAdapter.degraded
       ? 'text-amber-300 border-amber-500/40 bg-amber-500/10'
       : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10';
+  const feedDelayed = fallbackEmergencyActive || fallbackEndpointCount > 0 || marketIntelAdapter.degraded;
+  const feedBadgeTone = feedDelayed
+    ? fallbackEmergencyActive
+      ? 'text-rose-300 border-rose-500/40 bg-rose-500/10'
+      : 'text-amber-300 border-amber-500/40 bg-amber-500/10'
+    : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10';
+  const feedDelayLabel = maxFallbackDelayMinutes !== null ? `${Math.round(maxFallbackDelayMinutes)}m` : 'n/a';
   const infraCoreStatuses: Tone[] = [infraStatus.sse, infraStatus.db, infraStatus.integrity];
   const infraCoreHealthyCount = infraCoreStatuses.filter((status) => status === 'good').length;
   const infraCoreIssueCount = infraCoreStatuses.length - infraCoreHealthyCount;
@@ -1520,6 +1527,16 @@ function TopNavigation({
           }
         >
           {`LOCKS ${activeLockGuards.length}`}
+        </div>
+        <div
+          className={cn('text-[10px] font-mono border rounded px-2 py-1', feedBadgeTone)}
+          title={
+            feedDelayed
+              ? `Feed delayed/degraded | Source ${marketIntelAdapter.selectedSource} | Endpoint degraded ${degradedEndpointCount}/${sourceHealth.length} | max delay ${feedDelayLabel}`
+              : `Feed live | Source ${marketIntelAdapter.selectedSource} | primary latency ${marketIntelAdapter.primaryLatencyMs ?? '-'}ms`
+          }
+        >
+          {`FEED ${feedDelayed ? `DELAYED ${feedDelayLabel}` : 'LIVE'}`}
         </div>
         <div className={cn('text-[10px] font-mono border rounded px-2 py-1', globalSentimentTone)} title="Global sentiment context from correlation feed">
           {`SENT ${globalSentimentLabel}`}
