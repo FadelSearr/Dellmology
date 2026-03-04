@@ -74,6 +74,7 @@ interface BrokerRow {
   type: 'Whale' | 'Retail';
   net: number;
   score: number;
+  consistency: number;
   action: 'Buy' | 'Sell';
   z: number;
   profile?: string;
@@ -551,12 +552,12 @@ const FALLBACK_WATCHLIST = [
 ] as WatchlistItem[];
 
 const FALLBACK_BROKER: BrokerRow[] = [
-  { broker: 'YP', type: 'Retail', net: -15.2e9, score: 20, action: 'Sell', z: -1.2 },
-  { broker: 'BK', type: 'Whale', net: 42.5e9, score: 95, action: 'Buy', z: 2.5 },
-  { broker: 'AK', type: 'Whale', net: 12.1e9, score: 88, action: 'Buy', z: 1.4 },
-  { broker: 'CC', type: 'Retail', net: -5.4e9, score: 35, action: 'Sell', z: -0.8 },
-  { broker: 'PD', type: 'Retail', net: -2.1e9, score: 40, action: 'Sell', z: -0.5 },
-  { broker: 'ZP', type: 'Whale', net: 8.9e9, score: 82, action: 'Buy', z: 1.1 },
+  { broker: 'YP', type: 'Retail', net: -15.2e9, score: 20, consistency: 28, action: 'Sell', z: -1.2 },
+  { broker: 'BK', type: 'Whale', net: 42.5e9, score: 95, consistency: 91, action: 'Buy', z: 2.5 },
+  { broker: 'AK', type: 'Whale', net: 12.1e9, score: 88, consistency: 83, action: 'Buy', z: 1.4 },
+  { broker: 'CC', type: 'Retail', net: -5.4e9, score: 35, consistency: 44, action: 'Sell', z: -0.8 },
+  { broker: 'PD', type: 'Retail', net: -2.1e9, score: 40, consistency: 38, action: 'Sell', z: -0.5 },
+  { broker: 'ZP', type: 'Whale', net: 8.9e9, score: 82, consistency: 77, action: 'Buy', z: 1.1 },
 ];
 
 const FALLBACK_HEATMAP = Array.from({ length: 40 }, (_, index) => ({
@@ -1959,7 +1960,7 @@ function RightSidebar({
           <span>Broker</span>
           <span className="text-center">Type</span>
           <span className="text-right">Net Val</span>
-          <span className="text-right">Scr</span>
+          <span className="text-right">Cons</span>
         </div>
         <div className="overflow-y-auto custom-scrollbar flex-1">
           {brokers.map((broker, index) => (
@@ -1985,8 +1986,12 @@ function RightSidebar({
                 {formatCompactIDR(broker.net)}
               </div>
               <div className="text-right">
+                <div className="text-[9px] font-mono text-slate-400 mb-0.5">{Math.round(broker.consistency)}</div>
                 <div className="inline-block w-8 bg-slate-800 h-1 rounded-full overflow-hidden align-middle">
-                  <div className={cn('h-full', broker.score > 50 ? 'bg-cyan-500' : 'bg-slate-500')} style={{ width: `${broker.score}%` }} />
+                  <div
+                    className={cn('h-full', broker.consistency >= 70 ? 'bg-emerald-500' : broker.consistency >= 45 ? 'bg-amber-500' : 'bg-slate-500')}
+                    style={{ width: `${broker.consistency}%` }}
+                  />
                 </div>
               </div>
             </div>
@@ -3509,11 +3514,16 @@ export default function Home() {
 
     const brokerRows = (brokerFlow?.brokers || []).slice(0, 15).map((item) => {
       const net = Number(item.net_buy_value || 0);
+      const rawConsistency = Number(item.consistency_score);
+      const normalizedConsistency = Number.isFinite(rawConsistency)
+        ? Math.max(0, Math.min(100, rawConsistency <= 1 ? rawConsistency * 100 : rawConsistency))
+        : scoreFromNet(net);
       return {
         broker: item.broker_id,
         type: item.is_whale ? 'Whale' : 'Retail',
         net,
         score: scoreFromNet(net),
+        consistency: normalizedConsistency,
         action: net >= 0 ? 'Buy' : 'Sell',
         z: Number(item.z_score || 0),
         profile: item.character_profile || undefined,
