@@ -1008,6 +1008,7 @@ function TopNavigation({
       ? 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10'
       : 'text-rose-300 border-rose-500/40 bg-rose-500/10';
   const tokenAlert = tokenTelemetry.status !== 'fresh' || tokenTelemetry.deadmanTriggered;
+  const highChurnLowAccumulation = washSaleRisk.warning && artificialLiquidity.warning;
   const negotiatedNotionalTotal = negotiatedFeed.reduce((total, item) => total + Math.max(0, Number(item.notional) || 0), 0);
   const negotiatedTop = negotiatedFeed[0] || null;
   const degradedEndpointCount = sourceHealth.filter((item) => item.degraded).length;
@@ -1337,6 +1338,19 @@ function TopNavigation({
           title={washSaleRisk.reason || `Score ${washSaleRisk.score.toFixed(1)} | Thr ${washSaleRisk.threshold.toFixed(1)}`}
         >
           {`WASH ${washSaleRisk.warning ? 'WARN' : 'OK'}`}
+        </div>
+        <div
+          className={cn(
+            'text-[10px] font-mono border rounded px-2 py-1',
+            highChurnLowAccumulation ? 'text-rose-300 border-rose-500/40 bg-rose-500/10' : 'text-slate-500 border-slate-800 bg-slate-900/30',
+          )}
+          title={
+            highChurnLowAccumulation
+              ? 'High churn terdeteksi bersamaan dengan akumulasi lemah (volume tinggi tanpa net buy seimbang).'
+              : 'No high-churn low-accumulation pattern'
+          }
+        >
+          {`CHURN ${highChurnLowAccumulation ? 'HCLA' : 'OK'}`}
         </div>
         <div
           className={cn(
@@ -2071,6 +2085,11 @@ function RightSidebar({
           <div className="text-[9px] text-slate-500 font-mono mt-1">
             {`Score ${washSaleRisk.score.toFixed(1)} | Thr ${washSaleRisk.threshold.toFixed(1)}`}
           </div>
+          {washSaleRisk.warning && artificialLiquidity.warning ? (
+            <div className="text-[9px] text-rose-300 font-mono mt-1 border border-rose-500/40 bg-rose-500/10 rounded px-2 py-1">
+              High Churn / Low Accumulation
+            </div>
+          ) : null}
           {washSaleRisk.reason ? <div className="text-[9px] text-slate-500 font-mono mt-1">{washSaleRisk.reason}</div> : null}
           <div
             className={cn(
