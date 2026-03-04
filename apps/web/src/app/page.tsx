@@ -884,6 +884,7 @@ function TopNavigation({
   combatMode,
   incompleteData,
   immutableAuditAlert,
+  deploymentGate,
   infraStatus,
   globalData,
 }: {
@@ -894,6 +895,7 @@ function TopNavigation({
   combatMode: CombatModeState;
   incompleteData: IncompleteDataState;
   immutableAuditAlert: ImmutableAuditAlertState;
+  deploymentGate: DeploymentGateState;
   infraStatus: { sse: Tone; db: Tone; integrity: Tone; token: Tone };
   globalData: GlobalCorrelationResponse | null;
 }) {
@@ -962,6 +964,15 @@ function TopNavigation({
       </div>
 
       <div className="flex items-center space-x-4 border-l border-slate-800 pl-4">
+        <div
+          className={cn(
+            'text-[10px] font-mono border rounded px-2 py-1',
+            deploymentGate.blocked ? 'text-rose-300 border-rose-500/40 bg-rose-500/10' : 'text-slate-500 border-slate-800 bg-slate-900/30',
+          )}
+          title={deploymentGate.reason || 'Deployment gate pass'}
+        >
+          {`DEPLOY ${deploymentGate.blocked ? 'BLOCK' : 'PASS'}${deploymentGate.regression ? ` ${deploymentGate.regression.mismatches}/${deploymentGate.regression.checkedCases}` : ''}`}
+        </div>
         <div
           className={cn(
             'text-[10px] font-mono border rounded px-2 py-1',
@@ -4954,6 +4965,7 @@ export default function Home() {
         combatMode={combatMode}
         incompleteData={incompleteData}
         immutableAuditAlert={immutableAuditAlert}
+        deploymentGate={deploymentGate}
         infraStatus={infraStatus}
         globalData={globalData}
       />
