@@ -18,6 +18,8 @@ import { POST as workerResetPost } from '@/app/api/system-control/worker-reset/r
 import { POST as telegramAlertPost } from '@/app/api/telegram-alert/route';
 import { POST as updateTokenPost } from '@/app/api/update-token/route';
 import { POST as narrativePost } from '@/app/api/narrative/route';
+import { POST as generateNarrativePost } from '@/app/api/generate-narrative/route';
+import { POST as advancedScreenerPost } from '@/app/api/advanced-screener/route';
 import { verifyRuntimeConfigAuditChain } from '@/lib/security/immutableAudit';
 import { readCoolingOffLockState } from '@/lib/security/coolingOff';
 
@@ -299,5 +301,77 @@ describe('Guardrail lock response consistency', () => {
         remaining_seconds: 1800,
       },
     });
+  });
+
+  it('returns 423 cooling-off lock payload for generate-narrative route', async () => {
+    const originalGeminiApiKey = process.env.GEMINI_API_KEY;
+    process.env.GEMINI_API_KEY = 'test-key';
+
+    const mockedCooling = readCoolingOffLockState as jest.MockedFunction<typeof readCoolingOffLockState>;
+    mockedCooling.mockResolvedValueOnce({
+      active: true,
+      activeUntil: '2026-03-04T13:00:00.000Z',
+      remainingSeconds: 2700,
+    });
+
+    const req = {
+      json: async () => ({ symbol: 'BBCA', date: '2026-03-04', data: [] }),
+    } as never;
+
+    const response = await generateNarrativePost(req);
+    const body = await response.json();
+
+    expect(response.status).toBe(423);
+    expect(body).toEqual({
+      success: false,
+      error: 'Cooling-off active: recommendation temporarily locked',
+      lock: {
+        active_until: '2026-03-04T13:00:00.000Z',
+        remaining_seconds: 2700,
+      },
+    });
+
+    if (originalGeminiApiKey === undefined) {
+      delete process.env.GEMINI_API_KEY;
+    } else {
+      process.env.GEMINI_API_KEY = originalGeminiApiKey;
+    }
+  });
+
+  it('returns 423 cooling-off lock payload for advanced-screener route', async () => {
+    const originalFetch = (globalThis as { fetch?: typeof fetch }).fetch;
+    const mockedFetch = jest.fn().mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        active: true,
+        active_until: '2026-03-04T14:00:00.000Z',
+        remaining_seconds: 3600,
+      }),
+    } as Response);
+
+    (globalThis as { fetch?: typeof fetch }).fetch = mockedFetch as unknown as typeof fetch;
+
+    const req = {
+      nextUrl: { origin: 'http://localhost:3000' },
+      json: async () => ({ mode: 'DAYTRADE', minScore: 0.7 }),
+    } as never;
+
+    const response = await advancedScreenerPost(req);
+    const body = await response.json();
+
+    expect(response.status).toBe(423);
+    expect(body).toEqual({
+      error: 'Cooling-off active: screener temporarily locked',
+      lock: {
+        active_until: '2026-03-04T14:00:00.000Z',
+        remaining_seconds: 3600,
+      },
+    });
+
+    if (originalFetch === undefined) {
+      delete (globalThis as { fetch?: typeof fetch }).fetch;
+    } else {
+      (globalThis as { fetch?: typeof fetch }).fetch = originalFetch;
+    }
   });
 });
