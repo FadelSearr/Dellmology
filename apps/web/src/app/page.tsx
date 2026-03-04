@@ -1360,6 +1360,7 @@ function RightSidebar({
   championChallenger,
   newsImpact,
   mtfValidation,
+  deploymentGate,
   goldenRecord,
   marketIntelAdapter,
   sourceHealth,
@@ -1381,6 +1382,7 @@ function RightSidebar({
   championChallenger: ChampionChallengerState;
   newsImpact: NewsImpactState;
   mtfValidation: MultiTimeframeValidationState;
+  deploymentGate: DeploymentGateState;
   goldenRecord: GoldenRecordValidationState;
   marketIntelAdapter: AdapterHealthState;
   sourceHealth: EndpointSourceHealthState[];
@@ -1388,6 +1390,8 @@ function RightSidebar({
 }) {
   const canRenderChart = typeof window !== 'undefined';
   const hasAlert = zData.some((item) => item.score > 2 || item.score < -2);
+  const topDeploymentRuleEngine =
+    deploymentGate.regression?.ruleEngineHealth.find((row) => row.mismatches > 0) || deploymentGate.regression?.ruleEngineHealth[0] || null;
 
   return (
     <Card className="h-full border-l border-t-0 border-r-0 border-b-0 rounded-none w-80 flex flex-col">
@@ -1644,6 +1648,25 @@ function RightSidebar({
             {`${mtfValidation.shortTimeframe}:${mtfValidation.shortVote} (${Math.round(mtfValidation.shortUps)}) | ${mtfValidation.highTimeframe}:${mtfValidation.highVote} (${Math.round(mtfValidation.highUps)})`}
           </div>
           {mtfValidation.reason ? <div className="text-[9px] text-slate-500 font-mono mt-1">{mtfValidation.reason}</div> : null}
+          <div
+            className={cn(
+              'text-[9px] font-mono border rounded px-2 py-1 mt-2',
+              deploymentGate.blocked ? 'text-rose-300 border-rose-500/40 bg-rose-500/10' : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10',
+            )}
+          >
+            {deploymentGate.blocked ? 'Deployment Gate Blocked' : 'Deployment Gate Pass'}
+          </div>
+          {deploymentGate.regression ? (
+            <div className="text-[9px] text-slate-500 font-mono mt-1">
+              {`Mismatch ${deploymentGate.regression.mismatches}/${deploymentGate.regression.checkedCases} | ${deploymentGate.regression.pass ? 'PASS' : 'FAIL'}`}
+            </div>
+          ) : null}
+          {topDeploymentRuleEngine ? (
+            <div className={cn('text-[9px] font-mono mt-1', topDeploymentRuleEngine.mismatches > 0 ? 'text-rose-300' : 'text-slate-500')}>
+              {`TopRule ${topDeploymentRuleEngine.mode}@${topDeploymentRuleEngine.version} ${topDeploymentRuleEngine.mismatches}/${topDeploymentRuleEngine.checkedCases} (${topDeploymentRuleEngine.mismatchRatePct.toFixed(1)}%)`}
+            </div>
+          ) : null}
+          {deploymentGate.reason ? <div className="text-[9px] text-slate-500 font-mono mt-1">{deploymentGate.reason}</div> : null}
           <div
             className={cn(
               'text-[9px] font-mono border rounded px-2 py-1 mt-2',
@@ -4913,6 +4936,7 @@ export default function Home() {
           championChallenger={championChallenger}
           newsImpact={newsImpact}
           mtfValidation={mtfValidation}
+          deploymentGate={deploymentGate}
           goldenRecord={goldenRecordValidation}
           marketIntelAdapter={marketIntelAdapter}
           sourceHealth={sourceHealth}
