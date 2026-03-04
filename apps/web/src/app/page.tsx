@@ -1002,6 +1002,11 @@ function TopNavigation({
   ];
 
   const correlationLabel = Number(globalData?.correlation_strength || 0) >= 0.7 ? 'HIGH' : Number(globalData?.correlation_strength || 0) >= 0.45 ? 'MEDIUM' : 'LOW';
+  const globalSentimentLabel = globalData?.global_sentiment || 'BEARISH';
+  const globalSentimentTone =
+    globalSentimentLabel === 'BULLISH'
+      ? 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10'
+      : 'text-rose-300 border-rose-500/40 bg-rose-500/10';
   const tokenAlert = tokenTelemetry.status !== 'fresh' || tokenTelemetry.deadmanTriggered;
   const negotiatedNotionalTotal = negotiatedFeed.reduce((total, item) => total + Math.max(0, Number(item.notional) || 0), 0);
   const negotiatedTop = negotiatedFeed[0] || null;
@@ -1074,6 +1079,9 @@ function TopNavigation({
           <span className="flex items-center space-x-1">
             <span className="text-slate-500">CORRELATION:</span> <span className="text-cyan-500">{correlationLabel}</span>
           </span>
+          <span className="flex items-center space-x-1">
+            <span className="text-slate-500">SENTIMENT:</span> <span className={globalSentimentLabel === 'BULLISH' ? 'text-emerald-400' : 'text-rose-400'}>{globalSentimentLabel}</span>
+          </span>
         </div>
       </div>
 
@@ -1088,6 +1096,9 @@ function TopNavigation({
           {coolingOff.active
             ? `COOLING ${Math.max(0, Math.floor(coolingOff.remainingSeconds / 60))}m`
             : `COOLING ${coolingOff.breachStreak}/${Math.max(1, runtimeCoolingOffRequiredBreaches)}`}
+        </div>
+        <div className={cn('text-[10px] font-mono border rounded px-2 py-1', globalSentimentTone)} title="Global sentiment context from correlation feed">
+          {`SENT ${globalSentimentLabel}`}
         </div>
         <div
           className={cn(
