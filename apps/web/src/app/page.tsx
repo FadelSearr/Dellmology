@@ -1485,6 +1485,17 @@ function TopNavigation({
         ? 'text-amber-300 border-amber-500/40 bg-amber-500/10'
         : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10';
   const caggTitle = `Continuous Aggregation readiness | 1m ${cagg1mReady ? 'READY' : 'LAG'} | 5m ${cagg5mReady ? 'READY' : 'LAG'} | gap ${caggGapSeconds.toFixed(1)}s | fallback delay ${caggDelayMinutes}m`;
+  const anchorLockCount = Number(goldenRecord.triggerKillSwitch || !goldenRecord.safe) + Number(priceCrossCheck.warning) + Number(dataSanity.lockActive) + Number(incompleteData.warning);
+  const anchorEscalationLabel = anchorLockCount >= 3 ? 'CRITICAL' : anchorLockCount >= 2 ? 'HIGH' : anchorLockCount >= 1 ? 'WARN' : 'OK';
+  const anchorEscalationTone =
+    anchorEscalationLabel === 'CRITICAL'
+      ? 'text-rose-300 border-rose-500/40 bg-rose-500/10'
+      : anchorEscalationLabel === 'HIGH'
+        ? 'text-amber-300 border-amber-500/40 bg-amber-500/10'
+        : anchorEscalationLabel === 'WARN'
+          ? 'text-yellow-300 border-yellow-500/40 bg-yellow-500/10'
+          : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10';
+  const anchorEscalationTitle = `Poisoning guardrail escalation | Golden ${goldenRecord.safe ? 'OK' : 'FAIL'}${goldenRecord.triggerKillSwitch ? ' KILL' : ''} | XCheck ${priceCrossCheck.warning ? 'LOCK' : 'OK'} | Sanity ${dataSanity.lockActive ? 'LOCK' : dataSanity.warning ? 'WARN' : 'OK'} | Stream ${incompleteData.warning ? 'INCOMPLETE' : 'OK'}`;
   const feedDelayed = fallbackEmergencyActive || fallbackEndpointCount > 0 || marketIntelAdapter.degraded;
   const feedBadgeTone = feedDelayed
     ? fallbackEmergencyActive
@@ -1756,6 +1767,9 @@ function TopNavigation({
           title={priceCrossCheck.reason || 'External price anchor cross-check pass'}
         >
           {`XCHECK ${priceCrossCheck.warning ? `LOCK ${priceCrossCheck.maxDeviationPct.toFixed(1)}%` : 'OK'}`}
+        </div>
+        <div className={cn('text-[10px] font-mono border rounded px-2 py-1', anchorEscalationTone)} title={anchorEscalationTitle}>
+          {`ANCHOR ${anchorEscalationLabel}${anchorLockCount > 0 ? ` L${anchorLockCount}` : ''}`}
         </div>
         <div
           className={cn(
