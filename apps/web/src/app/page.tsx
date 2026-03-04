@@ -253,6 +253,18 @@ interface ActionDockBlockReasons {
   backtest: string[];
 }
 
+interface BacktestSummaryState {
+  symbol: string;
+  winRate: number;
+  totalTrades: number;
+  maxDrawdown: number;
+  sharpeRatio: number;
+  pitPass: boolean;
+  pitReason: string | null;
+  xaiHighlights: string[];
+  completedAt: string;
+}
+
 interface TokenTelemetry {
   status: 'fresh' | 'expiring' | 'expired' | 'missing';
   syncReason: string | null;
@@ -896,6 +908,33 @@ function buildActionDockBlockReasons(params: {
   }
 
   return { telegram, backtest };
+}
+
+function normalizeXaiHighlights(explanation: unknown): string[] {
+  if (Array.isArray(explanation)) {
+    return explanation
+      .map((item) => (typeof item === 'string' ? item.trim() : ''))
+      .filter((item) => item.length > 0)
+      .slice(0, 3);
+  }
+
+  if (typeof explanation === 'string') {
+    return explanation
+      .split(/\n+|\.|•|\-/)
+      .map((item) => item.trim())
+      .filter((item) => item.length > 20)
+      .slice(0, 3);
+  }
+
+  if (explanation && typeof explanation === 'object') {
+    const values = Object.values(explanation as Record<string, unknown>);
+    return values
+      .map((item) => (typeof item === 'string' ? item.trim() : ''))
+      .filter((item) => item.length > 20)
+      .slice(0, 3);
+  }
+
+  return [];
 }
 
 function extractAdversarialNarrative(rawNarrative: string): { bullish: string; bearish: string } {
@@ -2702,6 +2741,7 @@ function BottomPanel({
   modelConsensus,
   deploymentGate,
   systemKillSwitch,
+  backtestSummary,
 }: {
   narrative: string;
   adversarialNarrative: AdversarialNarrative;
@@ -2759,6 +2799,7 @@ function BottomPanel({
   modelConsensus: ModelConsensus;
   deploymentGate: DeploymentGateState;
   systemKillSwitch: SystemKillSwitchState;
+  backtestSummary: BacktestSummaryState | null;
 }) {
   const label = confidenceTracking.warning ? 'LOW' : confidence?.confidence_label || 'MEDIUM';
   const accuracy = confidenceTracking.evaluated > 0 ? confidenceTracking.accuracyPct : Number(confidence?.accuracy_pct || 0);
@@ -3157,6 +3198,21 @@ function BottomPanel({
             <Clock className="w-3.5 h-3.5" />
             <span>Backtest Rig</span>
           </button>
+          {backtestSummary ? (
+            <div className="border border-slate-800 rounded px-2 py-1 bg-slate-900/40 text-[9px] font-mono text-slate-400 space-y-1">
+              <div className="text-cyan-400">{`BT ${backtestSummary.symbol} | ${backtestSummary.winRate.toFixed(1)}% WR | ${backtestSummary.totalTrades} trades`}</div>
+              <div>{`MDD ${backtestSummary.maxDrawdown.toFixed(2)}% | Sharpe ${backtestSummary.sharpeRatio.toFixed(2)}`}</div>
+              <div className={cn(backtestSummary.pitPass ? 'text-emerald-300' : 'text-amber-300')}>
+                {backtestSummary.pitPass ? 'PIT Guard: PASS' : `PIT Guard: WARN (${backtestSummary.pitReason || 'check failed'})`}
+              </div>
+              {backtestSummary.xaiHighlights.length > 0 ? (
+                <div className="text-slate-500">
+                  {`XAI: ${backtestSummary.xaiHighlights[0]}`}
+                </div>
+              ) : null}
+              <div className="text-slate-600">{`Done ${new Date(backtestSummary.completedAt).toLocaleTimeString('id-ID')}`}</div>
+            </div>
+          ) : null}
           <button
             onClick={onResetDeadman}
             disabled={actionState.busy || deadmanResetCooldown > 0 || riskConfigLocked}
@@ -3351,6 +3407,7 @@ export default function Home() {
   });
   const [sourceHealth, setSourceHealth] = useState<EndpointSourceHealthState[]>([]);
   const [actionState, setActionState] = useState<ActionState>({ busy: false, message: null });
+  const [backtestSummary, setBacktestSummary] = useState<BacktestSummaryState | null>(null);
   const [riskDraft, setRiskDraft] = useState<RuntimeRiskDraft>({
     ihsgRiskTriggerPct: String(KILL_SWITCH_IHSG_DROP_PCT),
     upsMinNormal: String(NORMAL_MIN_UPS),
@@ -5675,6 +5732,10 @@ export default function Home() {
         success?: boolean;
         error?: string;
         result?: { win_rate?: number; total_trades?: number; max_drawdown?: number };
+        pit_guard?: {
+          pass?: boolean;
+          reason?: string | null;
+        };
       };
       if (response.status === 423) {
         setActionState({ busy: false, message: `Backtest locked: ${body.error || 'immutable audit chain lock active'}` });
@@ -5719,9 +5780,36 @@ export default function Home() {
         ? ` | COOLING-OFF ${Math.max(0, Math.floor(Number(coolingBody.remaining_seconds || 0) / 60))}m`
         : ` | DD streak ${Math.max(0, Number(coolingBody.breach_streak || 0))}/${Math.max(1, runtimeCoolingOffRequiredBreaches)}`;
 
+      let xaiHighlights: string[] = [];
+      try {
+        const xaiResponse = await fetch('/api/xai', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ symbol: activeSymbol, top_k: 5 }),
+        });
+        if (xaiResponse.ok) {
+          const xaiBody = (await xaiResponse.json()) as { explanation?: unknown };
+          xaiHighlights = normalizeXaiHighlights(xaiBody.explanation);
+        }
+      } catch {
+        xaiHighlights = [];
+      }
+
+      setBacktestSummary({
+        symbol: activeSymbol,
+        winRate: Number(body.result?.win_rate || 0),
+        totalTrades: Number(body.result?.total_trades || 0),
+        maxDrawdown: Number(body.result?.max_drawdown || 0),
+        sharpeRatio: Number((body.result as { sharpe_ratio?: number } | undefined)?.sharpe_ratio || 0),
+        pitPass: body.pit_guard?.pass !== false,
+        pitReason: body.pit_guard?.reason || null,
+        xaiHighlights,
+        completedAt: new Date().toISOString(),
+      });
+
       setActionState({
         busy: false,
-        message: `Backtest done: ${Number(body.result?.win_rate || 0).toFixed(1)}% WR (${Number(body.result?.total_trades || 0)} trades)${coolingSuffix}`,
+        message: `Backtest done: ${Number(body.result?.win_rate || 0).toFixed(1)}% WR (${Number(body.result?.total_trades || 0)} trades)${xaiHighlights.length > 0 ? ' | XAI ready' : ' | XAI fallback'}${coolingSuffix}`,
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Backtest failed';
@@ -6089,6 +6177,7 @@ export default function Home() {
           modelConsensus={modelConsensus}
           deploymentGate={deploymentGate}
           systemKillSwitch={systemKillSwitch}
+          backtestSummary={backtestSummary}
         />
       ) : null}
     </div>
