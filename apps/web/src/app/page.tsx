@@ -877,6 +877,9 @@ function Card({ children, className }: { children: React.ReactNode; className?: 
 }
 
 function TopNavigation({
+  activeSymbol,
+  currentPrice,
+  priceChange,
   symbolInput,
   setSymbolInput,
   applySymbol,
@@ -917,6 +920,9 @@ function TopNavigation({
   infraStatus,
   globalData,
 }: {
+  activeSymbol: string;
+  currentPrice: number;
+  priceChange: number;
   symbolInput: string;
   setSymbolInput: (value: string) => void;
   applySymbol: () => void;
@@ -969,6 +975,12 @@ function TopNavigation({
   const tokenAlert = tokenTelemetry.status !== 'fresh' || tokenTelemetry.deadmanTriggered;
   const negotiatedNotionalTotal = negotiatedFeed.reduce((total, item) => total + Math.max(0, Number(item.notional) || 0), 0);
   const negotiatedTop = negotiatedFeed[0] || null;
+  const regimeLabel = !modelConsensus.pass ? 'SIDEWAYS' : modelConsensus.status === 'CONSENSUS_BULL' ? 'UPTREND' : 'DOWNTREND';
+  const regimeTone = !modelConsensus.pass
+    ? 'text-amber-300 border-amber-500/40 bg-amber-500/10'
+    : modelConsensus.status === 'CONSENSUS_BULL'
+      ? 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10'
+      : 'text-rose-300 border-rose-500/40 bg-rose-500/10';
 
   return (
     <header className="h-12 bg-slate-950 border-b border-slate-800 flex items-center px-4 justify-between shrink-0 z-50">
@@ -1004,6 +1016,14 @@ function TopNavigation({
           >
             APPLY
           </button>
+        </div>
+        <div className="hidden xl:flex items-center gap-2 text-[10px] font-mono">
+          <div className="px-2 py-1 rounded border border-slate-800 bg-slate-900/40 text-slate-300">
+            {`${activeSymbol} ${currentPrice.toLocaleString('en-US', { maximumFractionDigits: 2 })} (${priceChange >= 0 ? '+' : ''}${priceChange.toFixed(2)}%)`}
+          </div>
+          <div className={cn('px-2 py-1 rounded border', regimeTone)} title={modelConsensus.message}>
+            {`REGIME ${regimeLabel}`}
+          </div>
         </div>
       </div>
 
@@ -5275,6 +5295,9 @@ export default function Home() {
   return (
     <div className="h-screen w-screen bg-black text-slate-200 selection:bg-cyan-500/30 overflow-hidden flex flex-col">
       <TopNavigation
+        activeSymbol={activeSymbol}
+        currentPrice={currentPrice}
+        priceChange={priceChange}
         symbolInput={symbolInput}
         setSymbolInput={setSymbolInput}
         applySymbol={applySymbol}
