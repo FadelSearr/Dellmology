@@ -881,6 +881,8 @@ function TopNavigation({
   setSymbolInput,
   applySymbol,
   coolingOffActive,
+  coolingOff,
+  runtimeCoolingOffRequiredBreaches,
   combatMode,
   incompleteData,
   immutableAuditAlert,
@@ -892,6 +894,8 @@ function TopNavigation({
   setSymbolInput: (value: string) => void;
   applySymbol: () => void;
   coolingOffActive: boolean;
+  coolingOff: CoolingOffState;
+  runtimeCoolingOffRequiredBreaches: number;
   combatMode: CombatModeState;
   incompleteData: IncompleteDataState;
   immutableAuditAlert: ImmutableAuditAlertState;
@@ -964,6 +968,17 @@ function TopNavigation({
       </div>
 
       <div className="flex items-center space-x-4 border-l border-slate-800 pl-4">
+        <div
+          className={cn(
+            'text-[10px] font-mono border rounded px-2 py-1',
+            coolingOff.active ? 'text-amber-300 border-amber-500/40 bg-amber-500/10' : 'text-slate-500 border-slate-800 bg-slate-900/30',
+          )}
+          title={coolingOff.reason || 'Cooling-off inactive'}
+        >
+          {coolingOff.active
+            ? `COOLING ${Math.max(0, Math.floor(coolingOff.remainingSeconds / 60))}m`
+            : `COOLING ${coolingOff.breachStreak}/${Math.max(1, runtimeCoolingOffRequiredBreaches)}`}
+        </div>
         <div
           className={cn(
             'text-[10px] font-mono border rounded px-2 py-1',
@@ -4962,6 +4977,8 @@ export default function Home() {
         setSymbolInput={setSymbolInput}
         applySymbol={applySymbol}
         coolingOffActive={coolingOff.active}
+        coolingOff={coolingOff}
+        runtimeCoolingOffRequiredBreaches={runtimeCoolingOffRequiredBreaches}
         combatMode={combatMode}
         incompleteData={incompleteData}
         immutableAuditAlert={immutableAuditAlert}
