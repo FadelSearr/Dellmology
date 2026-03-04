@@ -26,6 +26,7 @@ const TelegramSettings: React.FC = () => {
   const [alertHistory, setAlertHistory] = useState<any[]>([]);
   const [successCount, setSuccessCount] = useState(0);
   const [copied, setCopied] = useState(false);
+  const [saveMessage, setSaveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Fetch configuration on mount
   useEffect(() => {
@@ -67,6 +68,7 @@ const TelegramSettings: React.FC = () => {
 
   const saveSettings = async () => {
     setLoading(true);
+    setSaveMessage(null);
     try {
       // Save to localStorage for now
       localStorage.setItem('alertConfig', JSON.stringify(alertConfig));
@@ -80,10 +82,10 @@ const TelegramSettings: React.FC = () => {
         // Settings API may not exist, fallback to localStorage
       });
 
-      alert('✅ Alert settings saved!');
+      setSaveMessage({ type: 'success', text: 'Alert settings saved!' });
     } catch (error) {
       console.error('Error saving settings:', error);
-      alert('❌ Failed to save settings');
+      setSaveMessage({ type: 'error', text: 'Failed to save settings' });
     } finally {
       setLoading(false);
     }
@@ -221,6 +223,18 @@ const TelegramSettings: React.FC = () => {
           {loading ? 'Saving...' : 'Save Settings'}
         </button>
       </div>
+
+      {saveMessage && (
+        <div
+          className={`rounded p-3 text-sm ${
+            saveMessage.type === 'success'
+              ? 'bg-green-500/10 border border-green-500/30 text-green-300'
+              : 'bg-red-500/10 border border-red-500/30 text-red-300'
+          }`}
+        >
+          {saveMessage.text}
+        </div>
+      )}
     </div>
   );
 };
