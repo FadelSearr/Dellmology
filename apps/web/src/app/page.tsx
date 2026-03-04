@@ -2633,6 +2633,23 @@ function BottomPanel({
   const engineHeartbeatLocked = engineHeartbeat.checkedAt !== null && !engineHeartbeat.online;
   const deploymentGateTopRuleEngine =
     deploymentGate.regression?.ruleEngineHealth.find((row) => row.mismatches > 0) || deploymentGate.regression?.ruleEngineHealth[0] || null;
+  const technicalTone =
+    modelConsensus.technical === 'BULLISH'
+      ? 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10'
+      : modelConsensus.technical === 'BEARISH'
+        ? 'text-rose-300 border-rose-500/40 bg-rose-500/10'
+        : 'text-amber-300 border-amber-500/40 bg-amber-500/10';
+  const bandarmologyTone =
+    modelConsensus.bandarmology === 'BULLISH'
+      ? 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10'
+      : modelConsensus.bandarmology === 'BEARISH'
+        ? 'text-rose-300 border-rose-500/40 bg-rose-500/10'
+        : 'text-amber-300 border-amber-500/40 bg-amber-500/10';
+  const consensusTone = !modelConsensus.pass
+    ? 'text-amber-300 border-amber-500/40 bg-amber-500/10'
+    : modelConsensus.status === 'CONSENSUS_BULL'
+      ? 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10'
+      : 'text-rose-300 border-rose-500/40 bg-rose-500/10';
 
   return (
     <Card className="h-48 border-t border-slate-800 rounded-none shrink-0 flex flex-row">
@@ -2647,6 +2664,17 @@ function BottomPanel({
           }
         />
         <div className="flex-1 p-3 overflow-y-auto space-y-2">
+          <div className="grid grid-cols-3 gap-2">
+            <div className={cn('text-[9px] font-mono border rounded px-2 py-1', technicalTone)} title="Technical context for AI narrative">
+              {`TECH ${modelConsensus.technical}`}
+            </div>
+            <div className={cn('text-[9px] font-mono border rounded px-2 py-1', bandarmologyTone)} title="Broker-flow context for AI narrative">
+              {`FLOW ${modelConsensus.bandarmology}`}
+            </div>
+            <div className={cn('text-[9px] font-mono border rounded px-2 py-1', consensusTone)} title={modelConsensus.message}>
+              {`CONS ${!modelConsensus.pass ? 'CONFUSE' : modelConsensus.status === 'CONSENSUS_BULL' ? 'BULL' : 'BEAR'}`}
+            </div>
+          </div>
           <div className="font-mono text-xs text-slate-300 leading-relaxed whitespace-pre-line border border-slate-800 rounded p-2 bg-slate-900/40">{narrative}</div>
           <div className="text-[9px] font-mono text-amber-300/90 border border-amber-500/30 rounded px-2 py-1 bg-amber-500/10">
             {PERSONAL_RESEARCH_ONLY_DISCLAIMER}
