@@ -1211,6 +1211,7 @@ function CenterPanel({
   const confidenceUp = Number(prediction?.data?.confidence_up || 0);
   const confidenceDown = Number(prediction?.data?.confidence_down || 0);
   const cnnDirection = prediction?.data?.prediction || (confidenceUp >= confidenceDown ? 'UP' : 'DOWN');
+  const combatAction = upsScore >= 50 ? 'BUY SETUP' : 'SELL SETUP';
 
   return (
     <div className="flex-1 h-full flex flex-col bg-slate-950 relative overflow-hidden border-r border-slate-800">
@@ -1229,17 +1230,19 @@ function CenterPanel({
         </div>
       </div>
 
-      <div className="absolute top-4 right-16 z-20 flex space-x-1 bg-slate-900/80 backdrop-blur border border-slate-800 rounded p-1">
-        {(['1m', '5m', '15m', '1h', '4h', 'D'] as Timeframe[]).map((tf) => (
-          <button
-            key={tf}
-            onClick={() => setTimeframe(tf)}
-            className={cn('px-2 py-1 text-[10px] font-bold rounded hover:bg-slate-800 text-slate-400 hover:text-white', tf === timeframe && 'bg-slate-800 text-cyan-500')}
-          >
-            {tf}
-          </button>
-        ))}
-      </div>
+      {!combatMode.active ? (
+        <div className="absolute top-4 right-16 z-20 flex space-x-1 bg-slate-900/80 backdrop-blur border border-slate-800 rounded p-1">
+          {(['1m', '5m', '15m', '1h', '4h', 'D'] as Timeframe[]).map((tf) => (
+            <button
+              key={tf}
+              onClick={() => setTimeframe(tf)}
+              className={cn('px-2 py-1 text-[10px] font-bold rounded hover:bg-slate-800 text-slate-400 hover:text-white', tf === timeframe && 'bg-slate-800 text-cyan-500')}
+            >
+              {tf}
+            </button>
+          ))}
+        </div>
+      ) : null}
 
       <div className="flex-1 flex relative">
         <div className="flex-1 relative">
@@ -1287,7 +1290,14 @@ function CenterPanel({
             <div className="absolute bottom-4 left-4 right-20 pointer-events-none z-20">
               <div className="bg-rose-500/10 border border-rose-500/40 rounded p-3 backdrop-blur-sm">
                 <div className="text-[10px] text-rose-300 font-bold uppercase tracking-wider mb-2">Combat Mode</div>
-                <div className="text-[9px] text-slate-300 font-mono mb-2">{combatMode.reason}</div>
+                <div className="text-[9px] text-rose-200 font-mono mb-2 uppercase">High Volatility Mode</div>
+                <div className="mb-3 flex items-end justify-between border border-slate-700/60 bg-slate-900/60 rounded px-3 py-2">
+                  <div className="text-[10px] text-slate-400 uppercase tracking-wider">UPS</div>
+                  <div className="font-black text-white tracking-tighter text-6xl leading-none">
+                    {Math.round(upsScore)}<span className="text-xl text-slate-500">/100</span>
+                  </div>
+                  <div className={cn('text-[10px] font-bold uppercase', upsScore >= 50 ? 'text-emerald-300' : 'text-rose-300')}>{combatAction}</div>
+                </div>
                 <ul className="grid grid-cols-3 gap-2 text-[10px] font-bold uppercase">
                   {combatMode.bullets.map((bullet) => (
                     <li key={bullet} className="text-center py-1 rounded border border-slate-700 bg-slate-900/60 text-amber-300">
@@ -1318,53 +1328,55 @@ function CenterPanel({
         </div>
       </div>
 
-      <div className="h-16 bg-slate-900 border-t border-slate-800 px-6 flex items-center justify-between shrink-0">
-        <div className="flex items-center space-x-4">
-          <div className="flex flex-col">
-            <span className="text-[10px] text-slate-500 uppercase tracking-widest font-bold">Unified Power Score</span>
-            <span className={cn('font-black text-white tracking-tighter', combatMode.active ? 'text-4xl' : 'text-2xl')}>
-              {Math.round(upsScore)}<span className="text-lg text-slate-500">/100</span>
-            </span>
+      {!combatMode.active ? (
+        <div className="h-16 bg-slate-900 border-t border-slate-800 px-6 flex items-center justify-between shrink-0">
+          <div className="flex items-center space-x-4">
+            <div className="flex flex-col">
+              <span className="text-[10px] text-slate-500 uppercase tracking-widest font-bold">Unified Power Score</span>
+              <span className="font-black text-white tracking-tighter text-2xl">
+                {Math.round(upsScore)}<span className="text-lg text-slate-500">/100</span>
+              </span>
+            </div>
+            <div className="h-10 w-px bg-slate-800 mx-2" />
+            <div className="flex flex-col space-y-1">
+              <div className="flex items-center space-x-2 text-[10px]">
+                <span className="text-slate-400 w-16">Technical</span>
+                <div className="w-24 h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                  <div className="h-full bg-emerald-500" style={{ width: `${Math.min(100, upsScore + 5)}%` }} />
+                </div>
+              </div>
+              <div className="flex items-center space-x-2 text-[10px]">
+                <span className="text-slate-400 w-16">Bandarmology</span>
+                <div className="w-24 h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                  <div className="h-full bg-cyan-500" style={{ width: `${Math.min(100, upsScore)}%` }} />
+                </div>
+              </div>
+              <div className="flex items-center space-x-2 text-[10px]">
+                <span className="text-slate-400 w-16">Sentiment</span>
+                <div className="w-24 h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                  <div className="h-full bg-amber-500" style={{ width: `${Math.max(20, Math.min(100, upsScore - 10))}%` }} />
+                </div>
+              </div>
+            </div>
           </div>
-          {!combatMode.active ? <div className="h-10 w-px bg-slate-800 mx-2" /> : null}
-          {!combatMode.active ? <div className="flex flex-col space-y-1">
-            <div className="flex items-center space-x-2 text-[10px]">
-              <span className="text-slate-400 w-16">Technical</span>
-              <div className="w-24 h-1.5 bg-slate-800 rounded-full overflow-hidden">
-                <div className="h-full bg-emerald-500" style={{ width: `${Math.min(100, upsScore + 5)}%` }} />
-              </div>
-            </div>
-            <div className="flex items-center space-x-2 text-[10px]">
-              <span className="text-slate-400 w-16">Bandarmology</span>
-              <div className="w-24 h-1.5 bg-slate-800 rounded-full overflow-hidden">
-                <div className="h-full bg-cyan-500" style={{ width: `${Math.min(100, upsScore)}%` }} />
-              </div>
-            </div>
-            <div className="flex items-center space-x-2 text-[10px]">
-              <span className="text-slate-400 w-16">Sentiment</span>
-              <div className="w-24 h-1.5 bg-slate-800 rounded-full overflow-hidden">
-                <div className="h-full bg-amber-500" style={{ width: `${Math.max(20, Math.min(100, upsScore - 10))}%` }} />
-              </div>
-            </div>
-          </div> : null}
-        </div>
 
-        <div className="flex-1 mx-8 relative h-4 bg-slate-800 rounded-full overflow-hidden">
-          <div className="absolute inset-0 bg-linear-to-r from-rose-600 via-amber-500 to-emerald-500 opacity-80" />
-          <div className="absolute top-0 bottom-0 w-1 bg-white shadow-[0_0_10px_white] z-10" style={{ left: `${upsScore}%` }} />
-          <div className="absolute inset-0 flex justify-between items-center px-2 text-[9px] font-bold text-black/50 uppercase mix-blend-overlay">
-            <span>Strong Sell</span>
-            <span>Neutral</span>
-            <span>Strong Buy</span>
+          <div className="flex-1 mx-8 relative h-4 bg-slate-800 rounded-full overflow-hidden">
+            <div className="absolute inset-0 bg-linear-to-r from-rose-600 via-amber-500 to-emerald-500 opacity-80" />
+            <div className="absolute top-0 bottom-0 w-1 bg-white shadow-[0_0_10px_white] z-10" style={{ left: `${upsScore}%` }} />
+            <div className="absolute inset-0 flex justify-between items-center px-2 text-[9px] font-bold text-black/50 uppercase mix-blend-overlay">
+              <span>Strong Sell</span>
+              <span>Neutral</span>
+              <span>Strong Buy</span>
+            </div>
+          </div>
+
+          <div className="flex items-center space-x-2">
+            <button className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-6 py-2 rounded shadow-[0_0_15px_rgba(5,150,105,0.4)] transition-all transform active:scale-95 uppercase tracking-wide">
+              Execute {upsScore >= 50 ? 'Buy' : 'Sell'}
+            </button>
           </div>
         </div>
-
-        <div className="flex items-center space-x-2">
-          <button className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-6 py-2 rounded shadow-[0_0_15px_rgba(5,150,105,0.4)] transition-all transform active:scale-95 uppercase tracking-wide">
-            Execute {upsScore >= 50 ? 'Buy' : 'Sell'}
-          </button>
-        </div>
-      </div>
+      ) : null}
     </div>
   );
 }
