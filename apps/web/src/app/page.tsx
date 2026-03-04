@@ -1736,6 +1736,13 @@ function CenterPanel({
   const confidenceUp = Number(prediction?.data?.confidence_up || 0);
   const confidenceDown = Number(prediction?.data?.confidence_down || 0);
   const cnnDirection = prediction?.data?.prediction || (confidenceUp >= confidenceDown ? 'UP' : 'DOWN');
+  const cnnConfidence = Math.max(confidenceUp, confidenceDown);
+  const technicalLabel =
+    cnnConfidence < 55
+      ? 'Range Compression'
+      : cnnDirection === 'UP'
+        ? 'Bull Continuation'
+        : 'Bear Reversal';
   const combatAction = upsScore >= 50 ? 'BUY SETUP' : 'SELL SETUP';
 
   return (
@@ -1752,6 +1759,18 @@ function CenterPanel({
         <div className="flex items-center space-x-2 mt-1">
           <span className="px-1.5 py-0.5 bg-blue-500/20 text-blue-400 text-[10px] font-bold rounded border border-blue-500/30 uppercase">Market</span>
           <span className="px-1.5 py-0.5 bg-purple-500/20 text-purple-400 text-[10px] font-bold rounded border border-purple-500/30 uppercase">{signalText}</span>
+          <span
+            className={cn(
+              'px-1.5 py-0.5 text-[10px] font-bold rounded border uppercase',
+              technicalLabel === 'Bull Continuation'
+                ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                : technicalLabel === 'Bear Reversal'
+                  ? 'bg-rose-500/20 text-rose-300 border-rose-500/30'
+                  : 'bg-amber-500/20 text-amber-300 border-amber-500/30',
+            )}
+          >
+            {technicalLabel}
+          </span>
         </div>
       </div>
 
@@ -1805,7 +1824,10 @@ function CenterPanel({
               <div>
                 <div className="text-[10px] text-cyan-500 font-bold uppercase tracking-wider">CNN AI Inference</div>
                 <div className="text-xs text-white font-mono">
-                  Direction: <span className={cn(cnnDirection === 'UP' ? 'text-emerald-400' : 'text-rose-400')}>{cnnDirection}</span> ({Math.max(confidenceUp, confidenceDown).toFixed(0)}%)
+                  Direction: <span className={cn(cnnDirection === 'UP' ? 'text-emerald-400' : 'text-rose-400')}>{cnnDirection}</span> ({cnnConfidence.toFixed(0)}%)
+                </div>
+                <div className="text-[10px] text-slate-300 font-mono">
+                  Label: <span className="text-cyan-300">{technicalLabel}</span>
                 </div>
               </div>
             </div>
