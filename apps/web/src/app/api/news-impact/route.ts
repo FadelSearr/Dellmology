@@ -23,6 +23,8 @@ interface NewsImpactResponse {
   sampled_headlines: NewsImpactItem[];
   checked_at: string;
   source_breakdown?: Array<{ source: string; samples: number; sentiment_score: number }>;
+  source_alignment?: 'HIGH' | 'MEDIUM' | 'LOW';
+  source_coverage?: number;
 }
 
 const POSITIVE_WORDS = ['growth', 'record profit', 'expansion', 'upgrade', 'outperform', 'optimism', 'rebound', 'strong demand'];
@@ -199,6 +201,19 @@ export async function GET(request: Request) {
         ...item,
         sentiment_score: item.samples > 0 ? Number((item.sentiment_score / item.samples).toFixed(2)) : 0,
       })),
+      source_alignment: (() => {
+        const scores = sourceBreakdown
+          .filter((item) => item.samples > 0)
+          .map((item) => item.sentiment_score / item.samples);
+        if (scores.length <= 1) return 'LOW';
+        const mean = scores.reduce((sum, value) => sum + value, 0) / scores.length;
+        const variance = scores.reduce((sum, value) => sum + Math.pow(value - mean, 2), 0) / scores.length;
+        const stdev = Math.sqrt(variance);
+        if (stdev <= 4) return 'HIGH';
+        if (stdev <= 10) return 'MEDIUM';
+        return 'LOW';
+      })(),
+      source_coverage: sourceBreakdown.filter((item) => item.samples > 0).length,
     };
 
     return NextResponse.json(payload, {
@@ -231,5 +246,7 @@ function fallbackPayload(symbol: string, reason: string): NewsImpactResponse {
     red_flags: reason ? [reason] : [],
     sampled_headlines: [],
     checked_at: new Date().toISOString(),
+    source_alignment: 'LOW',
+    source_coverage: 0,
   };
 }

@@ -38,6 +38,17 @@ interface NegotiatedMonitorData {
   };
 }
 
+interface CommodityCorrelationData {
+  correlation_score: number;
+  correlation_label: 'POSITIVE' | 'NEGATIVE' | 'NEUTRAL';
+  mapped_commodities: string[];
+}
+
+interface GuardrailsData {
+  heartbeat?: { status?: string; stale_seconds?: number };
+  cross_check?: { execution_lock?: boolean; deviation_pct?: number };
+}
+
 interface FilterOption {
   value: string;
   label: string;
@@ -50,6 +61,8 @@ export const FlowEngine = ({ symbol = 'BBCA' }: { symbol?: string }) => {
   const [filter, setFilter] = useState('mix');
   const [error, setError] = useState<string | null>(null);
   const [negotiated, setNegotiated] = useState<NegotiatedMonitorData | null>(null);
+  const [commodityCorrelation, setCommodityCorrelation] = useState<CommodityCorrelationData | null>(null);
+  const [guardrails, setGuardrails] = useState<GuardrailsData | null>(null);
 
   const filters: FilterOption[] = [
     { value: 'mix', label: '🎭 Mix' },
@@ -94,6 +107,16 @@ export const FlowEngine = ({ symbol = 'BBCA' }: { symbol?: string }) => {
       .then((response) => (response.ok ? response.json() : null))
       .then((payload) => setNegotiated(payload))
       .catch(() => setNegotiated(null));
+
+    fetch(`/api/commodity-correlation?symbol=${symbol}`)
+      .then((response) => (response.ok ? response.json() : null))
+      .then((payload) => setCommodityCorrelation(payload))
+      .catch(() => setCommodityCorrelation(null));
+
+    fetch(`/api/system-guardrails?symbol=${symbol}`)
+      .then((response) => (response.ok ? response.json() : null))
+      .then((payload) => setGuardrails(payload))
+      .catch(() => setGuardrails(null));
   }, [symbol, days, filter]);
 
   if (error) {
@@ -203,6 +226,32 @@ export const FlowEngine = ({ symbol = 'BBCA' }: { symbol?: string }) => {
                 <div>NEGO: <span className="text-emerald-300">{negotiated.summary.nego_count}</span></div>
                 <div>CROSS: <span className="text-orange-300">{negotiated.summary.cross_count}</span></div>
                 <div>Notional: <span className="text-violet-300">{(Number(negotiated.summary.total_notional || 0) / 1e9).toFixed(2)}B</span></div>
+              </div>
+            </div>
+          )}
+
+          {(commodityCorrelation || guardrails) && (
+            <div className="bg-gray-900/40 border border-gray-700 rounded-lg p-4 text-xs text-gray-300">
+              <div className="font-semibold text-white mb-2">Macro & Guardrails</div>
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+                <div>
+                  Commodity Corr:{' '}
+                  <span className="text-cyan-300">
+                    {commodityCorrelation ? `${commodityCorrelation.correlation_label} (${Number(commodityCorrelation.correlation_score || 0).toFixed(2)})` : 'N/A'}
+                  </span>
+                </div>
+                <div>
+                  Heartbeat:{' '}
+                  <span className={guardrails?.heartbeat?.status === 'healthy' ? 'text-emerald-300' : 'text-amber-300'}>
+                    {guardrails?.heartbeat?.status || 'unknown'}
+                  </span>
+                </div>
+                <div>
+                  Cross-Check Lock:{' '}
+                  <span className={guardrails?.cross_check?.execution_lock ? 'text-red-300' : 'text-emerald-300'}>
+                    {guardrails?.cross_check?.execution_lock ? 'ON' : 'OFF'}
+                  </span>
+                </div>
               </div>
             </div>
           )}

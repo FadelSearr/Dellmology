@@ -27,6 +27,8 @@ WHERE schemaname = 'public'
     'broker_flow',
     'order_flow_heatmap',
     'order_flow_anomalies',
+    'order_events',
+    'broker_zscore',
     'market_depth',
     'haka_haki_summary'
   )
@@ -43,6 +45,8 @@ WHERE schemaname = 'public'
     'broker_flow',
     'order_flow_heatmap',
     'order_flow_anomalies',
+    'order_events',
+    'broker_zscore',
     'market_depth',
     'haka_haki_summary'
   )

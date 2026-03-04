@@ -32,11 +32,15 @@ export const Section3_NeuralNarrative: React.FC<Section3Props> = ({
     whaleBias: number;
     warning: boolean;
     reason: string;
+    sourceAlignment: 'HIGH' | 'MEDIUM' | 'LOW';
+    sourceCoverage: number;
   }>({
     retailSentiment: 0,
     whaleBias: 0,
     warning: false,
     reason: 'Loading divergence signal...',
+    sourceAlignment: 'LOW',
+    sourceCoverage: 0,
   });
 
   useEffect(() => {
@@ -53,6 +57,8 @@ export const Section3_NeuralNarrative: React.FC<Section3Props> = ({
           whaleBias: Number(payload.whale_flow_bias || 0),
           warning: Boolean(payload.divergence_warning),
           reason: String(payload.divergence_reason || 'No divergence detected'),
+          sourceAlignment: (payload.source_alignment || 'LOW') as 'HIGH' | 'MEDIUM' | 'LOW',
+          sourceCoverage: Number(payload.source_coverage || 0),
         });
       } catch {
         if (!mounted) return;
@@ -182,6 +188,10 @@ export const Section3_NeuralNarrative: React.FC<Section3Props> = ({
             }`}
           >
             {sentimentData.warning ? '⚠️ DIVERGENCE DETECTED' : '✅ DIVERGENCE NORMAL'}: {sentimentData.reason}
+          </div>
+          <div className="text-xs text-slate-400 border border-slate-700 rounded p-3 bg-slate-900/30">
+            Source Alignment: <span className="text-cyan-300">{sentimentData.sourceAlignment}</span>
+            {' '}| Coverage: <span className="text-violet-300">{sentimentData.sourceCoverage}/3</span>
           </div>
         </div>
       </Card>

@@ -126,6 +126,8 @@ BEGIN
         ALTER TABLE order_flow_anomalies ENABLE ROW LEVEL SECURITY;
         ALTER TABLE market_depth ENABLE ROW LEVEL SECURITY;
         ALTER TABLE haka_haki_summary ENABLE ROW LEVEL SECURITY;
+        ALTER TABLE order_events ENABLE ROW LEVEL SECURITY;
+        ALTER TABLE broker_zscore ENABLE ROW LEVEL SECURITY;
 
         DROP POLICY IF EXISTS order_flow_heatmap_read_anon ON order_flow_heatmap;
         CREATE POLICY order_flow_heatmap_read_anon ON order_flow_heatmap FOR SELECT TO anon, authenticated USING (true);
@@ -138,6 +140,12 @@ BEGIN
 
         DROP POLICY IF EXISTS haka_haki_summary_read_anon ON haka_haki_summary;
         CREATE POLICY haka_haki_summary_read_anon ON haka_haki_summary FOR SELECT TO anon, authenticated USING (true);
+
+        DROP POLICY IF EXISTS order_events_read_anon ON order_events;
+        CREATE POLICY order_events_read_anon ON order_events FOR SELECT TO anon, authenticated USING (true);
+
+        DROP POLICY IF EXISTS broker_zscore_read_anon ON broker_zscore;
+        CREATE POLICY broker_zscore_read_anon ON broker_zscore FOR SELECT TO anon, authenticated USING (true);
     END IF;
 
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
@@ -152,6 +160,12 @@ BEGIN
 
         DROP POLICY IF EXISTS haka_haki_summary_write_service ON haka_haki_summary;
         CREATE POLICY haka_haki_summary_write_service ON haka_haki_summary FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+        DROP POLICY IF EXISTS order_events_write_service ON order_events;
+        CREATE POLICY order_events_write_service ON order_events FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+        DROP POLICY IF EXISTS broker_zscore_write_service ON broker_zscore;
+        CREATE POLICY broker_zscore_write_service ON broker_zscore FOR ALL TO service_role USING (true) WITH CHECK (true);
     END IF;
 END $$;
 

@@ -10,12 +10,14 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"context"
 
+	analysispkg "github.com/dellmology/streamer/internal/analysis"
 	"github.com/go-redis/redis/v8"
 	"github.com/gorilla/websocket"
 	_ "github.com/lib/pq" // PostgreSQL driver
@@ -538,6 +540,24 @@ func insertTrade(t ProcessedTrade) error {
 func startHTTPServer() {
 	mux := http.NewServeMux()
 	mux.Handle("/stream", sseBroker)
+	mux.HandleFunc("/broker/whale-clusters", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Content-Type", "application/json")
+		symbol := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("symbol")))
+		if symbol == "" {
+			symbol = "BBCA"
+		}
+		days := 7
+		if raw := strings.TrimSpace(r.URL.Query().Get("days")); raw != "" {
+			if parsed, err := strconv.Atoi(raw); err == nil && parsed >= 1 && parsed <= 30 {
+				days = parsed
+			}
+		}
+		payload := analysispkg.AnalyzeBrokerFlow(symbol, days)
+		if err := json.NewEncoder(w).Encode(payload); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	})
 	mux.HandleFunc("/negotiated/latest", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Content-Type", "application/json")
@@ -566,10 +586,28 @@ func startHTTPServer() {
 		if staleSeconds > 60 {
 			status = "stale"
 		}
+		deadLetterMutex.Lock()
+		deadLetterCount := len(deadLetters)
+		deadLetterMutex.Unlock()
+		processedMutex.Lock()
+		processedCacheSize := len(processedMessageHashes)
+		processedMutex.Unlock()
+		queueDepth := 0
+		if messageQueue != nil {
+			queueDepth = len(messageQueue)
+		}
+		queueMode := "local"
+		if useExternalQueue {
+			queueMode = "redis_pubsub"
+		}
 		if err := json.NewEncoder(w).Encode(map[string]interface{}{
 			"status": status,
 			"stale_seconds": staleSeconds,
 			"external_queue": useExternalQueue,
+			"queue_mode": queueMode,
+			"queue_depth": queueDepth,
+			"processed_cache_size": processedCacheSize,
+			"dead_letter_count": deadLetterCount,
 			"checked_at": time.Now().UTC(),
 		}); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)

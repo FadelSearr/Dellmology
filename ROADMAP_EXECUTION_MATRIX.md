@@ -7,12 +7,12 @@
 | P1 Negotiated/Cross API | Completed | Streamer + Web | trades trade_type NEGO/CROSS | Endpoint + panel ringkas aktif | Done |
 | P1 Iceberg Detector | Completed | Streamer | depth feed | Anomali ICEBERG masuk order_flow_anomalies | Done |
 | P1 Whale Cluster API Layer | Completed | Web API | broker_flow | cluster + correlation field tersedia | Done |
-| P1 Whale Cluster Native Engine | In Progress | Streamer | broker_analysis integration callsite | scoring native engine dipakai pipeline | 1 sprint |
-| P1 Commodity Correlation Engine | In Progress | Web API | external market feed | endpoint correlation aktif + consumed by UI | 1 sprint |
-| P1 Sentiment Multi-Source | In Progress | Web API | external feeds | google+reddit+stocktwits agregasi aktif | 1 sprint |
-| P2 External Queue Broker | In Progress | Streamer | Redis | publish/subscribe stabil + fallback local | 1 sprint |
-| P2 RLS Full Coverage | In Progress | DB | Supabase roles | policy read/write lintas tabel order_flow/broker_flow | 1 sprint |
-| P2 Operational Guardrails | In Progress | Web + Streamer | trade freshness + external check | heartbeat/fallback/cross-check lock endpoint aktif | 1 sprint |
+| P1 Whale Cluster Native Engine | Completed | Streamer | native analysis callsite | endpoint `/broker/whale-clusters` aktif + cluster scoring native | Done |
+| P1 Commodity Correlation Engine | Completed | Web API | external market feed | endpoint correlation aktif + consumed by FlowEngine | Done |
+| P1 Sentiment Multi-Source | Completed | Web API | external feeds | google+reddit+stocktwits + alignment/coverage diagnostics | Done |
+| P2 External Queue Broker | Completed | Streamer | Redis | publish/subscribe + heartbeat queue telemetry + fallback local | Done |
+| P2 RLS Full Coverage | Completed | DB | Supabase roles | policy read/write mencakup order_events + broker_zscore | Done |
+| P2 Operational Guardrails | Completed | Web + Streamer | trade freshness + external check | heartbeat, cross-check lock, dead-letter observability terpakai di UI | Done |
 | Dashboard Shell page.tsx | Completed | Web | page.tsx patched via terminal | panel nego/cross consume `/api/negotiated-monitor` | Done |
 | ROADMAP.md inline update | Completed | Docs | ROADMAP.md patched via terminal | pointer ke matrix eksekusi tertanam | Done |
 
