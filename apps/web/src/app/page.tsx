@@ -1425,6 +1425,35 @@ function TopNavigation({
   const tokenAlert = tokenTelemetry.status !== 'fresh' || tokenTelemetry.deadmanTriggered;
   const highChurnLowAccumulation = washSaleRisk.warning && artificialLiquidity.warning;
   const negotiatedNotionalTotal = negotiatedFeed.reduce((total, item) => total + Math.max(0, Number(item.notional) || 0), 0);
+  const negotiatedSymbolBreadth = new Set(negotiatedFeed.map((item) => String(item.symbol || '').toUpperCase()).filter(Boolean)).size;
+  const negotiatedBuyNotional = negotiatedFeed.reduce((sum, item) => {
+    const tradeType = String(item.trade_type || '').toUpperCase();
+    return tradeType.includes('BUY') ? sum + Math.max(0, Number(item.notional) || 0) : sum;
+  }, 0);
+  const negotiatedSellNotional = negotiatedFeed.reduce((sum, item) => {
+    const tradeType = String(item.trade_type || '').toUpperCase();
+    return tradeType.includes('SELL') ? sum + Math.max(0, Number(item.notional) || 0) : sum;
+  }, 0);
+  const negotiatedDirectionalNotional = negotiatedBuyNotional + negotiatedSellNotional;
+  const negotiatedBuySharePct = negotiatedDirectionalNotional > 0 ? (negotiatedBuyNotional / negotiatedDirectionalNotional) * 100 : 50;
+  const negotiatedDirectionalSkewPct = Math.abs(negotiatedBuySharePct - 50) * 2;
+  const negotiatedPressureLabel =
+    negotiatedNotionalTotal <= 0
+      ? 'IDLE'
+      : negotiatedDirectionalSkewPct >= 55 && negotiatedSymbolBreadth <= 2
+        ? 'HIGH'
+        : negotiatedDirectionalSkewPct >= 35
+          ? 'MED'
+          : 'LOW';
+  const negotiatedPressureTone =
+    negotiatedPressureLabel === 'HIGH'
+      ? 'text-rose-300 border-rose-500/40 bg-rose-500/10'
+      : negotiatedPressureLabel === 'MED'
+        ? 'text-amber-300 border-amber-500/40 bg-amber-500/10'
+        : negotiatedPressureLabel === 'LOW'
+          ? 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10'
+          : 'text-slate-500 border-slate-800 bg-slate-900/30';
+  const negotiatedPressureTitle = `Nego pressure ${negotiatedPressureLabel} | Buy ${negotiatedBuySharePct.toFixed(1)}% | Skew ${negotiatedDirectionalSkewPct.toFixed(1)}% | Breadth ${negotiatedSymbolBreadth} | Notional ${formatCompactIDR(negotiatedNotionalTotal)}`;
   const negotiatedTop = negotiatedFeed[0] || null;
   const degradedEndpointCount = sourceHealth.filter((item) => item.degraded).length;
   const fallbackEndpoints = sourceHealth.filter((item) => item.degraded && item.fallbackDelayMinutes !== null);
@@ -1979,11 +2008,14 @@ function TopNavigation({
           )}
           title={
             negotiatedTop
-              ? `${negotiatedTop.symbol} ${negotiatedTop.trade_type} | Vol ${negotiatedTop.volume.toLocaleString('en-US')} | Notional ${negotiatedTop.notional.toLocaleString('en-US', { maximumFractionDigits: 0 })}`
+              ? `${negotiatedTop.symbol} ${negotiatedTop.trade_type} | Vol ${negotiatedTop.volume.toLocaleString('en-US')} | Notional ${negotiatedTop.notional.toLocaleString('en-US', { maximumFractionDigits: 0 })} | Breadth ${negotiatedSymbolBreadth}`
               : 'No negotiated/cross activity detected'
           }
         >
-          {`NEGO ${negotiatedFeed.length > 0 ? `ACT ${negotiatedFeed.length}` : 'IDLE'}${negotiatedNotionalTotal > 0 ? ` ${Math.round(negotiatedNotionalTotal / 1_000_000)}M` : ''}`}
+          {`NEGO ${negotiatedFeed.length > 0 ? `ACT ${negotiatedFeed.length}` : 'IDLE'}${negotiatedNotionalTotal > 0 ? ` ${Math.round(negotiatedNotionalTotal / 1_000_000)}M` : ''}${negotiatedSymbolBreadth > 0 ? ` S${negotiatedSymbolBreadth}` : ''}`}
+        </div>
+        <div className={cn('text-[10px] font-mono border rounded px-2 py-1', negotiatedPressureTone)} title={negotiatedPressureTitle}>
+          {`N-PRESS ${negotiatedPressureLabel}${negotiatedPressureLabel !== 'IDLE' ? ` ${negotiatedDirectionalSkewPct.toFixed(0)}%` : ''}`}
         </div>
         <div
           className={cn(
