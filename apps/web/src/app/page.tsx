@@ -27,6 +27,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
+import { applyGuardedConsensus, buildConsensus } from '@/lib/modelConsensus';
 
 type Tone = 'good' | 'warning' | 'error';
 
@@ -801,49 +802,6 @@ function sentimentVoteFromNarrative(
   return 'NEUTRAL';
 }
 
-function buildConsensus(technical: VoteSignal, bandarmology: VoteSignal, sentiment: VoteSignal): ModelConsensus {
-  const votes = [technical, bandarmology, sentiment];
-  const bullishVotes = votes.filter((vote) => vote === 'BUY').length;
-  const bearishVotes = votes.filter((vote) => vote === 'SELL').length;
-
-  if (bullishVotes >= 2) {
-    return {
-      technical,
-      bandarmology,
-      sentiment,
-      bullishVotes,
-      bearishVotes,
-      pass: true,
-      status: 'CONSENSUS_BULL',
-      message: `Consensus Bullish (${bullishVotes}/3 setuju)` ,
-    };
-  }
-
-  if (bearishVotes >= 2) {
-    return {
-      technical,
-      bandarmology,
-      sentiment,
-      bullishVotes,
-      bearishVotes,
-      pass: true,
-      status: 'CONSENSUS_BEAR',
-      message: `Consensus Bearish (${bearishVotes}/3 setuju)`,
-    };
-  }
-
-  return {
-    technical,
-    bandarmology,
-    sentiment,
-    bullishVotes,
-    bearishVotes,
-    pass: false,
-    status: 'CONFUSION',
-    message: 'MARKET CONFUSION - STAND ASIDE',
-  };
-}
-
 function buildCombatBullets(consensus: ModelConsensus, coolingActive: boolean): [string, string, string] {
   if (coolingActive) {
     return ['COOLING OFF ACTIVE', 'RISK FIRST ALWAYS', 'WAIT NEXT CANDLE'];
@@ -858,72 +816,6 @@ function buildCombatBullets(consensus: ModelConsensus, coolingActive: boolean): 
   }
 
   return ['WHALE EXIT ALERT', 'REDUCE RISK FAST', 'NO FOMO ENTRY'];
-}
-
-function applyRocConsensusGuard(consensus: ModelConsensus, rocActive: boolean): ModelConsensus {
-  if (!rocActive) return consensus;
-  if (consensus.status !== 'CONSENSUS_BULL') return consensus;
-  return {
-    ...consensus,
-    pass: false,
-    status: 'CONFUSION',
-    message: 'CRITICAL: VOLATILITY SPIKE - BUY DISABLED',
-  };
-}
-
-function applyMtfConsensusGuard(consensus: ModelConsensus, mtfWarning: boolean): ModelConsensus {
-  if (!mtfWarning) return consensus;
-  if (consensus.status !== 'CONSENSUS_BULL') return consensus;
-  return {
-    ...consensus,
-    pass: false,
-    status: 'CONFUSION',
-    message: 'MULTI-TIMEFRAME CONFLICT - BUY DISABLED',
-  };
-}
-
-function applyIcebergConsensusGuard(consensus: ModelConsensus, icebergWarning: boolean): ModelConsensus {
-  if (!icebergWarning) return consensus;
-  if (consensus.status !== 'CONSENSUS_BULL') return consensus;
-  return {
-    ...consensus,
-    pass: false,
-    status: 'CONFUSION',
-    message: 'ICEBERG/DARK-POOL RISK - BUY DISABLED',
-  };
-}
-
-function applyWashSaleConsensusGuard(consensus: ModelConsensus, washSaleWarning: boolean): ModelConsensus {
-  if (!washSaleWarning) return consensus;
-  if (consensus.status !== 'CONSENSUS_BULL') return consensus;
-  return {
-    ...consensus,
-    pass: false,
-    status: 'CONFUSION',
-    message: 'WASH-SALE RISK - BUY DISABLED',
-  };
-}
-
-function applyRetailSentimentConsensusGuard(consensus: ModelConsensus, retailDivergenceWarning: boolean): ModelConsensus {
-  if (!retailDivergenceWarning) return consensus;
-  if (consensus.status !== 'CONSENSUS_BULL') return consensus;
-  return {
-    ...consensus,
-    pass: false,
-    status: 'CONFUSION',
-    message: 'RETAIL DIVERGENCE - BUY DISABLED',
-  };
-}
-
-function applyExitWhaleConsensusGuard(consensus: ModelConsensus, exitWhaleWarning: boolean): ModelConsensus {
-  if (!exitWhaleWarning) return consensus;
-  if (consensus.status !== 'CONSENSUS_BULL') return consensus;
-  return {
-    ...consensus,
-    pass: false,
-    status: 'CONFUSION',
-    message: 'EXIT WHALE / LIQUIDITY HUNT - BUY DISABLED',
-  };
 }
 
 function StatusDot({ status, label }: { status: Tone; label: string }) {
@@ -3380,21 +3272,16 @@ export default function Home() {
         : global?.global_sentiment === 'BEARISH'
           ? 'SELL'
           : 'NEUTRAL';
-    const preliminaryConsensus = applyExitWhaleConsensusGuard(
-      applyRetailSentimentConsensusGuard(
-        applyWashSaleConsensusGuard(
-          applyIcebergConsensusGuard(
-            applyMtfConsensusGuard(
-              applyRocConsensusGuard(buildConsensus(technicalVote, bandarmologyVote, preliminarySentimentVote), rocCritical),
-              mtfWarning,
-            ),
-            icebergWarning,
-          ),
-          washSaleWarning,
-        ),
+    const preliminaryConsensus = applyGuardedConsensus(
+      buildConsensus(technicalVote, bandarmologyVote, preliminarySentimentVote),
+      {
+        rocActive: rocCritical,
+        mtfWarning,
+        icebergWarning,
+        washSaleWarning,
         retailDivergenceWarning,
-      ),
-      exitWhaleWarning,
+        exitWhaleWarning,
+      },
     );
     setModelConsensus(preliminaryConsensus);
     const combatActive = volClass.toUpperCase() === 'HIGH' || volPct >= COMBAT_MODE_VOLATILITY_PCT;
@@ -3459,21 +3346,16 @@ export default function Home() {
         const narrativeBody = (await narrativeResponse.json()) as { narrative?: string };
         const extracted = extractAdversarialNarrative(narrativeBody.narrative || '');
         const sentimentVote = sentimentVoteFromNarrative(extracted.bullish, extracted.bearish, global?.global_sentiment);
-        const finalConsensus = applyExitWhaleConsensusGuard(
-          applyRetailSentimentConsensusGuard(
-            applyWashSaleConsensusGuard(
-              applyIcebergConsensusGuard(
-                applyMtfConsensusGuard(
-                  applyRocConsensusGuard(buildConsensus(technicalVote, bandarmologyVote, sentimentVote), rocCritical),
-                  mtfWarning,
-                ),
-                icebergWarning,
-              ),
-              washSaleWarning,
-            ),
+        const finalConsensus = applyGuardedConsensus(
+          buildConsensus(technicalVote, bandarmologyVote, sentimentVote),
+          {
+            rocActive: rocCritical,
+            mtfWarning,
+            icebergWarning,
+            washSaleWarning,
             retailDivergenceWarning,
-          ),
-          exitWhaleWarning,
+            exitWhaleWarning,
+          },
         );
         setModelConsensus(finalConsensus);
         setCombatMode((prev) => ({ ...prev, bullets: buildCombatBullets(finalConsensus, coolingActive) }));
@@ -3492,21 +3374,16 @@ export default function Home() {
             ? `Systemic risk tinggi: beta ${betaEstimateLocal.toFixed(2)} di atas threshold.`
             : 'Risiko downside tetap ada jika volume tidak konfirmasi dan IHSG melemah.';
         const sentimentVote = sentimentVoteFromNarrative(fallbackBullish, fallbackBearish, global?.global_sentiment);
-        const finalConsensus = applyExitWhaleConsensusGuard(
-          applyRetailSentimentConsensusGuard(
-            applyWashSaleConsensusGuard(
-              applyIcebergConsensusGuard(
-                applyMtfConsensusGuard(
-                  applyRocConsensusGuard(buildConsensus(technicalVote, bandarmologyVote, sentimentVote), rocCritical),
-                  mtfWarning,
-                ),
-                icebergWarning,
-              ),
-              washSaleWarning,
-            ),
+        const finalConsensus = applyGuardedConsensus(
+          buildConsensus(technicalVote, bandarmologyVote, sentimentVote),
+          {
+            rocActive: rocCritical,
+            mtfWarning,
+            icebergWarning,
+            washSaleWarning,
             retailDivergenceWarning,
-          ),
-          exitWhaleWarning,
+            exitWhaleWarning,
+          },
         );
         setModelConsensus(finalConsensus);
         setCombatMode((prev) => ({ ...prev, bullets: buildCombatBullets(finalConsensus, coolingActive) }));
@@ -3526,21 +3403,16 @@ export default function Home() {
           ? `Systemic risk tinggi: beta ${betaEstimateLocal.toFixed(2)} di atas threshold.`
           : 'Risiko downside tetap ada jika volume tidak konfirmasi dan IHSG melemah.';
       const sentimentVote = sentimentVoteFromNarrative(fallbackBullish, fallbackBearish, global?.global_sentiment);
-      const finalConsensus = applyExitWhaleConsensusGuard(
-        applyRetailSentimentConsensusGuard(
-          applyWashSaleConsensusGuard(
-            applyIcebergConsensusGuard(
-              applyMtfConsensusGuard(
-                applyRocConsensusGuard(buildConsensus(technicalVote, bandarmologyVote, sentimentVote), rocCritical),
-                mtfWarning,
-              ),
-              icebergWarning,
-            ),
-            washSaleWarning,
-          ),
+      const finalConsensus = applyGuardedConsensus(
+        buildConsensus(technicalVote, bandarmologyVote, sentimentVote),
+        {
+          rocActive: rocCritical,
+          mtfWarning,
+          icebergWarning,
+          washSaleWarning,
           retailDivergenceWarning,
-        ),
-        exitWhaleWarning,
+          exitWhaleWarning,
+        },
       );
       setModelConsensus(finalConsensus);
       setCombatMode((prev) => ({ ...prev, bullets: buildCombatBullets(finalConsensus, coolingActive) }));
