@@ -29,8 +29,12 @@ const (
 	websocketURL        = "wss://stream.stockbit.com/stream"
 	databaseURL         = "postgresql://admin:password@localhost:5433/dellmology?sslmode=disable"
 	httpListenAddr      = ":8080"
+	workerHeartbeatAPIURL = "http://localhost:3000/api/worker-heartbeat"
 	reconnectMinWait    = 2 * time.Second
 	reconnectMaxWait    = 60 * time.Second
+	workerHeartbeatInterval = 5 * time.Minute
+	workerHeartbeatTimeout = 8 * time.Second
+	workerHeartbeatStaleThresholdSeconds = 60
 	// Risk Mitigation Config
 	rocInterval         = 5 * time.Minute // 5 minute window for RoC check
 	rocPriceDrop        = -0.10           // -10% price drop threshold
@@ -242,7 +246,105 @@ func main() {
 	log.Println("Successfully connected to the database.")
 
 	go startHTTPServer()
+	go startWorkerHeartbeatReporter()
 	runStreamer()
+}
+
+func startWorkerHeartbeatReporter() {
+	targetURL := strings.TrimSpace(os.Getenv("WORKER_HEARTBEAT_URL"))
+	if targetURL == "" {
+		targetURL = workerHeartbeatAPIURL
+	}
+
+	interval := workerHeartbeatInterval
+	if raw := strings.TrimSpace(os.Getenv("WORKER_HEARTBEAT_INTERVAL_SECONDS")); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err == nil && parsed >= 30 && parsed <= 3600 {
+			interval = time.Duration(parsed) * time.Second
+		}
+	}
+
+	timeout := workerHeartbeatTimeout
+	if raw := strings.TrimSpace(os.Getenv("WORKER_HEARTBEAT_TIMEOUT_SECONDS")); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err == nil && parsed >= 2 && parsed <= 120 {
+			timeout = time.Duration(parsed) * time.Second
+		}
+	}
+
+	client := &http.Client{Timeout: timeout}
+	log.Printf("Worker heartbeat reporter enabled: %s every %s", targetURL, interval)
+
+	publishWorkerHeartbeat(client, targetURL)
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		publishWorkerHeartbeat(client, targetURL)
+	}
+}
+
+func publishWorkerHeartbeat(client *http.Client, targetURL string) {
+	staleSeconds := -1
+	state := "warming"
+	if !lastMessageAt.IsZero() {
+		staleSeconds = int(time.Since(lastMessageAt).Seconds())
+		state = "alive"
+		if staleSeconds > workerHeartbeatStaleThresholdSeconds {
+			state = "stale"
+		}
+	}
+
+	deadLetterMutex.Lock()
+	deadLetterCount := len(deadLetters)
+	deadLetterMutex.Unlock()
+	processedMutex.Lock()
+	processedCacheSize := len(processedMessageHashes)
+	processedMutex.Unlock()
+	queueDepth := 0
+	if messageQueue != nil {
+		queueDepth = len(messageQueue)
+	}
+	queueMode := "local"
+	if useExternalQueue {
+		queueMode = "redis_pubsub"
+	}
+
+	note := fmt.Sprintf(
+		"stale_seconds=%d queue_mode=%s queue_depth=%d processed_cache=%d dead_letters=%d",
+		staleSeconds,
+		queueMode,
+		queueDepth,
+		processedCacheSize,
+		deadLetterCount,
+	)
+	payload := map[string]string{
+		"source": "streamer-go",
+		"state":  state,
+		"note":   note,
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		log.Printf("WARN: heartbeat payload marshal failed: %v", err)
+		return
+	}
+
+	request, err := http.NewRequest(http.MethodPost, targetURL, strings.NewReader(string(body)))
+	if err != nil {
+		log.Printf("WARN: heartbeat request build failed: %v", err)
+		return
+	}
+	request.Header.Set("Content-Type", "application/json")
+
+	response, err := client.Do(request)
+	if err != nil {
+		log.Printf("WARN: heartbeat publish failed: %v", err)
+		return
+	}
+	defer response.Body.Close()
+	_, _ = io.Copy(io.Discard, response.Body)
+
+	if response.StatusCode >= 300 {
+		log.Printf("WARN: heartbeat publish returned status %d", response.StatusCode)
+	}
 }
 
 func runStreamer() {

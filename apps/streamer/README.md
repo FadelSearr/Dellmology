@@ -69,13 +69,22 @@ export WEBSOCKET_URL=wss://stream.stockbit.com/stream
 export DATABASE_URL=postgresql://admin:password@localhost:5433/dellmology
 export REDIS_HOST=localhost
 export REDIS_PORT=6379
+export WORKER_HEARTBEAT_URL=http://localhost:3000/api/worker-heartbeat
+export WORKER_HEARTBEAT_INTERVAL_SECONDS=300
+export WORKER_HEARTBEAT_TIMEOUT_SECONDS=8
 ```
 
 ### API Endpoints
 
 - `POST /websocket` - WebSocket upgrade endpoint
 - `GET /health` - Service health check
+- `GET /heartbeat` - Worker runtime heartbeat telemetry (stale seconds, queue depth, dead-letter count)
 - `GET /stats` - Real-time statistics
+
+### Cloud Dead-Man Integration
+
+Streamer now publishes heartbeat to Web API (`/api/worker-heartbeat`) on startup and every 5 minutes (default).
+This enables dashboard lock + offline Telegram alert flow when the local worker stops sending heartbeat.
 
 ### Performance
 
