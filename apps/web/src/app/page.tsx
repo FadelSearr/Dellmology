@@ -80,6 +80,18 @@ interface HeatmapApiRow {
   intensity: number;
 }
 
+interface IcebergSignalPayload {
+  warning?: boolean;
+  risk_level?: 'LOW' | 'MEDIUM' | 'HIGH';
+  score?: number;
+  reason?: string;
+  absorption_cluster_count?: number;
+  repeated_price_levels?: number;
+  dark_pool_anomaly_hits?: number;
+  estimated_hidden_notional?: number;
+  checked_at?: string;
+}
+
 interface ChartPoint {
   time: string;
   price: number;
@@ -323,6 +335,18 @@ interface SpoofingAlertState {
   avgLifetimeSeconds: number;
 }
 
+interface IcebergRiskState {
+  warning: boolean;
+  riskLevel: 'LOW' | 'MEDIUM' | 'HIGH';
+  score: number;
+  reason: string | null;
+  absorptionClusters: number;
+  repeatedLevels: number;
+  anomalyHits: number;
+  hiddenNotional: number;
+  checkedAt: string | null;
+}
+
 interface IncompleteDataState {
   warning: boolean;
   reason: string | null;
@@ -540,6 +564,7 @@ function bandarmologyVoteFromFlow(
   brokerCharacterWarning = false,
   lateEntryWarning = false,
   spoofingWarning = false,
+  icebergWarning = false,
   incompleteDataWarning = false,
   crossCheckWarning = false,
   dataSanityWarning = false,
@@ -550,6 +575,7 @@ function bandarmologyVoteFromFlow(
   if (brokerCharacterWarning) return 'NEUTRAL';
   if (lateEntryWarning) return 'NEUTRAL';
   if (spoofingWarning) return 'NEUTRAL';
+  if (icebergWarning) return 'NEUTRAL';
   if (incompleteDataWarning) return 'NEUTRAL';
   if (crossCheckWarning) return 'NEUTRAL';
   if (dataSanityWarning) return 'NEUTRAL';
@@ -656,6 +682,17 @@ function applyMtfConsensusGuard(consensus: ModelConsensus, mtfWarning: boolean):
     pass: false,
     status: 'CONFUSION',
     message: 'MULTI-TIMEFRAME CONFLICT - BUY DISABLED',
+  };
+}
+
+function applyIcebergConsensusGuard(consensus: ModelConsensus, icebergWarning: boolean): ModelConsensus {
+  if (!icebergWarning) return consensus;
+  if (consensus.status !== 'CONSENSUS_BULL') return consensus;
+  return {
+    ...consensus,
+    pass: false,
+    status: 'CONFUSION',
+    message: 'ICEBERG/DARK-POOL RISK - BUY DISABLED',
   };
 }
 
@@ -1156,6 +1193,7 @@ function RightSidebar({
   divergence,
   rocKillSwitch,
   spoofing,
+  icebergRisk,
   incompleteData,
   priceCrossCheck,
   dataSanity,
@@ -1173,6 +1211,7 @@ function RightSidebar({
   divergence: VolumeProfileDivergenceState;
   rocKillSwitch: RocKillSwitchState;
   spoofing: SpoofingAlertState;
+  icebergRisk: IcebergRiskState;
   incompleteData: IncompleteDataState;
   priceCrossCheck: PriceCrossCheckState;
   dataSanity: DataSanityState;
@@ -1297,6 +1336,21 @@ function RightSidebar({
             {`Vanish ${spoofing.vanishedWalls} | Lifetime ${spoofing.avgLifetimeSeconds.toFixed(0)}s`}
           </div>
           {spoofing.reason ? <div className="text-[9px] text-slate-500 font-mono mt-1">{spoofing.reason}</div> : null}
+          <div
+            className={cn(
+              'text-[9px] font-mono border rounded px-2 py-1 mt-2',
+              icebergRisk.warning ? 'text-rose-300 border-rose-500/40 bg-rose-500/10' : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10',
+            )}
+          >
+            {icebergRisk.warning ? 'Iceberg / Dark-Pool Risk' : 'Iceberg Risk Normal'}
+          </div>
+          <div className="text-[9px] text-slate-500 font-mono mt-1">
+            {`Score ${icebergRisk.score.toFixed(0)} | ${icebergRisk.riskLevel} | Absorb ${icebergRisk.absorptionClusters}`}
+          </div>
+          <div className="text-[9px] text-slate-500 font-mono mt-1">
+            {`Repeat ${icebergRisk.repeatedLevels} | Anomaly ${icebergRisk.anomalyHits}`}
+          </div>
+          {icebergRisk.reason ? <div className="text-[9px] text-slate-500 font-mono mt-1">{icebergRisk.reason}</div> : null}
           <div
             className={cn(
               'text-[9px] font-mono border rounded px-2 py-1 mt-2',
@@ -1959,6 +2013,17 @@ export default function Home() {
     vanishedWalls: 0,
     avgLifetimeSeconds: 0,
   });
+  const [icebergRisk, setIcebergRisk] = useState<IcebergRiskState>({
+    warning: false,
+    riskLevel: 'LOW',
+    score: 0,
+    reason: null,
+    absorptionClusters: 0,
+    repeatedLevels: 0,
+    anomalyHits: 0,
+    hiddenNotional: 0,
+    checkedAt: null,
+  });
   const [incompleteData, setIncompleteData] = useState<IncompleteDataState>({
     warning: false,
     reason: null,
@@ -2081,7 +2146,13 @@ export default function Home() {
     const marketIntel = requests[0] as (MarketIntelResponse & { data_source?: SourceAdapterMetaClient }) | null;
     const brokerFlow = requests[1] as ({ brokers?: BrokerFlowApiRow[]; stats?: BrokerFlowStats; data_source?: SourceAdapterMetaClient }) | null;
     const snapshots = requests[2] as { snapshots?: SnapshotRow[] } | null;
-    const heatmap = requests[3] as { heatmap?: HeatmapApiRow[]; data_source?: SourceAdapterMetaClient; degraded?: boolean; reason?: string } | null;
+    const heatmap = requests[3] as {
+      heatmap?: HeatmapApiRow[];
+      icebergSignal?: IcebergSignalPayload;
+      data_source?: SourceAdapterMetaClient;
+      degraded?: boolean;
+      reason?: string;
+    } | null;
     const confidence = requests[4] as (ModelConfidenceResponse & { data_source?: SourceAdapterMetaClient }) | null;
     const pred = requests[5] as PredictionResponse | null;
     const health = requests[6] as {
@@ -2313,6 +2384,19 @@ export default function Home() {
       normalizedHeatmap = normalized;
       setHeatmapData(normalized);
     }
+    const icebergSignal = heatmap?.icebergSignal;
+    const icebergWarning = Boolean(icebergSignal?.warning) || icebergSignal?.risk_level === 'HIGH';
+    setIcebergRisk({
+      warning: icebergWarning,
+      riskLevel: icebergSignal?.risk_level || 'LOW',
+      score: Number(icebergSignal?.score || 0),
+      reason: icebergSignal?.reason || null,
+      absorptionClusters: Number(icebergSignal?.absorption_cluster_count || 0),
+      repeatedLevels: Number(icebergSignal?.repeated_price_levels || 0),
+      anomalyHits: Number(icebergSignal?.dark_pool_anomaly_hits || 0),
+      hiddenNotional: Number(icebergSignal?.estimated_hidden_notional || 0),
+      checkedAt: icebergSignal?.checked_at || null,
+    });
 
     const rawUps = Number(marketIntel?.unified_power_score?.score || 88);
     const newsStressScore = Number(newsOverlay?.stress_score || 0);
@@ -2626,6 +2710,7 @@ export default function Home() {
       brokerCharacterWarning,
       lateEntryWarning,
       spoofingWarning,
+      icebergWarning,
       incompleteDataWarning,
       crossCheckWarning,
       sanityWarning,
@@ -2638,9 +2723,12 @@ export default function Home() {
         : global?.global_sentiment === 'BEARISH'
           ? 'SELL'
           : 'NEUTRAL';
-    const preliminaryConsensus = applyMtfConsensusGuard(
-      applyRocConsensusGuard(buildConsensus(technicalVote, bandarmologyVote, preliminarySentimentVote), rocCritical),
-      mtfWarning,
+    const preliminaryConsensus = applyIcebergConsensusGuard(
+      applyMtfConsensusGuard(
+        applyRocConsensusGuard(buildConsensus(technicalVote, bandarmologyVote, preliminarySentimentVote), rocCritical),
+        mtfWarning,
+      ),
+      icebergWarning,
     );
     setModelConsensus(preliminaryConsensus);
     const combatActive = volClass.toUpperCase() === 'HIGH' || volPct >= COMBAT_MODE_VOLATILITY_PCT;
@@ -2663,6 +2751,7 @@ export default function Home() {
         `BCP: ${brokerCharacterWarning ? 'Risk Profile Detected' : 'Stable'}\n` +
         `Volume Profile: ${lateEntryWarning ? 'Late Entry Warning' : 'Normal'}\n` +
         `Order Lifetime: ${spoofingWarning ? 'Spoofing Alert' : 'Stable'}\n` +
+        `Iceberg Risk: ${icebergWarning ? `HIGH (${Math.round(Number(icebergSignal?.score || 0))})` : 'Normal'}\n` +
         `Data Integrity: ${incompleteDataWarning ? 'Incomplete Data' : 'Complete'}\n` +
         `Cross-Check: ${crossCheckWarning ? 'LOCK' : 'OK'}\n` +
         `Data Sanity: ${sanityWarning ? 'DATA CONTAMINATED' : 'PASS'}\n` +
@@ -3711,6 +3800,7 @@ export default function Home() {
           divergence={volumeProfileDivergence}
           rocKillSwitch={rocKillSwitch}
           spoofing={spoofingAlert}
+          icebergRisk={icebergRisk}
           incompleteData={incompleteData}
           priceCrossCheck={priceCrossCheck}
           dataSanity={dataSanity}

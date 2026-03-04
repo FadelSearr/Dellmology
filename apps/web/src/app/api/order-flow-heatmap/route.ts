@@ -60,6 +60,18 @@ interface HAKAHAKIData {
   net_pressure: number;
 }
 
+interface IcebergSignal {
+  warning: boolean;
+  risk_level: 'LOW' | 'MEDIUM' | 'HIGH';
+  score: number;
+  reason: string;
+  absorption_cluster_count: number;
+  repeated_price_levels: number;
+  dark_pool_anomaly_hits: number;
+  estimated_hidden_notional: number;
+  checked_at: string;
+}
+
 /**
  * GET /api/order-flow-heatmap?symbol=BBCA&minutes=60
  *
@@ -96,6 +108,7 @@ export async function GET(request: NextRequest) {
             avgIntensity: 0,
             anomalyCount: 0,
           },
+          icebergSignal: buildDefaultIcebergSignal(),
           degraded: true,
           reason: 'Supabase is not configured; using graceful fallback payload',
           data_source: sourceMeta({
@@ -148,6 +161,7 @@ export async function GET(request: NextRequest) {
             avgIntensity: 0,
             anomalyCount: 0,
           },
+          icebergSignal: buildDefaultIcebergSignal(),
           data_source: sourceMeta({
             provider: 'FALLBACK_EMPTY',
             degraded: true,
@@ -217,6 +231,11 @@ export async function GET(request: NextRequest) {
 
     // Aggregate heatmap data into price bins
     const bins = aggregateHeatmap(heatmapData as HeatmapDataPoint[]);
+    const icebergSignal = detectIcebergSignal(
+      (heatmapData as HeatmapDataPoint[]) || [],
+      depthData && depthData.length > 0 ? (depthData[0] as MarketDepth) : null,
+      anomalies,
+    );
 
     // Cache headers: 15 seconds revalidate, 60 seconds stale-while-revalidate
     return NextResponse.json(
@@ -234,6 +253,7 @@ export async function GET(request: NextRequest) {
           avgIntensity: getAvgIntensity(heatmapData as HeatmapDataPoint[]),
           anomalyCount: anomalies.length,
         },
+        icebergSignal,
         data_source: sourceMeta({
           provider: 'SUPABASE',
           degraded: false,
@@ -403,4 +423,109 @@ function getAvgIntensity(data: HeatmapDataPoint[]): number {
   if (!data || data.length === 0) return 0;
   const sum = data.reduce((acc, d) => acc + d.intensity, 0);
   return parseFloat((sum / data.length).toFixed(3));
+}
+
+function buildDefaultIcebergSignal(): IcebergSignal {
+  return {
+    warning: false,
+    risk_level: 'LOW',
+    score: 0,
+    reason: 'Belum ada indikasi iceberg/dark-pool dominan.',
+    absorption_cluster_count: 0,
+    repeated_price_levels: 0,
+    dark_pool_anomaly_hits: 0,
+    estimated_hidden_notional: 0,
+    checked_at: new Date().toISOString(),
+  };
+}
+
+function detectIcebergSignal(
+  data: HeatmapDataPoint[],
+  depth: MarketDepth | null,
+  anomalies: Anomaly[],
+): IcebergSignal {
+  if (!data || data.length === 0) {
+    return buildDefaultIcebergSignal();
+  }
+
+  const absorptionRows = data.filter((point) => {
+    const gross = Math.max(1, Math.abs(point.bid_volume) + Math.abs(point.ask_volume));
+    const netShare = Math.abs(point.net_volume) / gross;
+    return point.intensity >= 0.65 && (point.trade_count || 0) <= 2 && netShare <= 0.1;
+  });
+
+  const priceHitMap = new Map<number, number>();
+  for (const row of absorptionRows) {
+    const level = Math.round(Number(row.price || 0) * 100) / 100;
+    priceHitMap.set(level, (priceHitMap.get(level) || 0) + 1);
+  }
+
+  const repeatedPriceLevels = Array.from(priceHitMap.values()).filter((hits) => hits >= 3).length;
+  const absorptionClusterCount = absorptionRows.length;
+
+  const darkPoolAnomalyHits = (anomalies || []).filter((anomaly) => {
+    const type = String(anomaly.anomaly_type || '').toLowerCase();
+    const severity = String(anomaly.severity || '').toLowerCase();
+    return /(dark|iceberg|hidden|cross|negotiated|block)/.test(type) || /(high|critical)/.test(severity);
+  }).length;
+
+  const estimatedHiddenNotional = absorptionRows.reduce(
+    (sum, point) => sum + Math.max(0, Number(point.price || 0)) * (Math.abs(Number(point.bid_volume || 0)) + Math.abs(Number(point.ask_volume || 0))),
+    0,
+  );
+
+  let score = 0;
+  if (absorptionClusterCount >= 6) {
+    score += 35;
+  } else if (absorptionClusterCount >= 3) {
+    score += 20;
+  } else if (absorptionClusterCount >= 1) {
+    score += 10;
+  }
+
+  if (repeatedPriceLevels >= 2) {
+    score += 25;
+  } else if (repeatedPriceLevels >= 1) {
+    score += 10;
+  }
+
+  const spreadBps = Number(depth?.spread_bps || 0);
+  if (spreadBps > 0 && spreadBps <= 8 && absorptionClusterCount >= 4) {
+    score += 20;
+  }
+
+  const totalBid = Number(depth?.total_bid_volume || 0);
+  const totalAsk = Number(depth?.total_ask_volume || 0);
+  const depthRatio = totalAsk > 0 ? totalBid / totalAsk : 0;
+  if (depthRatio >= 0.85 && depthRatio <= 1.15 && absorptionClusterCount >= 3) {
+    score += 10;
+  }
+
+  if (darkPoolAnomalyHits >= 2) {
+    score += 15;
+  } else if (darkPoolAnomalyHits >= 1) {
+    score += 8;
+  }
+
+  const boundedScore = Math.max(0, Math.min(100, score));
+  const riskLevel: IcebergSignal['risk_level'] = boundedScore >= 60 ? 'HIGH' : boundedScore >= 35 ? 'MEDIUM' : 'LOW';
+  const warning = riskLevel === 'HIGH';
+  const reason =
+    riskLevel === 'HIGH'
+      ? `Iceberg risk tinggi: ${absorptionClusterCount} absorption cluster, ${repeatedPriceLevels} repeated level.`
+      : riskLevel === 'MEDIUM'
+        ? `Iceberg risk moderat: pola absorption mulai terlihat (${absorptionClusterCount} cluster).`
+        : 'Belum ada indikasi iceberg/dark-pool dominan.';
+
+  return {
+    warning,
+    risk_level: riskLevel,
+    score: boundedScore,
+    reason,
+    absorption_cluster_count: absorptionClusterCount,
+    repeated_price_levels: repeatedPriceLevels,
+    dark_pool_anomaly_hits: darkPoolAnomalyHits,
+    estimated_hidden_notional: Math.round(estimatedHiddenNotional),
+    checked_at: new Date().toISOString(),
+  };
 }
