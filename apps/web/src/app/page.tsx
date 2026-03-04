@@ -928,6 +928,10 @@ function TopNavigation({
   degradedSources,
   tokenTelemetry,
   deadmanResetCooldown,
+  killSwitchActive,
+  ihsgChangePct,
+  runtimeIhsgDrop,
+  minUpsForLong,
   infraStatus,
   globalData,
 }: {
@@ -982,6 +986,10 @@ function TopNavigation({
   degradedSources: string[];
   tokenTelemetry: TokenTelemetry;
   deadmanResetCooldown: number;
+  killSwitchActive: boolean;
+  ihsgChangePct: number;
+  runtimeIhsgDrop: number;
+  minUpsForLong: number;
   infraStatus: { sse: Tone; db: Tone; integrity: Tone; token: Tone };
   globalData: GlobalCorrelationResponse | null;
 }) {
@@ -1110,6 +1118,15 @@ function TopNavigation({
           title={systemKillSwitch.reason || 'Cloud-triggered kill-switch normal'}
         >
           {`SYS ${systemKillSwitch.active ? 'KILL ON' : 'KILL OFF'}`}
+        </div>
+        <div
+          className={cn(
+            'text-[10px] font-mono border rounded px-2 py-1',
+            killSwitchActive ? 'text-rose-300 border-rose-500/40 bg-rose-500/10' : 'text-slate-500 border-slate-800 bg-slate-900/30',
+          )}
+          title={`IHSG ${ihsgChangePct.toFixed(2)}% | Trigger ${runtimeIhsgDrop.toFixed(2)}% | Min UPS ${minUpsForLong}`}
+        >
+          {`MKTKILL ${killSwitchActive ? 'ON' : 'OFF'}${killSwitchActive ? ` ${ihsgChangePct.toFixed(2)}%` : ''}`}
         </div>
         <div
           className={cn(
@@ -5473,6 +5490,10 @@ export default function Home() {
         degradedSources={degradedSources}
         tokenTelemetry={tokenTelemetry}
         deadmanResetCooldown={deadmanResetCooldown}
+        killSwitchActive={killSwitchActive}
+        ihsgChangePct={ihsgChangePct}
+        runtimeIhsgDrop={runtimeIhsgDrop}
+        minUpsForLong={minUpsForLong}
         infraStatus={infraStatus}
         globalData={globalData}
       />
