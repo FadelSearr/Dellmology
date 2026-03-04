@@ -4936,6 +4936,20 @@ export default function Home() {
           {`DEGRADED SOURCES: ${degradedSources.join(' | ')}`}
         </div>
       ) : null}
+      {engineHeartbeat.checkedAt !== null && !engineHeartbeat.online ? (
+        <div className="border-b border-rose-500/40 bg-rose-500/15 px-4 py-2 flex items-center justify-between gap-3">
+          <div className="text-[10px] font-mono text-rose-200">
+            {`ENGINE OFFLINE >${engineHeartbeat.timeoutSeconds}s | ${engineHeartbeat.reason || 'No heartbeat from local worker'} | CHECK POSITION MANUALLY`}
+          </div>
+          <button
+            onClick={resetDeadman}
+            disabled={actionState.busy || deadmanResetCooldown > 0 || riskConfigLocked}
+            className="shrink-0 text-[10px] font-bold px-3 py-1 rounded border border-rose-400/40 bg-rose-500/20 text-rose-100 hover:bg-rose-500/30 disabled:opacity-50"
+          >
+            {deadmanResetCooldown > 0 ? `Reset Deadman (${deadmanResetCooldown}s)` : 'Reset Deadman'}
+          </button>
+        </div>
+      ) : null}
       <div className="flex-1 flex min-h-0">
         <LeftSidebar
           activeSymbol={activeSymbol}
