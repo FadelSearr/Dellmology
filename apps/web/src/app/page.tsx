@@ -336,6 +336,15 @@ interface SpoofingAlertState {
   avgLifetimeSeconds: number;
 }
 
+interface ExitWhaleRiskState {
+  warning: boolean;
+  reason: string | null;
+  eventCount: number;
+  strongEventCount: number;
+  netDistributionValue: number;
+  lastEventAt: string | null;
+}
+
 interface WashSaleRiskState {
   warning: boolean;
   score: number;
@@ -577,6 +586,7 @@ function bandarmologyVoteFromFlow(
   brokerCharacterWarning = false,
   lateEntryWarning = false,
   spoofingWarning = false,
+  exitWhaleWarning = false,
   icebergWarning = false,
   washSaleWarning = false,
   incompleteDataWarning = false,
@@ -589,6 +599,7 @@ function bandarmologyVoteFromFlow(
   if (brokerCharacterWarning) return 'NEUTRAL';
   if (lateEntryWarning) return 'NEUTRAL';
   if (spoofingWarning) return 'NEUTRAL';
+  if (exitWhaleWarning) return 'NEUTRAL';
   if (icebergWarning) return 'NEUTRAL';
   if (washSaleWarning) return 'NEUTRAL';
   if (incompleteDataWarning) return 'NEUTRAL';
@@ -730,6 +741,17 @@ function applyRetailSentimentConsensusGuard(consensus: ModelConsensus, retailDiv
     pass: false,
     status: 'CONFUSION',
     message: 'RETAIL DIVERGENCE - BUY DISABLED',
+  };
+}
+
+function applyExitWhaleConsensusGuard(consensus: ModelConsensus, exitWhaleWarning: boolean): ModelConsensus {
+  if (!exitWhaleWarning) return consensus;
+  if (consensus.status !== 'CONSENSUS_BULL') return consensus;
+  return {
+    ...consensus,
+    pass: false,
+    status: 'CONFUSION',
+    message: 'EXIT WHALE / LIQUIDITY HUNT - BUY DISABLED',
   };
 }
 
@@ -1230,6 +1252,7 @@ function RightSidebar({
   divergence,
   rocKillSwitch,
   spoofing,
+  exitWhale,
   washSaleRisk,
   icebergRisk,
   incompleteData,
@@ -1249,6 +1272,7 @@ function RightSidebar({
   divergence: VolumeProfileDivergenceState;
   rocKillSwitch: RocKillSwitchState;
   spoofing: SpoofingAlertState;
+  exitWhale: ExitWhaleRiskState;
   washSaleRisk: WashSaleRiskState;
   icebergRisk: IcebergRiskState;
   incompleteData: IncompleteDataState;
@@ -1375,6 +1399,18 @@ function RightSidebar({
             {`Vanish ${spoofing.vanishedWalls} | Lifetime ${spoofing.avgLifetimeSeconds.toFixed(0)}s`}
           </div>
           {spoofing.reason ? <div className="text-[9px] text-slate-500 font-mono mt-1">{spoofing.reason}</div> : null}
+          <div
+            className={cn(
+              'text-[9px] font-mono border rounded px-2 py-1 mt-2',
+              exitWhale.warning ? 'text-rose-300 border-rose-500/40 bg-rose-500/10' : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10',
+            )}
+          >
+            {exitWhale.warning ? 'Exit Whale / Liquidity Hunt' : 'Exit Whale Normal'}
+          </div>
+          <div className="text-[9px] text-slate-500 font-mono mt-1">
+            {`Events ${exitWhale.strongEventCount}/${exitWhale.eventCount} | Net ${formatCompactIDR(exitWhale.netDistributionValue)}`}
+          </div>
+          {exitWhale.reason ? <div className="text-[9px] text-slate-500 font-mono mt-1">{exitWhale.reason}</div> : null}
           <div
             className={cn(
               'text-[9px] font-mono border rounded px-2 py-1 mt-2',
@@ -2076,6 +2112,14 @@ export default function Home() {
     vanishedWalls: 0,
     avgLifetimeSeconds: 0,
   });
+  const [exitWhaleRisk, setExitWhaleRisk] = useState<ExitWhaleRiskState>({
+    warning: false,
+    reason: null,
+    eventCount: 0,
+    strongEventCount: 0,
+    netDistributionValue: 0,
+    lastEventAt: null,
+  });
   const [washSaleRisk, setWashSaleRisk] = useState<WashSaleRiskState>({
     warning: false,
     score: 0,
@@ -2214,6 +2258,7 @@ export default function Home() {
       fetch(`/api/market-intelligence?symbol=${activeSymbol}&timeframe=15m`).then((response) => (response.ok ? response.json() : null)).catch(() => null),
       fetch(`/api/market-intelligence?symbol=${activeSymbol}&timeframe=1h`).then((response) => (response.ok ? response.json() : null)).catch(() => null),
       fetch(`/api/negotiated-monitor?symbol=${activeSymbol}&limit=25`).then((response) => (response.ok ? response.json() : null)).catch(() => null),
+      fetch(`/api/exit-whale?symbol=${activeSymbol}&days=7`).then((response) => (response.ok ? response.json() : null)).catch(() => null),
     ]);
 
     const marketIntel = requests[0] as (MarketIntelResponse & { data_source?: SourceAdapterMetaClient }) | null;
@@ -2316,6 +2361,9 @@ export default function Home() {
     const mtfShortIntel = requests[17] as MarketIntelResponse | null;
     const mtfHighIntel = requests[18] as MarketIntelResponse | null;
     const negotiatedRaw = requests[19] as { items?: Array<{ symbol?: string; trade_type?: string; volume?: number; notional?: number }> } | null;
+    const exitWhaleRaw = requests[20] as {
+      events?: Array<{ symbol?: string; broker_id?: string; net_value?: number; z_score?: number; note?: string; time?: string }>;
+    } | null;
 
     const nextDegradedSources: string[] = [];
     const trackDegraded = (name: string, source?: SourceAdapterMetaClient | null, fallbackReason?: string | null) => {
@@ -2435,6 +2483,30 @@ export default function Home() {
       notional: Number(item.notional || 0),
     }));
     setNegotiatedFeed(negotiatedRows);
+
+    const exitWhaleEvents = (exitWhaleRaw?.events || []).slice(0, 20).map((item) => ({
+      netValue: Number(item.net_value || 0),
+      zScore: Number(item.z_score || 0),
+      note: String(item.note || '').toLowerCase(),
+      time: item.time || null,
+    }));
+    const strongExitEvents = exitWhaleEvents.filter(
+      (event) => event.netValue < 0 && (event.zScore <= -1.5 || /distribution|exit|liquidity|hunt|sell/.test(event.note)),
+    );
+    const exitWhaleNetDistribution = Math.abs(
+      strongExitEvents.reduce((sum, event) => sum + Math.min(0, event.netValue), 0),
+    );
+    const exitWhaleWarning = strongExitEvents.length >= 2 && exitWhaleNetDistribution >= 20_000_000_000;
+    setExitWhaleRisk({
+      warning: exitWhaleWarning,
+      reason: exitWhaleWarning
+        ? `Terdeteksi ${strongExitEvents.length} sinyal distribusi institusi dengan net outflow ${formatCompactIDR(exitWhaleNetDistribution)}.`
+        : null,
+      eventCount: exitWhaleEvents.length,
+      strongEventCount: strongExitEvents.length,
+      netDistributionValue: exitWhaleNetDistribution,
+      lastEventAt: exitWhaleEvents[0]?.time || null,
+    });
 
     setArtificialLiquidity({
       warning: Boolean(brokerFlow?.stats?.artificial_liquidity_warning),
@@ -2805,6 +2877,7 @@ export default function Home() {
       brokerCharacterWarning,
       lateEntryWarning,
       spoofingWarning,
+      exitWhaleWarning,
       icebergWarning,
       washSaleWarning,
       incompleteDataWarning,
@@ -2819,18 +2892,21 @@ export default function Home() {
         : global?.global_sentiment === 'BEARISH'
           ? 'SELL'
           : 'NEUTRAL';
-    const preliminaryConsensus = applyRetailSentimentConsensusGuard(
-      applyWashSaleConsensusGuard(
-        applyIcebergConsensusGuard(
-          applyMtfConsensusGuard(
-            applyRocConsensusGuard(buildConsensus(technicalVote, bandarmologyVote, preliminarySentimentVote), rocCritical),
-            mtfWarning,
+    const preliminaryConsensus = applyExitWhaleConsensusGuard(
+      applyRetailSentimentConsensusGuard(
+        applyWashSaleConsensusGuard(
+          applyIcebergConsensusGuard(
+            applyMtfConsensusGuard(
+              applyRocConsensusGuard(buildConsensus(technicalVote, bandarmologyVote, preliminarySentimentVote), rocCritical),
+              mtfWarning,
+            ),
+            icebergWarning,
           ),
-          icebergWarning,
+          washSaleWarning,
         ),
-        washSaleWarning,
+        retailDivergenceWarning,
       ),
-      retailDivergenceWarning,
+      exitWhaleWarning,
     );
     setModelConsensus(preliminaryConsensus);
     const combatActive = volClass.toUpperCase() === 'HIGH' || volPct >= COMBAT_MODE_VOLATILITY_PCT;
@@ -2853,6 +2929,7 @@ export default function Home() {
         `BCP: ${brokerCharacterWarning ? 'Risk Profile Detected' : 'Stable'}\n` +
         `Volume Profile: ${lateEntryWarning ? 'Late Entry Warning' : 'Normal'}\n` +
         `Order Lifetime: ${spoofingWarning ? 'Spoofing Alert' : 'Stable'}\n` +
+        `Exit Whale: ${exitWhaleWarning ? `RISK (${strongExitEvents.length} events)` : 'Normal'}\n` +
         `Wash Sale: ${washSaleWarning ? `RISK (${washSaleScore.toFixed(1)})` : `Normal (${washSaleScore.toFixed(1)})`}\n` +
         `Iceberg Risk: ${icebergWarning ? `HIGH (${Math.round(Number(icebergSignal?.score || 0))})` : 'Normal'}\n` +
         `Data Integrity: ${incompleteDataWarning ? 'Incomplete Data' : 'Complete'}\n` +
@@ -2867,7 +2944,7 @@ export default function Home() {
         `Cooling-Off: ${coolingActive ? 'ACTIVE (Recommendation Locked)' : 'Clear'}\n` +
         `Whale Flow: ${topWhales || 'No dominant whale detected'}\n` +
         `Model Confidence: ${confLabel} (${Number(confidence?.accuracy_pct || 0).toFixed(1)}%)\n\n` +
-        `> Recommendation: ${systemKillSwitch.active ? 'System kill-switch aktif. Hentikan rekomendasi dan lakukan verifikasi infrastruktur.' : coolingActive ? 'Cooling-off active. Stand down and review risk.' : sanityWarning ? 'Data contaminated. Lock sinyal hingga verifikasi ulang.' : crossCheckWarning ? 'Cross-check lock aktif. Tahan eksekusi sampai harga sinkron.' : incompleteDataWarning ? 'Data belum lengkap. Tunda aksi sampai stream normal.' : mtfWarning ? 'Konfirmasi multi-timeframe gagal. Tunda entry sampai trend 1h searah.' : newsImpactWarning ? 'News stress tinggi terdeteksi. Kurangi eksposur dan verifikasi red flags.' : championDriftWarning ? 'Model drift warning. Gunakan mode defensif sampai champion dikaji ulang.' : rocCritical ? 'CRITICAL volatility spike. Disable buy and wait stabilization.' : spoofingWarning ? 'Spoofing risk terdeteksi. Hindari entry impulsif.' : washSaleWarning ? 'Wash-sale risk tinggi. Hindari entry sampai akumulasi net membaik.' : retailDivergenceWarning ? 'Retail sentiment divergence: hindari mengikuti euforia saat whale distribusi.' : nextUps >= minUpsForLong ? 'Momentum entry on pullback.' : nextUps <= 40 ? 'Defensive mode, avoid aggressive entry.' : 'Wait for clearer confirmation.'}`,
+        `> Recommendation: ${systemKillSwitch.active ? 'System kill-switch aktif. Hentikan rekomendasi dan lakukan verifikasi infrastruktur.' : coolingActive ? 'Cooling-off active. Stand down and review risk.' : sanityWarning ? 'Data contaminated. Lock sinyal hingga verifikasi ulang.' : crossCheckWarning ? 'Cross-check lock aktif. Tahan eksekusi sampai harga sinkron.' : incompleteDataWarning ? 'Data belum lengkap. Tunda aksi sampai stream normal.' : mtfWarning ? 'Konfirmasi multi-timeframe gagal. Tunda entry sampai trend 1h searah.' : newsImpactWarning ? 'News stress tinggi terdeteksi. Kurangi eksposur dan verifikasi red flags.' : championDriftWarning ? 'Model drift warning. Gunakan mode defensif sampai champion dikaji ulang.' : rocCritical ? 'CRITICAL volatility spike. Disable buy and wait stabilization.' : spoofingWarning ? 'Spoofing risk terdeteksi. Hindari entry impulsif.' : exitWhaleWarning ? 'Exit whale / liquidity hunt terdeteksi. Hindari entry sampai tekanan distribusi mereda.' : washSaleWarning ? 'Wash-sale risk tinggi. Hindari entry sampai akumulasi net membaik.' : retailDivergenceWarning ? 'Retail sentiment divergence: hindari mengikuti euforia saat whale distribusi.' : nextUps >= minUpsForLong ? 'Momentum entry on pullback.' : nextUps <= 40 ? 'Defensive mode, avoid aggressive entry.' : 'Wait for clearer confirmation.'}`,
     );
 
     try {
@@ -2889,18 +2966,21 @@ export default function Home() {
         const narrativeBody = (await narrativeResponse.json()) as { narrative?: string };
         const extracted = extractAdversarialNarrative(narrativeBody.narrative || '');
         const sentimentVote = sentimentVoteFromNarrative(extracted.bullish, extracted.bearish, global?.global_sentiment);
-        const finalConsensus = applyRetailSentimentConsensusGuard(
-          applyWashSaleConsensusGuard(
-            applyIcebergConsensusGuard(
-              applyMtfConsensusGuard(
-                applyRocConsensusGuard(buildConsensus(technicalVote, bandarmologyVote, sentimentVote), rocCritical),
-                mtfWarning,
+        const finalConsensus = applyExitWhaleConsensusGuard(
+          applyRetailSentimentConsensusGuard(
+            applyWashSaleConsensusGuard(
+              applyIcebergConsensusGuard(
+                applyMtfConsensusGuard(
+                  applyRocConsensusGuard(buildConsensus(technicalVote, bandarmologyVote, sentimentVote), rocCritical),
+                  mtfWarning,
+                ),
+                icebergWarning,
               ),
-              icebergWarning,
+              washSaleWarning,
             ),
-            washSaleWarning,
+            retailDivergenceWarning,
           ),
-          retailDivergenceWarning,
+          exitWhaleWarning,
         );
         setModelConsensus(finalConsensus);
         setCombatMode((prev) => ({ ...prev, bullets: buildCombatBullets(finalConsensus, coolingActive) }));
@@ -2917,18 +2997,21 @@ export default function Home() {
             ? `Systemic risk tinggi: beta ${betaEstimateLocal.toFixed(2)} di atas threshold.`
             : 'Risiko downside tetap ada jika volume tidak konfirmasi dan IHSG melemah.';
         const sentimentVote = sentimentVoteFromNarrative(fallbackBullish, fallbackBearish, global?.global_sentiment);
-        const finalConsensus = applyRetailSentimentConsensusGuard(
-          applyWashSaleConsensusGuard(
-            applyIcebergConsensusGuard(
-              applyMtfConsensusGuard(
-                applyRocConsensusGuard(buildConsensus(technicalVote, bandarmologyVote, sentimentVote), rocCritical),
-                mtfWarning,
+        const finalConsensus = applyExitWhaleConsensusGuard(
+          applyRetailSentimentConsensusGuard(
+            applyWashSaleConsensusGuard(
+              applyIcebergConsensusGuard(
+                applyMtfConsensusGuard(
+                  applyRocConsensusGuard(buildConsensus(technicalVote, bandarmologyVote, sentimentVote), rocCritical),
+                  mtfWarning,
+                ),
+                icebergWarning,
               ),
-              icebergWarning,
+              washSaleWarning,
             ),
-            washSaleWarning,
+            retailDivergenceWarning,
           ),
-          retailDivergenceWarning,
+          exitWhaleWarning,
         );
         setModelConsensus(finalConsensus);
         setCombatMode((prev) => ({ ...prev, bullets: buildCombatBullets(finalConsensus, coolingActive) }));
@@ -2946,18 +3029,21 @@ export default function Home() {
           ? `Systemic risk tinggi: beta ${betaEstimateLocal.toFixed(2)} di atas threshold.`
           : 'Risiko downside tetap ada jika volume tidak konfirmasi dan IHSG melemah.';
       const sentimentVote = sentimentVoteFromNarrative(fallbackBullish, fallbackBearish, global?.global_sentiment);
-      const finalConsensus = applyRetailSentimentConsensusGuard(
-        applyWashSaleConsensusGuard(
-          applyIcebergConsensusGuard(
-            applyMtfConsensusGuard(
-              applyRocConsensusGuard(buildConsensus(technicalVote, bandarmologyVote, sentimentVote), rocCritical),
-              mtfWarning,
+      const finalConsensus = applyExitWhaleConsensusGuard(
+        applyRetailSentimentConsensusGuard(
+          applyWashSaleConsensusGuard(
+            applyIcebergConsensusGuard(
+              applyMtfConsensusGuard(
+                applyRocConsensusGuard(buildConsensus(technicalVote, bandarmologyVote, sentimentVote), rocCritical),
+                mtfWarning,
+              ),
+              icebergWarning,
             ),
-            icebergWarning,
+            washSaleWarning,
           ),
-          washSaleWarning,
+          retailDivergenceWarning,
         ),
-        retailDivergenceWarning,
+        exitWhaleWarning,
       );
       setModelConsensus(finalConsensus);
       setCombatMode((prev) => ({ ...prev, bullets: buildCombatBullets(finalConsensus, coolingActive) }));
@@ -3315,6 +3401,14 @@ export default function Home() {
       return;
     }
 
+    if (exitWhaleRisk.warning && modelConsensus.status === 'CONSENSUS_BULL') {
+      setActionState({
+        busy: false,
+        message: `Alert blocked: exit-whale risk (${exitWhaleRisk.strongEventCount} events)` ,
+      });
+      return;
+    }
+
     if (washSaleRisk.warning && modelConsensus.status === 'CONSENSUS_BULL') {
       setActionState({
         busy: false,
@@ -3435,6 +3529,14 @@ export default function Home() {
         avg_lifetime_seconds: spoofingAlert.avgLifetimeSeconds,
         wall_min_volume: SPOOFING_WALL_MIN_VOLUME,
         max_lifetime_seconds: SPOOFING_MAX_LIFETIME_SECONDS,
+      },
+      exit_whale_risk: {
+        warning: exitWhaleRisk.warning,
+        reason: exitWhaleRisk.reason,
+        event_count: exitWhaleRisk.eventCount,
+        strong_event_count: exitWhaleRisk.strongEventCount,
+        net_distribution_value: exitWhaleRisk.netDistributionValue,
+        last_event_at: exitWhaleRisk.lastEventAt,
       },
       wash_sale_guard: {
         warning: washSaleRisk.warning,
@@ -3618,6 +3720,12 @@ export default function Home() {
     spoofingAlert.reason,
     spoofingAlert.vanishedWalls,
     spoofingAlert.avgLifetimeSeconds,
+    exitWhaleRisk.warning,
+    exitWhaleRisk.reason,
+    exitWhaleRisk.eventCount,
+    exitWhaleRisk.strongEventCount,
+    exitWhaleRisk.netDistributionValue,
+    exitWhaleRisk.lastEventAt,
     incompleteData.warning,
     incompleteData.reason,
     incompleteData.gapCount,
@@ -3957,6 +4065,7 @@ export default function Home() {
           divergence={volumeProfileDivergence}
           rocKillSwitch={rocKillSwitch}
           spoofing={spoofingAlert}
+          exitWhale={exitWhaleRisk}
           washSaleRisk={washSaleRisk}
           icebergRisk={icebergRisk}
           incompleteData={incompleteData}
