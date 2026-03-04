@@ -719,6 +719,24 @@ function coolingTriggerFromReason(reason: string | null, active: boolean) {
   return 'NONE' as const;
 }
 
+function formatCoolingRemaining(seconds: number) {
+  const totalSeconds = Math.max(0, Math.floor(seconds));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  if (hours > 0) {
+    return `${hours}h ${minutes}m`;
+  }
+  return `${minutes}m`;
+}
+
+function coolingTriggerExplain(trigger: ReturnType<typeof coolingTriggerFromReason>) {
+  if (trigger === 'PORTFOLIO_BETA_STREAK') return 'Portfolio beta breach streak';
+  if (trigger === 'DRAWDOWN_BREACH') return 'Backtest/simulated drawdown breach';
+  if (trigger === 'MANUAL') return 'Manual lock or reset policy';
+  if (trigger === 'SYSTEM_GUARD') return 'System guardrail lock';
+  return 'No active trigger';
+}
+
 function buildRuleEngineVersion(source: 'DB' | 'ENV', values: number[]) {
   const raw = `${source}|${values.map((value) => Number(value).toFixed(6)).join('|')}`;
   let hash = 0;
@@ -1291,6 +1309,9 @@ function TopNavigation({
   const endpointPrimaryLatencies = sourceHealth.map((item) => (typeof item.primaryLatencyMs === 'number' ? item.primaryLatencyMs : null)).filter((value): value is number => value !== null);
   const maxEndpointPrimaryLatency = endpointPrimaryLatencies.length > 0 ? Math.max(...endpointPrimaryLatencies) : null;
   const engineOffline = engineHeartbeat.checkedAt !== null && !engineHeartbeat.online;
+  const coolingTriggerLabel = coolingTriggerFromReason(coolingOff.reason, coolingOff.active);
+  const coolingTriggerReason = coolingTriggerExplain(coolingTriggerLabel);
+  const coolingRemainingLabel = formatCoolingRemaining(coolingOff.remainingSeconds);
   const fallbackEmergencyActive = engineOffline && (marketIntelAdapter.degraded || degradedEndpointCount > 0);
   const fallbackStatusTone = fallbackEmergencyActive
     ? 'text-rose-300 border-rose-500/40 bg-rose-500/10'
@@ -1385,10 +1406,14 @@ function TopNavigation({
             'text-[10px] font-mono border rounded px-2 py-1',
             coolingOff.active ? 'text-amber-300 border-amber-500/40 bg-amber-500/10' : 'text-slate-500 border-slate-800 bg-slate-900/30',
           )}
-          title={coolingOff.reason || 'Cooling-off inactive'}
+          title={
+            coolingOff.active
+              ? `Cooling-off ${coolingRemainingLabel} | Trigger ${coolingTriggerLabel} (${coolingTriggerReason}) | Streak ${coolingOff.breachStreak}/${Math.max(1, runtimeCoolingOffRequiredBreaches)}`
+              : `Cooling-off standby ${coolingOff.breachStreak}/${Math.max(1, runtimeCoolingOffRequiredBreaches)} | Last trigger ${coolingTriggerLabel}`
+          }
         >
           {coolingOff.active
-            ? `COOLING ${Math.max(0, Math.floor(coolingOff.remainingSeconds / 60))}m`
+            ? `COOLING ${coolingRemainingLabel}`
             : `COOLING ${coolingOff.breachStreak}/${Math.max(1, runtimeCoolingOffRequiredBreaches)}`}
         </div>
         <div className={cn('text-[10px] font-mono border rounded px-2 py-1', globalSentimentTone)} title="Global sentiment context from correlation feed">
@@ -2336,6 +2361,9 @@ function RightSidebar({
   const canRenderChart = typeof window !== 'undefined';
   const hasAlert = zData.some((item) => item.score > 2 || item.score < -2);
   const coolingTriggerLabel = coolingTriggerFromReason(coolingOff.reason, coolingOff.active);
+  const coolingTriggerReason = coolingTriggerExplain(coolingTriggerLabel);
+  const coolingRemainingLabel = formatCoolingRemaining(coolingOff.remainingSeconds);
+  const coolingLastTriggerLabel = coolingOff.lastBreachAt ? new Date(coolingOff.lastBreachAt).toLocaleString('id-ID') : '-';
   const topDeploymentRuleEngine =
     deploymentGate.regression?.ruleEngineHealth.find((row) => row.mismatches > 0) || deploymentGate.regression?.ruleEngineHealth[0] || null;
   const negotiatedRows = negotiatedFeed.slice(0, 4);
@@ -2660,9 +2688,10 @@ function RightSidebar({
               'text-[9px] font-mono border rounded px-2 py-1 mt-2',
               coolingOff.active ? 'text-amber-300 border-amber-500/40 bg-amber-500/10' : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10',
             )}
+            title={`Trigger ${coolingTriggerLabel} (${coolingTriggerReason}) | Last breach ${coolingLastTriggerLabel}`}
           >
             {coolingOff.active
-              ? `Cooling-Off Active ${Math.max(0, Math.floor(coolingOff.remainingSeconds / 60))}m`
+              ? `Cooling-Off Active ${coolingRemainingLabel}`
               : `Cooling-Off Standby ${coolingOff.breachStreak}/${Math.max(1, runtimeCoolingOffRequiredBreaches)}`}
           </div>
           <div
@@ -2678,6 +2707,9 @@ function RightSidebar({
             )}
           >
             {`Trigger ${coolingTriggerLabel} | Streak ${coolingOff.breachStreak}/${Math.max(1, runtimeCoolingOffRequiredBreaches)}`}
+          </div>
+          <div className="text-[9px] text-slate-500 font-mono mt-1">
+            {`Trigger Cause: ${coolingTriggerReason} | Last ${coolingLastTriggerLabel}`}
           </div>
           {coolingOff.reason ? <div className="text-[9px] text-slate-500 font-mono mt-1">{coolingOff.reason}</div> : null}
           <div
@@ -2932,6 +2964,8 @@ function BottomPanel({
   const postmortemAccuracySpread =
     postmortemBestRule && postmortemWorstRule ? Math.max(0, postmortemBestRule.accuracy_pct - postmortemWorstRule.accuracy_pct) : 0;
   const coolingTriggerLabel = coolingTriggerFromReason(coolingOff.reason, coolingOff.active);
+  const coolingTriggerReason = coolingTriggerExplain(coolingTriggerLabel);
+  const coolingRemainingLabel = formatCoolingRemaining(coolingOff.remainingSeconds);
   const coolingLastTriggerLabel = coolingOff.lastBreachAt ? new Date(coolingOff.lastBreachAt).toLocaleString('id-ID') : '-';
   const engineHeartbeatLocked = engineHeartbeat.checkedAt !== null && !engineHeartbeat.online;
   const telegramBlocked =
@@ -3397,7 +3431,7 @@ function BottomPanel({
           </div>
           <div className={cn('text-[9px] font-mono border rounded px-2 py-1', coolingOff.active ? 'text-amber-300 border-amber-500/40 bg-amber-500/10' : 'text-slate-500 border-slate-800 bg-slate-900/30')}>
             {coolingOff.active
-              ? `COOLING-OFF ACTIVE: ${Math.max(0, Math.floor(coolingOff.remainingSeconds / 60))}m left`
+              ? `COOLING-OFF ACTIVE: ${coolingRemainingLabel} left`
               : `Cooling-Off: streak ${coolingOff.breachStreak}/${runtimeCoolingOffRequiredBreaches}`}
           </div>
           <div
@@ -3412,7 +3446,7 @@ function BottomPanel({
                     : 'text-slate-500 border-slate-800 bg-slate-900/30',
             )}
           >
-            {`Cooling Trigger: ${coolingTriggerLabel}`}
+            {`Cooling Trigger: ${coolingTriggerLabel} | ${coolingTriggerReason}`}
           </div>
           <div
             className={cn(
@@ -3483,7 +3517,7 @@ function BottomPanel({
           <div className="text-[9px] text-slate-500 font-mono">
             {`Votes T/B/S: ${modelConsensus.technical} / ${modelConsensus.bandarmology} / ${modelConsensus.sentiment}`}
           </div>
-          <div className="text-[9px] text-slate-500 font-mono">{`Last Trigger: ${coolingLastTriggerLabel} | ${coolingTriggerLabel}`}</div>
+          <div className="text-[9px] text-slate-500 font-mono">{`Last Trigger: ${coolingLastTriggerLabel} | ${coolingTriggerLabel} (${coolingTriggerReason})`}</div>
           {coolingOff.reason ? <div className="text-[9px] text-slate-500 font-mono">{coolingOff.reason}</div> : null}
           <div className="mt-2 pt-2 border-t border-slate-800 text-center">
             <span className="text-[9px] text-slate-600 block mb-1">SYSTEM LATENCY</span>
