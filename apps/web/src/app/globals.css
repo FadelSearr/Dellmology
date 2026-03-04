@@ -41,15 +41,23 @@ body {
 }
 
 .ticker-track {
+  display: inline-flex;
   width: max-content;
-  animation: ticker-left 30s linear infinite;
+  animation: ticker-left 36s linear infinite;
+}
+
+.ticker-segment {
+  display: inline-flex;
+  align-items: center;
+  gap: 2rem;
+  padding-right: 2rem;
 }
 
 @keyframes ticker-left {
   0% {
-    transform: translateX(100%);
+    transform: translateX(0%);
   }
   100% {
-    transform: translateX(-100%);
+    transform: translateX(-50%);
   }
 }

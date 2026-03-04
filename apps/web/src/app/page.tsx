@@ -1037,6 +1037,24 @@ function TopNavigation({
     : modelConsensus.status === 'CONSENSUS_BULL'
       ? 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10'
       : 'text-rose-300 border-rose-500/40 bg-rose-500/10';
+  const marqueeEntries = [
+    ...tapeItems.map((item) => (
+      <span key={item.label} className="flex items-center space-x-1">
+        <span className={item.tone}>{item.label}</span>
+        <span>{item.price.toLocaleString('en-US', { maximumFractionDigits: 2 })}</span>
+        <span className={item.change >= 0 ? 'text-emerald-500' : 'text-rose-500'}>
+          ({item.change >= 0 ? '+' : ''}
+          {item.change.toFixed(2)}%)
+        </span>
+      </span>
+    )),
+    <span key="correlation" className="flex items-center space-x-1">
+      <span className="text-slate-500">CORRELATION:</span> <span className="text-cyan-500">{correlationLabel}</span>
+    </span>,
+    <span key="sentiment" className="flex items-center space-x-1">
+      <span className="text-slate-500">SENTIMENT:</span> <span className={globalSentimentLabel === 'BULLISH' ? 'text-emerald-400' : 'text-rose-400'}>{globalSentimentLabel}</span>
+    </span>,
+  ];
 
   return (
     <header className="h-12 bg-slate-950 border-b border-slate-800 flex items-center px-4 justify-between shrink-0 z-50">
@@ -1084,22 +1102,11 @@ function TopNavigation({
       </div>
 
       <div className="flex-1 mx-8 overflow-hidden relative mask-linear-fade">
-        <div className="ticker-track flex space-x-8 whitespace-nowrap text-xs font-mono text-slate-400">
-          {tapeItems.map((item) => (
-            <span key={item.label} className="flex items-center space-x-1">
-              <span className={item.tone}>{item.label}</span>
-              <span>{item.price.toLocaleString('en-US', { maximumFractionDigits: 2 })}</span>
-              <span className={item.change >= 0 ? 'text-emerald-500' : 'text-rose-500'}>
-                ({item.change >= 0 ? '+' : ''}{item.change.toFixed(2)}%)
-              </span>
-            </span>
-          ))}
-          <span className="flex items-center space-x-1">
-            <span className="text-slate-500">CORRELATION:</span> <span className="text-cyan-500">{correlationLabel}</span>
-          </span>
-          <span className="flex items-center space-x-1">
-            <span className="text-slate-500">SENTIMENT:</span> <span className={globalSentimentLabel === 'BULLISH' ? 'text-emerald-400' : 'text-rose-400'}>{globalSentimentLabel}</span>
-          </span>
+        <div className="ticker-track whitespace-nowrap text-xs font-mono text-slate-400">
+          <div className="ticker-segment">{marqueeEntries}</div>
+          <div className="ticker-segment" aria-hidden="true">
+            {marqueeEntries}
+          </div>
         </div>
       </div>
 
