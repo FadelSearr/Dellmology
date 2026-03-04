@@ -904,6 +904,7 @@ function TopNavigation({
   washSaleRisk,
   icebergRisk,
   exitWhale,
+  engineHeartbeat,
   goldenRecord,
   marketIntelAdapter,
   infraStatus,
@@ -936,6 +937,7 @@ function TopNavigation({
   washSaleRisk: WashSaleRiskState;
   icebergRisk: IcebergRiskState;
   exitWhale: ExitWhaleRiskState;
+  engineHeartbeat: EngineHeartbeatState;
   goldenRecord: GoldenRecordValidationState;
   marketIntelAdapter: AdapterHealthState;
   infraStatus: { sse: Tone; db: Tone; integrity: Tone; token: Tone };
@@ -1185,6 +1187,17 @@ function TopNavigation({
           title={exitWhale.reason || `Signal ${exitWhale.signal} (${exitWhale.confidence.toFixed(0)}) | Events ${exitWhale.strongEventCount}/${exitWhale.eventCount}`}
         >
           {`EXIT ${exitWhale.warning ? 'WARN' : 'OK'}`}
+        </div>
+        <div
+          className={cn(
+            'text-[10px] font-mono border rounded px-2 py-1',
+            engineHeartbeat.checkedAt !== null && !engineHeartbeat.online
+              ? 'text-rose-300 border-rose-500/40 bg-rose-500/10'
+              : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10',
+          )}
+          title={engineHeartbeat.reason || `Last ${engineHeartbeat.lastSeenSeconds ?? 0}s | Timeout ${engineHeartbeat.timeoutSeconds}s`}
+        >
+          {`ENGINE ${engineHeartbeat.checkedAt !== null && !engineHeartbeat.online ? 'OFFLINE' : 'ONLINE'}`}
         </div>
         <div
           className={cn(
@@ -5216,6 +5229,7 @@ export default function Home() {
         washSaleRisk={washSaleRisk}
         icebergRisk={icebergRisk}
         exitWhale={exitWhaleRisk}
+        engineHeartbeat={engineHeartbeat}
         goldenRecord={goldenRecordValidation}
         marketIntelAdapter={marketIntelAdapter}
         infraStatus={infraStatus}
