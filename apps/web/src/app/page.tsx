@@ -883,6 +883,7 @@ function TopNavigation({
   coolingOffActive,
   combatMode,
   incompleteData,
+  immutableAuditAlert,
   infraStatus,
   globalData,
 }: {
@@ -892,6 +893,7 @@ function TopNavigation({
   coolingOffActive: boolean;
   combatMode: CombatModeState;
   incompleteData: IncompleteDataState;
+  immutableAuditAlert: ImmutableAuditAlertState;
   infraStatus: { sse: Tone; db: Tone; integrity: Tone; token: Tone };
   globalData: GlobalCorrelationResponse | null;
 }) {
@@ -960,6 +962,17 @@ function TopNavigation({
       </div>
 
       <div className="flex items-center space-x-4 border-l border-slate-800 pl-4">
+        <div
+          className={cn(
+            'text-[10px] font-mono border rounded px-2 py-1',
+            immutableAuditAlert.lockRemainingMs > 0 || immutableAuditAlert.unlockRemainingMs > 0
+              ? 'text-amber-300 border-amber-500/40 bg-amber-500/10'
+              : 'text-slate-500 border-slate-800 bg-slate-900/30',
+          )}
+          title={`LOCK ${immutableAuditAlert.lockRemainingMs > 0 ? `${Math.ceil(immutableAuditAlert.lockRemainingMs / 1000)}s` : 'READY'} | UNLOCK ${immutableAuditAlert.unlockRemainingMs > 0 ? `${Math.ceil(immutableAuditAlert.unlockRemainingMs / 1000)}s` : 'READY'}`}
+        >
+          {`ALERT CD L${immutableAuditAlert.lockRemainingMs > 0 ? `:${Math.ceil(immutableAuditAlert.lockRemainingMs / 1000)}s` : ':OK'} U${immutableAuditAlert.unlockRemainingMs > 0 ? `:${Math.ceil(immutableAuditAlert.unlockRemainingMs / 1000)}s` : ':OK'}`}
+        </div>
         <div
           className={cn(
             'text-[10px] font-mono border rounded px-2 py-1',
@@ -4940,6 +4953,7 @@ export default function Home() {
         coolingOffActive={coolingOff.active}
         combatMode={combatMode}
         incompleteData={incompleteData}
+        immutableAuditAlert={immutableAuditAlert}
         infraStatus={infraStatus}
         globalData={globalData}
       />
