@@ -1068,6 +1068,37 @@ function extractBearishRiskBullets(bearishText: string): string[] {
   return ['Data bearish belum detail. Pakai size defensif.', 'Tunda entry sampai konfirmasi multi-timeframe.', 'Prioritaskan proteksi modal di atas agresivitas.'];
 }
 
+function buildAdversarialChecklist(params: {
+  killSwitchActive: boolean;
+  systemKillSwitchActive: boolean;
+  coolingOffActive: boolean;
+  modelConsensusPass: boolean;
+  dataSanityWarning: boolean;
+  deploymentGateBlocked: boolean;
+  confidenceTrackingWarning: boolean;
+  staleAudit: boolean;
+}) {
+  const items = [
+    params.killSwitchActive || params.systemKillSwitchActive ? 'Macro/system kill-switch aktif: momentum bisa patah mendadak.' : null,
+    params.coolingOffActive ? 'Cooling-off aktif: performa terbaru belum stabil untuk agresif entry.' : null,
+    !params.modelConsensusPass ? 'Model consensus tidak sinkron: sinyal masih konflik antar engine.' : null,
+    params.dataSanityWarning ? 'Data sanity warning: narasi AI bisa bias karena data tidak bersih.' : null,
+    params.deploymentGateBlocked ? 'Deployment gate blocked: model regression belum lolos validasi.' : null,
+    params.confidenceTrackingWarning ? 'Akurasi historis AI menurun: probabilitas false signal meningkat.' : null,
+    params.staleAudit ? 'Risk audit stale: parameter runtime berisiko tidak sesuai kondisi terbaru.' : null,
+  ].filter((item): item is string => item !== null);
+
+  if (items.length > 0) {
+    return items.slice(0, 3);
+  }
+
+  return [
+    'Skenario adverse move masih mungkin terjadi tanpa trigger awal yang jelas.',
+    'Likuiditas dapat menipis mendadak saat volatilitas naik di sesi aktif.',
+    'Konfirmasi multi-timeframe tetap wajib sebelum menambah ukuran posisi.',
+  ];
+}
+
 function technicalVoteFromUps(ups: number, minUpsForLong: number): VoteSignal {
   if (ups >= minUpsForLong) return 'BUY';
   if (ups <= 45) return 'SELL';
@@ -3486,6 +3517,16 @@ function BottomPanel({
   const postmortemAccuracySpread =
     postmortemBestRule && postmortemWorstRule ? Math.max(0, postmortemBestRule.accuracy_pct - postmortemWorstRule.accuracy_pct) : 0;
   const bearishRiskBullets = extractBearishRiskBullets(adversarialNarrative.bearish);
+  const adversarialChecklist = buildAdversarialChecklist({
+    killSwitchActive,
+    systemKillSwitchActive: systemKillSwitch.active,
+    coolingOffActive: coolingOff.active,
+    modelConsensusPass: modelConsensus.pass,
+    dataSanityWarning: dataSanity.warning,
+    deploymentGateBlocked: deploymentGate.blocked,
+    confidenceTrackingWarning: confidenceTracking.warning,
+    staleAudit,
+  });
   const coolingTriggerLabel = coolingTriggerFromReason(coolingOff.reason, coolingOff.active);
   const coolingTriggerReason = coolingTriggerExplain(coolingTriggerLabel);
   const coolingRemainingLabel = formatCoolingRemaining(coolingOff.remainingSeconds);
@@ -3606,6 +3647,20 @@ function BottomPanel({
                   title={risk}
                 >
                   {`R${index + 1}: ${risk}`}
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="border border-amber-500/30 rounded px-2 py-1 bg-amber-500/5">
+            <div className="text-[9px] uppercase tracking-wider text-amber-300 font-bold">Adversarial Checklist</div>
+            <div className="mt-1 grid grid-cols-1 gap-1">
+              {adversarialChecklist.map((item, index) => (
+                <div
+                  key={`adversarial-check-${index}`}
+                  className="text-[9px] font-mono text-amber-100/90 border border-amber-500/20 bg-amber-500/10 rounded px-2 py-1"
+                  title={item}
+                >
+                  {`C${index + 1}: ${item}`}
                 </div>
               ))}
             </div>
