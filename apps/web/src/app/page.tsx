@@ -2575,6 +2575,7 @@ function RightSidebar({
         : negotiatedBuySharePct <= 40
           ? 'SELL DOM'
           : 'BALANCED';
+  const negotiatedCombatRows = negotiatedFeed.slice(0, 2);
 
   if (combatMode.active) {
     return (
@@ -2596,6 +2597,19 @@ function RightSidebar({
           <div className={cn('text-[10px] font-mono border rounded px-2 py-1', negotiatedFeed.length > 0 ? 'text-amber-300 border-amber-500/40 bg-amber-500/10' : 'text-slate-500 border-slate-800 bg-slate-900/30')}>
             {`NEGO ${negotiatedFlowLabel} | ${negotiatedFeed.length} tx | ${Math.round(negotiatedTotalNotional / 1_000_000)}M`}
           </div>
+          {negotiatedCombatRows.length > 0 ? (
+            <div className="border border-slate-800 rounded bg-slate-900/40 px-2 py-1 space-y-1">
+              {negotiatedCombatRows.map((item, index) => (
+                <div key={`${item.symbol}-${item.trade_type}-${index}`} className="flex items-center justify-between text-[9px] font-mono text-slate-400">
+                  <span className="text-slate-300">{`${item.symbol} ${String(item.trade_type || '').toUpperCase()}`}</span>
+                  <span>{`${Math.round(Number(item.notional || 0) / 1_000_000)}M`}</span>
+                </div>
+              ))}
+              <div className="text-[9px] font-mono text-slate-500 border-t border-slate-800 pt-1">
+                {`BUY ${negotiatedBuySharePct.toFixed(0)}% | SYM ${negotiatedSymbolBreadth}`}
+              </div>
+            </div>
+          ) : null}
           <div className="text-[9px] text-slate-500 font-mono">{combatMode.bullets.join(' • ')}</div>
         </div>
       </Card>
