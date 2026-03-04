@@ -203,6 +203,15 @@ interface TokenTelemetry {
 interface LiquidityGuard {
   dailyVolumeLots: number;
   capPct: number;
+  liquidityCapLots: number;
+  atrPoints: number;
+  atrPct: number;
+  slippageBufferPct: number;
+  riskPerTradePct: number;
+  riskBudgetRp: number;
+  riskPerLotRp: number;
+  riskBasedLots: number;
+  activeCap: 'ATR' | 'LIQUIDITY';
   maxLots: number;
   impactPct: number;
   highImpactOrder: boolean;
@@ -486,6 +495,11 @@ const PARTICIPATION_CAP_NORMAL_PCT = envNumber('NEXT_PUBLIC_PARTICIPATION_CAP_NO
 const PARTICIPATION_CAP_KILL_SWITCH_PCT = envNumber('NEXT_PUBLIC_PARTICIPATION_CAP_KILL_SWITCH_PCT', 0.005);
 const SYSTEMIC_RISK_BETA_THRESHOLD = envNumber('NEXT_PUBLIC_SYSTEMIC_RISK_BETA_THRESHOLD', 1.5);
 const SYSTEMIC_RISK_HARD_GATE = envBool('NEXT_PUBLIC_SYSTEMIC_RISK_HARD_GATE', true);
+const POSITION_SIZING_ACCOUNT_RP = envNumber('NEXT_PUBLIC_POSITION_SIZING_ACCOUNT_RP', 100_000_000);
+const POSITION_SIZING_RISK_PER_TRADE_PCT = envNumber('NEXT_PUBLIC_POSITION_SIZING_RISK_PER_TRADE_PCT', 0.01);
+const POSITION_SIZING_ATR_WINDOW = Math.max(5, Math.floor(envNumber('NEXT_PUBLIC_POSITION_SIZING_ATR_WINDOW', 14)));
+const POSITION_SIZING_SLIPPAGE_NORMAL_PCT = envNumber('NEXT_PUBLIC_POSITION_SIZING_SLIPPAGE_NORMAL_PCT', 0.005);
+const POSITION_SIZING_SLIPPAGE_RISK_PCT = envNumber('NEXT_PUBLIC_POSITION_SIZING_SLIPPAGE_RISK_PCT', 0.01);
 const COMBAT_MODE_VOLATILITY_PCT = envNumber('NEXT_PUBLIC_COMBAT_MODE_VOLATILITY_PCT', 2.5);
 const ROC_KILL_SWITCH_DROP_PCT = envNumber('NEXT_PUBLIC_ROC_KILL_SWITCH_DROP_PCT', -3);
 const ROC_KILL_SWITCH_WINDOW_POINTS = envNumber('NEXT_PUBLIC_ROC_KILL_SWITCH_WINDOW_POINTS', 5);
@@ -1725,13 +1739,19 @@ function BottomPanel({
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="text-[9px] text-slate-500 uppercase font-bold block mb-1">Risk / Trade</label>
-              <input type="text" defaultValue="1%" className="w-full bg-slate-950 border border-slate-800 text-white text-xs px-2 py-1.5 rounded focus:border-cyan-500 outline-none" />
+              <input
+                type="text"
+                value={`${(liquidityGuard.riskPerTradePct * 100).toFixed(2)}%`}
+                readOnly
+                className="w-full bg-slate-950 border border-slate-800 text-white text-xs px-2 py-1.5 rounded focus:border-cyan-500 outline-none"
+              />
             </div>
             <div>
               <label className="text-[9px] text-slate-500 uppercase font-bold block mb-1">Stop Loss (ATR)</label>
               <input
                 type="text"
-                defaultValue="150 pts"
+                value={`${liquidityGuard.atrPoints.toFixed(2)} pts`}
+                readOnly
                 className="w-full bg-slate-950 border border-slate-800 text-rose-400 text-xs px-2 py-1.5 rounded focus:border-rose-500 outline-none"
               />
             </div>
@@ -1750,7 +1770,14 @@ function BottomPanel({
             <div className="mt-2 border border-slate-800 rounded px-2 py-1 bg-slate-950/60 text-[9px] font-mono text-slate-400">
               <div>{`Daily Vol: ${liquidityGuard.dailyVolumeLots.toLocaleString()} lots`}</div>
               <div>{`Participation Cap: ${(liquidityGuard.capPct * 100).toFixed(1)}%`}</div>
+              <div>{`ATR(14): ${liquidityGuard.atrPoints.toFixed(2)} pts (${(liquidityGuard.atrPct * 100).toFixed(2)}%)`}</div>
+              <div>{`Slippage Buffer: ${(liquidityGuard.slippageBufferPct * 100).toFixed(2)}%`}</div>
+              <div>{`Risk Budget: Rp ${Math.round(liquidityGuard.riskBudgetRp).toLocaleString('id-ID')}`}</div>
+              <div>{`Risk/Lot: Rp ${Math.round(liquidityGuard.riskPerLotRp).toLocaleString('id-ID')}`}</div>
+              <div>{`Risk-Based Max: ${liquidityGuard.riskBasedLots.toLocaleString()} lots`}</div>
+              <div>{`Liquidity Cap Max: ${liquidityGuard.liquidityCapLots.toLocaleString()} lots`}</div>
               <div className="text-cyan-400">{`Max Recommended: ${liquidityGuard.maxLots.toLocaleString()} lots`}</div>
+              <div>{`Active Cap: ${liquidityGuard.activeCap}`}</div>
               <div>{`Order Impact: ${(liquidityGuard.impactPct * 100).toFixed(2)}% of daily vol`}</div>
               {liquidityGuard.warning ? <div className="text-amber-400 mt-1">{liquidityGuard.warning}</div> : null}
               {liquidityGuard.highImpactOrder ? <div className="text-rose-400 mt-1 font-bold">High Impact Order - Liquidity Risk!</div> : null}
@@ -3134,19 +3161,59 @@ export default function Home() {
       ? marketTotalVolume
       : marketData.reduce((sum, point) => sum + Number(point.volume || 0), 0);
   const estimatedDailyVolumeLots = Math.max(1, Math.floor(estimatedDailyVolumeShares / 100));
+  const atrWindow = Math.min(POSITION_SIZING_ATR_WINDOW, Math.max(1, marketData.length - 1));
+  let atrPoints = 0;
+  if (atrWindow > 0 && marketData.length > 1) {
+    let trSum = 0;
+    for (let offset = 0; offset < atrWindow; offset += 1) {
+      const currentIndex = marketData.length - 1 - offset;
+      const previousIndex = currentIndex - 1;
+      if (previousIndex < 0) {
+        break;
+      }
+
+      const current = Number(marketData[currentIndex]?.price || 0);
+      const previous = Number(marketData[previousIndex]?.price || current);
+      trSum += Math.abs(current - previous);
+    }
+    atrPoints = trSum / atrWindow;
+  }
+  if (!Number.isFinite(atrPoints) || atrPoints <= 0) {
+    atrPoints = Math.max(1, currentPrice * 0.01);
+  }
+  const atrPct = currentPrice > 0 ? atrPoints / currentPrice : 0;
+  const slippageBufferPct = killSwitchActive ? POSITION_SIZING_SLIPPAGE_RISK_PCT : POSITION_SIZING_SLIPPAGE_NORMAL_PCT;
+  const effectiveStopPoints = Math.max(1, atrPoints + currentPrice * slippageBufferPct);
+  const riskPerLotRp = Math.max(1, effectiveStopPoints * 100);
+  const riskPerTradePct = Math.max(0.001, POSITION_SIZING_RISK_PER_TRADE_PCT);
+  const riskBudgetRp = Math.max(1_000, POSITION_SIZING_ACCOUNT_RP * riskPerTradePct);
+  const riskBasedLots = Math.max(1, Math.floor(riskBudgetRp / riskPerLotRp));
   const participationCapPct = killSwitchActive ? runtimeParticipationCapRiskPct : runtimeParticipationCapNormalPct;
-  const maxRecommendedLots = Math.max(1, Math.floor(estimatedDailyVolumeLots * participationCapPct));
+  const liquidityCapLots = Math.max(1, Math.floor(estimatedDailyVolumeLots * participationCapPct));
+  const maxRecommendedLots = Math.max(1, Math.min(liquidityCapLots, riskBasedLots));
+  const activeCap: 'ATR' | 'LIQUIDITY' = riskBasedLots <= liquidityCapLots ? 'ATR' : 'LIQUIDITY';
   const impactPct = estimatedDailyVolumeLots > 0 ? maxRecommendedLots / estimatedDailyVolumeLots : 1;
   const highImpactOrder = impactPct > 0.05;
   const liquidityGuard: LiquidityGuard = {
     dailyVolumeLots: estimatedDailyVolumeLots,
     capPct: participationCapPct,
+    liquidityCapLots,
+    atrPoints,
+    atrPct,
+    slippageBufferPct,
+    riskPerTradePct,
+    riskBudgetRp,
+    riskPerLotRp,
+    riskBasedLots,
+    activeCap,
     maxLots: maxRecommendedLots,
     impactPct,
     highImpactOrder,
     warning:
       highImpactOrder
         ? 'High Impact Order - Liquidity Risk!'
+        : activeCap === 'ATR'
+        ? 'ATR risk cap active: volatility-adjusted lot sizing applied'
         : maxRecommendedLots < 20
         ? 'Liquidity warning: cap < 20 lots, high slippage risk'
         : maxRecommendedLots < 100
