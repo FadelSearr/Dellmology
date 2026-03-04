@@ -6527,13 +6527,16 @@ export default function Home() {
           signalAudit={signalAudit}
         />
       ) : (
-        <div className={cn('border-t px-4 py-2 text-[10px] font-mono flex items-center justify-between gap-3', combatRiskTone)}>
+        <div
+          className={cn('border-t px-4 py-2 text-[10px] font-mono flex items-center justify-between gap-3', combatRiskTone)}
+          title={PERSONAL_RESEARCH_ONLY_DISCLAIMER}
+        >
           <span>
             {combatCriticalLocks.length > 0
               ? `COMBAT RISK STRIP | ${combatCriticalLocks.join(' | ')}`
               : 'COMBAT RISK STRIP | ALL CORE GUARDS NORMAL'}
           </span>
-          <span className="text-slate-500">{`UPS ${Math.round(upsScore)} | ${activeSymbol}`}</span>
+          <span className="text-slate-500">{`UPS ${Math.round(upsScore)} | ${activeSymbol} | RESEARCH ONLY`}</span>
         </div>
       )}
     </div>
