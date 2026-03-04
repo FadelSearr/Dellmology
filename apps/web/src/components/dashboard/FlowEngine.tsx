@@ -38,6 +38,37 @@ interface NegotiatedMonitorData {
   };
 }
 
+const EMPTY_NEGOTIATED_SUMMARY = {
+  total_volume: 0,
+  total_notional: 0,
+  nego_count: 0,
+  cross_count: 0,
+};
+
+function normalizeNegotiatedPayload(payload: unknown): NegotiatedMonitorData | null {
+  if (!payload || typeof payload !== 'object') return null;
+
+  const source = payload as {
+    count?: number;
+    summary?: {
+      total_volume?: number;
+      total_notional?: number;
+      nego_count?: number;
+      cross_count?: number;
+    };
+  };
+
+  return {
+    count: Number(source.count || 0),
+    summary: {
+      total_volume: Number(source.summary?.total_volume || 0),
+      total_notional: Number(source.summary?.total_notional || 0),
+      nego_count: Number(source.summary?.nego_count || 0),
+      cross_count: Number(source.summary?.cross_count || 0),
+    },
+  };
+}
+
 interface CommodityCorrelationData {
   correlation_score: number;
   correlation_label: 'POSITIVE' | 'NEGATIVE' | 'NEUTRAL';
@@ -105,7 +136,7 @@ export const FlowEngine = ({ symbol = 'BBCA' }: { symbol?: string }) => {
 
     fetch(`/api/negotiated-monitor?symbol=${symbol}&limit=25`)
       .then((response) => (response.ok ? response.json() : null))
-      .then((payload) => setNegotiated(payload))
+      .then((payload) => setNegotiated(normalizeNegotiatedPayload(payload)))
       .catch(() => setNegotiated(null));
 
     fetch(`/api/commodity-correlation?symbol=${symbol}`)
@@ -223,9 +254,9 @@ export const FlowEngine = ({ symbol = 'BBCA' }: { symbol?: string }) => {
               <div className="font-semibold text-white mb-2">Nego Market Feed</div>
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                 <div>Events: <span className="text-cyan-300">{negotiated.count}</span></div>
-                <div>NEGO: <span className="text-emerald-300">{negotiated.summary.nego_count}</span></div>
-                <div>CROSS: <span className="text-orange-300">{negotiated.summary.cross_count}</span></div>
-                <div>Notional: <span className="text-violet-300">{(Number(negotiated.summary.total_notional || 0) / 1e9).toFixed(2)}B</span></div>
+                <div>NEGO: <span className="text-emerald-300">{(negotiated.summary || EMPTY_NEGOTIATED_SUMMARY).nego_count}</span></div>
+                <div>CROSS: <span className="text-orange-300">{(negotiated.summary || EMPTY_NEGOTIATED_SUMMARY).cross_count}</span></div>
+                <div>Notional: <span className="text-violet-300">{(Number((negotiated.summary || EMPTY_NEGOTIATED_SUMMARY).total_notional || 0) / 1e9).toFixed(2)}B</span></div>
               </div>
             </div>
           )}

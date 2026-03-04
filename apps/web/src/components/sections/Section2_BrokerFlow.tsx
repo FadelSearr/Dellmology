@@ -26,6 +26,11 @@ export const Section2_BrokerFlow: React.FC<Section2Props> = ({
   const [filterType, setFilterType] = useState<'ALL' | 'SMART_MONEY' | 'WHALE' | 'RETAIL'>('ALL');
   const [timelineType, setTimelineType] = useState<'1D' | '7D' | '14D' | '21D'>('7D');
   const [brokerData, setBrokerData] = useState<any[]>([]);
+  const [brokerStats, setBrokerStats] = useState<{
+    wash_sale_score?: number;
+    avg_net_value?: number;
+    std_deviation?: number;
+  } | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
   const daysForTimeline = (t: string) => {
@@ -49,6 +54,7 @@ export const Section2_BrokerFlow: React.FC<Section2Props> = ({
         if (resp.ok) {
           const json = await resp.json();
           setBrokerData(json.brokers || []);
+          setBrokerStats(json.stats || null);
         }
       } catch (err) {
         console.error('broker flow fetch error', err);
@@ -125,34 +131,63 @@ export const Section2_BrokerFlow: React.FC<Section2Props> = ({
         {/* Whale Z-Score */}
         <Card title="📈 Whale Z-Score Detection" subtitle="Volume anomaly indicator">
           <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-gray-400">Current Z-Score:</span>
-              <span className="text-xl font-bold text-cyan-400">+2.45σ</span>
-            </div>
-            <div className="h-2 w-full bg-gray-700 rounded-full overflow-hidden">
-              <div className="h-full w-1/2 bg-cyan-500" />
-            </div>
-            <p className="text-xs text-gray-400">
-              ✅ Abnormal volume detected - Likely institutional accumulation
-            </p>
+            {(() => {
+              const topBroker = (brokerData || [])
+                .slice()
+                .sort((a, b) => Math.abs(Number(b?.z_score || 0)) - Math.abs(Number(a?.z_score || 0)))[0];
+              const topZ = Number(topBroker?.z_score || 0);
+              const normalizedWidth = Math.min(100, Math.round((Math.abs(topZ) / 3) * 100));
+              const directionTone = topZ >= 0 ? 'text-cyan-400' : 'text-orange-400';
+              const signalLabel = Math.abs(topZ) >= 2 ? 'Anomaly detected' : 'Within normal range';
+
+              return (
+                <>
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-400">Current Z-Score:</span>
+                    <span className={`text-xl font-bold ${directionTone}`}>
+                      {topZ >= 0 ? '+' : ''}{topZ.toFixed(2)}σ
+                    </span>
+                  </div>
+                  <div className="h-2 w-full bg-gray-700 rounded-full overflow-hidden">
+                    <div className={`h-full ${topZ >= 0 ? 'bg-cyan-500' : 'bg-orange-500'}`} style={{ width: `${normalizedWidth}%` }} />
+                  </div>
+                  <p className="text-xs text-gray-400">
+                    {signalLabel}
+                    {topBroker?.broker_id ? ` • Top broker: ${topBroker.broker_id}` : ''}
+                  </p>
+                </>
+              );
+            })()}
           </div>
         </Card>
 
         {/* Wash Sale Alert */}
         <Card title="🚨 Wash Sale Detection" subtitle="Volume legitimacy check">
           <div className="space-y-3">
-            <StatusBadge
-              status="warning"
-              label="LOW CHURN DETECTED"
-              icon={<AlertCircle className="w-3 h-3" />}
-            />
-            <p className="text-xs text-gray-400">
-              High turnover but low net accumulation - Volume may be artificially inflated.
-            </p>
-            <div className="text-xs text-gray-500 mt-2">
-              <div>Gross Volume: 50M shares</div>
-              <div>Net Buy: 500K shares (1% ratio)</div>
-            </div>
+            {(() => {
+              const washSaleScore = Number(brokerStats?.wash_sale_score || 0);
+              const isRisky = washSaleScore >= 60;
+              const ratioHint = `${washSaleScore.toFixed(1)}%`;
+
+              return (
+                <>
+                  <StatusBadge
+                    status={isRisky ? 'error' : 'success'}
+                    label={isRisky ? 'HIGH CHURN ALERT' : 'FLOW HEALTHY'}
+                    icon={<AlertCircle className="w-3 h-3" />}
+                  />
+                  <p className="text-xs text-gray-400">
+                    {isRisky
+                      ? 'High turnover but low net accumulation - possible artificial activity.'
+                      : 'No significant wash-sale pressure detected from broker-flow aggregate.'}
+                  </p>
+                  <div className="text-xs text-gray-500 mt-2">
+                    <div>Wash Sale Score: {ratioHint}</div>
+                    <div>Avg Net Value: {Number(brokerStats?.avg_net_value || 0).toLocaleString('id-ID')}</div>
+                  </div>
+                </>
+              );
+            })()}
           </div>
         </Card>
       </div>
