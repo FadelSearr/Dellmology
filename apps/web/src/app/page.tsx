@@ -6378,6 +6378,10 @@ export default function Home() {
     combatCriticalLocks.length > 0
       ? 'border-rose-500/40 bg-rose-500/10 text-rose-300'
       : 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300';
+  const combatStripTitle =
+    combatCriticalLocks.length > 0
+      ? `Active lock guards (${combatCriticalLocks.length}): ${combatCriticalLocks.join(' | ')} | ${PERSONAL_RESEARCH_ONLY_DISCLAIMER}`
+      : `No active lock guard | ${PERSONAL_RESEARCH_ONLY_DISCLAIMER}`;
 
   return (
     <div className="h-screen w-screen bg-black text-slate-200 selection:bg-cyan-500/30 overflow-hidden flex flex-col">
@@ -6588,7 +6592,7 @@ export default function Home() {
       ) : (
         <div
           className={cn('border-t px-4 py-2 text-[10px] font-mono flex items-center justify-between gap-3', combatRiskTone)}
-          title={PERSONAL_RESEARCH_ONLY_DISCLAIMER}
+          title={combatStripTitle}
         >
           <span>
             {combatCriticalLocks.length > 0
