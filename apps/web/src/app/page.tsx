@@ -236,6 +236,23 @@ interface ActionState {
   message: string | null;
 }
 
+interface PositionSizingRecommendation {
+  suggestedLots: number;
+  entryLots: number;
+  addOnLots: number;
+  slices: number;
+  confidenceLabel: 'LOW' | 'MEDIUM' | 'HIGH';
+  confidenceFactor: number;
+  upsFactor: number;
+  riskFactor: number;
+  caution: string | null;
+}
+
+interface ActionDockBlockReasons {
+  telegram: string[];
+  backtest: string[];
+}
+
 interface TokenTelemetry {
   status: 'fresh' | 'expiring' | 'expired' | 'missing';
   syncReason: string | null;
@@ -757,6 +774,128 @@ function signalLabel(ups: number, minBuyScore = 60) {
   if (ups <= 30) return 'Strong Sell';
   if (ups <= 45) return 'Sell';
   return 'Neutral';
+}
+
+function buildPositionSizingRecommendation(params: {
+  liquidityGuard: LiquidityGuard;
+  confidence: ModelConfidenceResponse | null;
+  confidenceTracking: ModelConfidenceTracking;
+  upsScore: number;
+  minUpsForLong: number;
+  killSwitchActive: boolean;
+  systemicRiskHigh: boolean;
+  portfolioSystemicRiskHigh: boolean;
+}): PositionSizingRecommendation {
+  const {
+    liquidityGuard,
+    confidence,
+    confidenceTracking,
+    upsScore,
+    minUpsForLong,
+    killSwitchActive,
+    systemicRiskHigh,
+    portfolioSystemicRiskHigh,
+  } = params;
+
+  const confidenceLabel: 'LOW' | 'MEDIUM' | 'HIGH' = confidenceTracking.warning ? 'LOW' : confidence?.confidence_label || 'MEDIUM';
+  const confidenceFactor = confidenceLabel === 'HIGH' ? 1 : confidenceLabel === 'MEDIUM' ? 0.8 : 0.55;
+  const upsFactor = upsScore >= minUpsForLong + 10 ? 1 : upsScore >= minUpsForLong ? 0.85 : 0.65;
+
+  let riskFactor = 1;
+  if (killSwitchActive) {
+    riskFactor = Math.min(riskFactor, 0.75);
+  }
+  if (systemicRiskHigh) {
+    riskFactor = Math.min(riskFactor, 0.7);
+  }
+  if (portfolioSystemicRiskHigh) {
+    riskFactor = Math.min(riskFactor, 0.55);
+  }
+  if (liquidityGuard.highImpactOrder) {
+    riskFactor = Math.min(riskFactor, 0.65);
+  }
+
+  const multiplier = confidenceFactor * upsFactor * riskFactor;
+  const suggestedLots = Math.max(1, Math.floor(liquidityGuard.maxLots * multiplier));
+  const entryLots = Math.max(1, Math.ceil(suggestedLots * 0.6));
+  const addOnLots = Math.max(0, suggestedLots - entryLots);
+  const slices = suggestedLots >= 80 ? 3 : suggestedLots >= 20 ? 2 : 1;
+
+  let caution: string | null = null;
+  if (killSwitchActive) {
+    caution = 'Kill-switch mode aktif: gunakan size defensif.';
+  } else if (portfolioSystemicRiskHigh || systemicRiskHigh) {
+    caution = 'Systemic risk tinggi: kurangi eksposur dan entry bertahap.';
+  } else if (liquidityGuard.highImpactOrder) {
+    caution = 'Impact order tinggi: pecah lot untuk kurangi slippage.';
+  } else if (confidenceLabel === 'LOW') {
+    caution = 'Model confidence rendah: gunakan size konservatif.';
+  }
+
+  return {
+    suggestedLots,
+    entryLots,
+    addOnLots,
+    slices,
+    confidenceLabel,
+    confidenceFactor,
+    upsFactor,
+    riskFactor,
+    caution,
+  };
+}
+
+function buildActionDockBlockReasons(params: {
+  actionBusy: boolean;
+  coolingOffActive: boolean;
+  consensusPass: boolean;
+  deploymentGateBlocked: boolean;
+  systemKillSwitchActive: boolean;
+  systemKillSwitchReason: string | null;
+  engineHeartbeatLocked: boolean;
+  engineHeartbeatTimeoutSeconds: number;
+  dataSanityWarning: boolean;
+  dataSanityReason: string | null;
+  riskConfigLocked: boolean;
+}): ActionDockBlockReasons {
+  const telegram: string[] = [];
+  const backtest: string[] = [];
+
+  if (params.actionBusy) {
+    telegram.push('Action engine masih berjalan');
+    backtest.push('Action engine masih berjalan');
+  }
+  if (params.coolingOffActive) {
+    telegram.push('Cooling-off masih aktif');
+    backtest.push('Cooling-off masih aktif');
+  }
+  if (!params.consensusPass) {
+    telegram.push('Konsensus model belum pass');
+  }
+  if (params.deploymentGateBlocked) {
+    backtest.push('Deploy gate masih terblokir');
+  }
+  if (params.systemKillSwitchActive) {
+    const reason = params.systemKillSwitchReason || 'system inactive';
+    telegram.push(`System lock: ${reason}`);
+    backtest.push(`System lock: ${reason}`);
+  }
+  if (params.engineHeartbeatLocked) {
+    const reason = `Engine offline >${params.engineHeartbeatTimeoutSeconds}s`;
+    telegram.push(reason);
+    backtest.push(reason);
+  }
+  if (params.dataSanityWarning) {
+    const reason = `Data sanity warning${params.dataSanityReason ? ` (${params.dataSanityReason})` : ''}`;
+    telegram.push(reason);
+    backtest.push(reason);
+  }
+  if (params.riskConfigLocked) {
+    telegram.push('Runtime risk config terkunci');
+    backtest.push('Runtime risk config terkunci');
+  }
+
+  return { telegram, backtest };
 }
 
 function extractAdversarialNarrative(rawNarrative: string): { bullish: string; bearish: string } {
@@ -2539,6 +2678,8 @@ function BottomPanel({
   runtimeIhsgDrop,
   runtimeNormalUps,
   runtimeRiskUps,
+  minUpsForLong,
+  killSwitchActive,
   runtimeParticipationCapNormalPct,
   runtimeParticipationCapRiskPct,
   runtimeSystemicRiskBetaThreshold,
@@ -2594,6 +2735,8 @@ function BottomPanel({
   runtimeIhsgDrop: number;
   runtimeNormalUps: number;
   runtimeRiskUps: number;
+  minUpsForLong: number;
+  killSwitchActive: boolean;
   runtimeParticipationCapNormalPct: number;
   runtimeParticipationCapRiskPct: number;
   runtimeSystemicRiskBetaThreshold: number;
@@ -2666,6 +2809,29 @@ function BottomPanel({
     : modelConsensus.status === 'CONSENSUS_BULL'
       ? 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10'
       : 'text-rose-300 border-rose-500/40 bg-rose-500/10';
+  const positionSizingRecommendation = buildPositionSizingRecommendation({
+    liquidityGuard,
+    confidence,
+    confidenceTracking,
+    upsScore,
+    minUpsForLong,
+    killSwitchActive,
+    systemicRiskHigh: systemicRisk.high,
+    portfolioSystemicRiskHigh: portfolioBetaRisk.high,
+  });
+  const actionDockBlockReasons = buildActionDockBlockReasons({
+    actionBusy: actionState.busy,
+    coolingOffActive: coolingOff.active,
+    consensusPass: modelConsensus.pass,
+    deploymentGateBlocked: deploymentGate.blocked,
+    systemKillSwitchActive: systemKillSwitch.active,
+    systemKillSwitchReason: systemKillSwitch.reason,
+    engineHeartbeatLocked,
+    engineHeartbeatTimeoutSeconds: engineHeartbeat.timeoutSeconds,
+    dataSanityWarning: dataSanity.warning,
+    dataSanityReason: dataSanity.reason,
+    riskConfigLocked,
+  });
 
   return (
     <Card className="h-48 border-t border-slate-800 rounded-none shrink-0 flex flex-row">
@@ -2743,6 +2909,13 @@ function BottomPanel({
               <div className="h-full bg-cyan-500" style={{ width: `${Math.max(10, Math.min(100, accuracy))}%` }} />
             </div>
             <div className="text-[9px] text-slate-500 mt-1 text-right">Vol adjusted for liquidity safety</div>
+            <div className="mt-2 border border-cyan-500/30 rounded px-2 py-1 bg-cyan-500/5 text-[9px] font-mono space-y-1">
+              <div className="text-cyan-300 uppercase tracking-wider">Execution Plan</div>
+              <div>{`Suggested Lots: ${positionSizingRecommendation.suggestedLots.toLocaleString()} / Max ${liquidityGuard.maxLots.toLocaleString()}`}</div>
+              <div>{`Entry Ladder: ${positionSizingRecommendation.entryLots.toLocaleString()} + ${positionSizingRecommendation.addOnLots.toLocaleString()} lots (${positionSizingRecommendation.slices} slices)`}</div>
+              <div className="text-slate-400">{`Multiplier C/U/R: ${positionSizingRecommendation.confidenceFactor.toFixed(2)} x ${positionSizingRecommendation.upsFactor.toFixed(2)} x ${positionSizingRecommendation.riskFactor.toFixed(2)}`}</div>
+              {positionSizingRecommendation.caution ? <div className="text-amber-300">{positionSizingRecommendation.caution}</div> : null}
+            </div>
             <div className={cn('text-[9px] mt-1 font-mono', confidenceTracking.warning ? 'text-rose-400' : 'text-slate-500')}>
               {`Hist Acc (${confidenceTracking.windowSize}): ${confidenceTracking.evaluated > 0 ? confidenceTracking.accuracyPct.toFixed(1) : '-'}% | W/L ${confidenceTracking.wins}/${confidenceTracking.losses}`}
             </div>
@@ -2953,6 +3126,21 @@ function BottomPanel({
               {`BT ${backtestBlocked ? 'BLOCK' : 'READY'}`}
             </div>
           </div>
+          {telegramBlocked ? (
+            <div className="text-[9px] text-amber-300 border border-amber-500/30 rounded px-2 py-1 bg-amber-500/10">
+              {`TG Lock: ${actionDockBlockReasons.telegram[0] || 'guardrail active'}`}
+            </div>
+          ) : null}
+          {backtestBlocked ? (
+            <div className="text-[9px] text-amber-300 border border-amber-500/30 rounded px-2 py-1 bg-amber-500/10">
+              {`BT Lock: ${actionDockBlockReasons.backtest[0] || 'guardrail active'}`}
+            </div>
+          ) : null}
+          {(telegramBlocked && actionDockBlockReasons.telegram.length > 1) || (backtestBlocked && actionDockBlockReasons.backtest.length > 1) ? (
+            <div className="text-[9px] text-slate-500 font-mono">
+              {`Extra locks → TG:${Math.max(0, actionDockBlockReasons.telegram.length - 1)} | BT:${Math.max(0, actionDockBlockReasons.backtest.length - 1)}`}
+            </div>
+          ) : null}
           <button
             onClick={onSendTelegram}
             disabled={telegramBlocked}
@@ -5877,6 +6065,8 @@ export default function Home() {
           runtimeIhsgDrop={runtimeIhsgDrop}
           runtimeNormalUps={runtimeNormalUps}
           runtimeRiskUps={runtimeRiskUps}
+          minUpsForLong={minUpsForLong}
+          killSwitchActive={killSwitchActive}
           runtimeParticipationCapNormalPct={runtimeParticipationCapNormalPct}
           runtimeParticipationCapRiskPct={runtimeParticipationCapRiskPct}
           runtimeSystemicRiskBetaThreshold={runtimeSystemicRiskBetaThreshold}
