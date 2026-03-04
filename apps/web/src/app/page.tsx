@@ -899,6 +899,7 @@ function TopNavigation({
   portfolioBetaRisk,
   artificialLiquidity,
   spoofing,
+  washSaleRisk,
   goldenRecord,
   marketIntelAdapter,
   infraStatus,
@@ -926,6 +927,7 @@ function TopNavigation({
   portfolioBetaRisk: PortfolioBetaRisk;
   artificialLiquidity: ArtificialLiquidityState;
   spoofing: SpoofingAlertState;
+  washSaleRisk: WashSaleRiskState;
   goldenRecord: GoldenRecordValidationState;
   marketIntelAdapter: AdapterHealthState;
   infraStatus: { sse: Tone; db: Tone; integrity: Tone; token: Tone };
@@ -1127,6 +1129,15 @@ function TopNavigation({
           title={spoofing.reason || `Vanish ${spoofing.vanishedWalls} | Lifetime ${spoofing.avgLifetimeSeconds.toFixed(0)}s`}
         >
           {`SPOOF ${spoofing.warning ? 'WARN' : 'OK'}`}
+        </div>
+        <div
+          className={cn(
+            'text-[10px] font-mono border rounded px-2 py-1',
+            washSaleRisk.warning ? 'text-rose-300 border-rose-500/40 bg-rose-500/10' : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10',
+          )}
+          title={washSaleRisk.reason || `Score ${washSaleRisk.score.toFixed(1)} | Thr ${washSaleRisk.threshold.toFixed(1)}`}
+        >
+          {`WASH ${washSaleRisk.warning ? 'WARN' : 'OK'}`}
         </div>
         <div
           className={cn(
@@ -5153,6 +5164,7 @@ export default function Home() {
         portfolioBetaRisk={portfolioBetaRisk}
         artificialLiquidity={artificialLiquidity}
         spoofing={spoofingAlert}
+        washSaleRisk={washSaleRisk}
         goldenRecord={goldenRecordValidation}
         marketIntelAdapter={marketIntelAdapter}
         infraStatus={infraStatus}
