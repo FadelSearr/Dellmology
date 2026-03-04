@@ -36,6 +36,66 @@ export async function resolveMarketIntelligence(input: {
   fallbackDelayMinutes?: number;
 }): Promise<{ payload: MarketIntelPayload | null; dataSource: SourceAdapterMeta }> {
   const fallbackDelayMinutes = Number(input.fallbackDelayMinutes || 15);
+  const workerStatus = await detectWorkerOffline();
+
+  if (workerStatus.offline) {
+    const yahooAttempt = await runAttempt(() => buildFromYahooQuote(input.symbol));
+    if (yahooAttempt.payload) {
+      return {
+        payload: yahooAttempt.payload,
+        dataSource: sourceMeta({
+          provider: 'FALLBACK_YAHOO',
+          degraded: true,
+          reason: `Worker offline (${workerStatus.lastSeenSeconds ?? '-'}s) - switched to Yahoo fallback`,
+          fallbackDelayMinutes,
+          diagnostics: {
+            primary_latency_ms: null,
+            fallback_latency_ms: yahooAttempt.latencyMs,
+            primary_error: 'Worker heartbeat timeout',
+            selected_source: 'FALLBACK_YAHOO',
+            checked_at: new Date().toISOString(),
+          },
+        }),
+      };
+    }
+
+    const delayedAttempt = await runAttempt(() => buildFromFallbackDailyPrices(input.symbol));
+    if (delayedAttempt.payload) {
+      return {
+        payload: delayedAttempt.payload,
+        dataSource: sourceMeta({
+          provider: 'FALLBACK_DAILY_PRICES',
+          degraded: true,
+          reason: `Worker offline (${workerStatus.lastSeenSeconds ?? '-'}s) - Yahoo unavailable, using delayed daily prices`,
+          fallbackDelayMinutes,
+          diagnostics: {
+            primary_latency_ms: null,
+            fallback_latency_ms: delayedAttempt.latencyMs,
+            primary_error: 'Worker heartbeat timeout',
+            selected_source: 'FALLBACK_DAILY_PRICES',
+            checked_at: new Date().toISOString(),
+          },
+        }),
+      };
+    }
+
+    return {
+      payload: null,
+      dataSource: sourceMeta({
+        provider: 'NONE',
+        degraded: true,
+        reason: `Worker offline (${workerStatus.lastSeenSeconds ?? '-'}s) and no Yahoo/daily fallback data`,
+        fallbackDelayMinutes,
+        diagnostics: {
+          primary_latency_ms: null,
+          fallback_latency_ms: null,
+          primary_error: 'Worker heartbeat timeout',
+          selected_source: 'NONE',
+          checked_at: new Date().toISOString(),
+        },
+      }),
+    };
+  }
 
   const primaryAttempt = await runAttempt(() => buildFromPrimaryTrades(input.symbol, input.timeframeWindow));
   if (primaryAttempt.payload) {
@@ -279,4 +339,109 @@ function computeSignal(upsScore: number): 'STRONG_BUY' | 'BUY' | 'NEUTRAL' | 'SE
   if (upsScore < 30) return 'STRONG_SELL';
   if (upsScore < 40) return 'SELL';
   return 'NEUTRAL';
+}
+
+async function detectWorkerOffline(): Promise<{ offline: boolean; lastSeenSeconds: number | null }> {
+  try {
+    const result = await db.query(
+      `
+        SELECT value
+        FROM config
+        WHERE key = 'worker_last_heartbeat'
+        LIMIT 1
+      `,
+    );
+
+    const raw = result.rows[0]?.value;
+    if (!raw) {
+      return { offline: true, lastSeenSeconds: null };
+    }
+
+    const heartbeatAt = new Date(raw);
+    if (Number.isNaN(heartbeatAt.getTime())) {
+      return { offline: true, lastSeenSeconds: null };
+    }
+
+    const lastSeenSeconds = Math.max(0, Math.floor((Date.now() - heartbeatAt.getTime()) / 1000));
+    return { offline: lastSeenSeconds > 60, lastSeenSeconds };
+  } catch {
+    return { offline: true, lastSeenSeconds: null };
+  }
+}
+
+async function buildFromYahooQuote(symbol: string): Promise<MarketIntelPayload | null> {
+  const yahooSymbol = symbol.toUpperCase().endsWith('.JK') ? symbol.toUpperCase() : `${symbol.toUpperCase()}.JK`;
+  const response = await fetch(
+    `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSymbol)}?range=5d&interval=5m`,
+    { cache: 'no-store' },
+  );
+  if (!response.ok) {
+    return null;
+  }
+
+  const body = (await response.json()) as {
+    chart?: {
+      result?: Array<{
+        indicators?: {
+          quote?: Array<{
+            close?: Array<number | null>;
+            high?: Array<number | null>;
+            low?: Array<number | null>;
+            volume?: Array<number | null>;
+          }>;
+        };
+      }>;
+    };
+  };
+
+  const quote = body?.chart?.result?.[0]?.indicators?.quote?.[0];
+  const closes = (quote?.close || []).filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
+  const highs = (quote?.high || []).filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
+  const lows = (quote?.low || []).filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
+  const volumes = (quote?.volume || []).filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
+
+  if (closes.length < 2) {
+    return null;
+  }
+
+  const latestClose = closes[closes.length - 1];
+  const firstClose = closes[0];
+  const trendPct = firstClose > 0 ? ((latestClose - firstClose) / firstClose) * 100 : 0;
+  const avgVolume = volumes.length > 0 ? volumes.reduce((sum, value) => sum + value, 0) / volumes.length : 1;
+
+  const bullishBias = Math.max(0, Math.min(1, 0.5 + trendPct / 20));
+  const hakaVolume = avgVolume * bullishBias;
+  const hakiVolume = avgVolume * (1 - bullishBias);
+  const normalVolume = Math.max(0, avgVolume - hakaVolume - hakiVolume);
+
+  const highMax = highs.length > 0 ? Math.max(...highs) : latestClose;
+  const lowMin = lows.length > 0 ? Math.min(...lows) : latestClose;
+  const priceRange = Math.max(0, highMax - lowMin);
+  const volatilityPct = latestClose > 0 ? (priceRange / latestClose) * 100 : 0;
+
+  const metrics: MarketIntelMetrics = {
+    haka_volume: hakaVolume,
+    haki_volume: hakiVolume,
+    normal_volume: normalVolume,
+    total_volume: Math.max(1, avgVolume),
+    haka_ratio: avgVolume > 0 ? (hakaVolume / avgVolume) * 100 : 50,
+    haki_ratio: avgVolume > 0 ? (hakiVolume / avgVolume) * 100 : 50,
+    pressure_index: trendPct,
+    haka_count: Math.round(10 * bullishBias),
+    haki_count: Math.round(10 * (1 - bullishBias)),
+  };
+
+  const upsScore = computeUps(metrics);
+  const signal = computeSignal(upsScore);
+
+  return {
+    metrics,
+    volatility: {
+      percentage: volatilityPct,
+      range: priceRange,
+      classification: classifyVolatility(volatilityPct),
+    },
+    upsScore,
+    signal,
+  };
 }

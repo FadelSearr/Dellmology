@@ -2,6 +2,7 @@ export type SourceProvider =
   | 'PRIMARY_DB'
   | 'PRIMARY_TRADES'
   | 'SUPABASE'
+  | 'FALLBACK_YAHOO'
   | 'FALLBACK_DAILY_PRICES'
   | 'FALLBACK_EMPTY'
   | 'NONE';
