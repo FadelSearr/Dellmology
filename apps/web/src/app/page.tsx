@@ -3461,6 +3461,15 @@ function BottomPanel({
           <button
             onClick={onResetDeadman}
             disabled={actionState.busy || deadmanResetCooldown > 0 || riskConfigLocked}
+            title={
+              actionState.busy
+                ? 'Reset blocked: action in progress'
+                : deadmanResetCooldown > 0
+                  ? `Reset blocked: rate-limit cooldown ${deadmanResetCooldown}s`
+                  : riskConfigLocked
+                    ? 'Reset blocked: runtime risk config locked'
+                    : 'Reset deadman lock and refresh heartbeat guard'
+            }
             className="flex items-center justify-center space-x-2 bg-amber-600/20 hover:bg-amber-600/30 disabled:opacity-50 text-amber-300 text-xs font-bold py-2 rounded transition-colors border border-amber-500/30"
           >
             <RefreshCw className="w-3.5 h-3.5" />
@@ -3469,6 +3478,15 @@ function BottomPanel({
           <button
             onClick={onResetCoolingOff}
             disabled={actionState.busy || !coolingOff.active || riskConfigLocked}
+            title={
+              actionState.busy
+                ? 'Reset blocked: action in progress'
+                : !coolingOff.active
+                  ? 'Reset blocked: cooling-off is not active'
+                  : riskConfigLocked
+                    ? 'Reset blocked: runtime risk config locked'
+                    : `Reset cooling-off now (${coolingRemainingLabel} remaining)`
+            }
             className="flex items-center justify-center space-x-2 bg-emerald-600/20 hover:bg-emerald-600/30 disabled:opacity-50 text-emerald-300 text-xs font-bold py-2 rounded transition-colors border border-emerald-500/30"
           >
             <RefreshCw className="w-3.5 h-3.5" />
@@ -3477,6 +3495,15 @@ function BottomPanel({
           <button
             onClick={onResetDeploymentGate}
             disabled={actionState.busy || !deploymentGate.blocked || riskConfigLocked}
+            title={
+              actionState.busy
+                ? 'Reset blocked: action in progress'
+                : !deploymentGate.blocked
+                  ? 'Reset blocked: deployment gate already pass'
+                  : riskConfigLocked
+                    ? 'Reset blocked: runtime risk config locked'
+                    : 'Reset deployment regression gate'
+            }
             className="flex items-center justify-center space-x-2 bg-rose-600/20 hover:bg-rose-600/30 disabled:opacity-50 text-rose-300 text-xs font-bold py-2 rounded transition-colors border border-rose-500/30"
           >
             <RefreshCw className="w-3.5 h-3.5" />
