@@ -2008,6 +2008,27 @@ function RightSidebar({
   const coolingTriggerLabel = coolingTriggerFromReason(coolingOff.reason, coolingOff.active);
   const topDeploymentRuleEngine =
     deploymentGate.regression?.ruleEngineHealth.find((row) => row.mismatches > 0) || deploymentGate.regression?.ruleEngineHealth[0] || null;
+  const negotiatedRows = negotiatedFeed.slice(0, 4);
+  const negotiatedSymbolBreadth = new Set(negotiatedFeed.map((item) => item.symbol)).size;
+  const negotiatedTotalNotional = negotiatedFeed.reduce((sum, item) => sum + Math.max(0, Number(item.notional) || 0), 0);
+  const negotiatedBuyNotional = negotiatedFeed.reduce((sum, item) => {
+    const tradeType = String(item.trade_type || '').toUpperCase();
+    return tradeType.includes('BUY') ? sum + Math.max(0, Number(item.notional) || 0) : sum;
+  }, 0);
+  const negotiatedSellNotional = negotiatedFeed.reduce((sum, item) => {
+    const tradeType = String(item.trade_type || '').toUpperCase();
+    return tradeType.includes('SELL') ? sum + Math.max(0, Number(item.notional) || 0) : sum;
+  }, 0);
+  const negotiatedDirectionalNotional = negotiatedBuyNotional + negotiatedSellNotional;
+  const negotiatedBuySharePct = negotiatedDirectionalNotional > 0 ? (negotiatedBuyNotional / negotiatedDirectionalNotional) * 100 : 50;
+  const negotiatedFlowLabel =
+    negotiatedDirectionalNotional <= 0
+      ? 'MIXED'
+      : negotiatedBuySharePct >= 60
+        ? 'BUY DOM'
+        : negotiatedBuySharePct <= 40
+          ? 'SELL DOM'
+          : 'BALANCED';
 
   return (
     <Card className="h-full border-l border-t-0 border-r-0 border-b-0 rounded-none w-80 flex flex-col">
@@ -2379,10 +2400,28 @@ function RightSidebar({
       <div className="h-32 bg-slate-900 flex flex-col">
         <div className="px-3 py-2 flex justify-between items-center border-b border-slate-800">
           <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Nego Market Feed</span>
-          <RefreshCw className="w-3 h-3 text-slate-600" />
+          <div className="flex items-center gap-2">
+            <div
+              className={cn(
+                'text-[9px] font-mono border rounded px-2 py-0.5',
+                negotiatedFlowLabel === 'BUY DOM'
+                  ? 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10'
+                  : negotiatedFlowLabel === 'SELL DOM'
+                    ? 'text-rose-300 border-rose-500/40 bg-rose-500/10'
+                    : 'text-slate-400 border-slate-700 bg-slate-800/40',
+              )}
+              title={`Buy ${negotiatedBuySharePct.toFixed(1)}% | Sell ${(100 - negotiatedBuySharePct).toFixed(1)}%`}
+            >
+              {negotiatedFlowLabel}
+            </div>
+            <div className="text-[9px] font-mono text-slate-500" title={`Symbols ${negotiatedSymbolBreadth} | Total ${formatCompactIDR(negotiatedTotalNotional)}`}>
+              {`SYM ${negotiatedSymbolBreadth} · ${formatCompactIDR(negotiatedTotalNotional)}`}
+            </div>
+            <RefreshCw className="w-3 h-3 text-slate-600" />
+          </div>
         </div>
         <div className="flex-1 overflow-y-auto p-2 space-y-2">
-          {(negotiatedFeed.length > 0 ? negotiatedFeed.slice(0, 2) : []).map((item, idx) => (
+          {negotiatedRows.map((item, idx) => (
             <div
               key={`${item.symbol}-${item.trade_type}-${idx}`}
               className={cn('text-[10px] flex justify-between text-slate-400 pl-2 py-1', idx === 0 ? 'border-l-2 border-purple-500 bg-purple-500/5' : 'border-l-2 border-slate-700')}
@@ -2394,6 +2433,11 @@ function RightSidebar({
               <span className="text-slate-600">{Math.round(item.volume).toLocaleString('id-ID')} lot</span>
             </div>
           ))}
+          {negotiatedFeed.length > 0 ? (
+            <div className="text-[9px] text-slate-500 font-mono px-2 py-1 border-t border-slate-800/80">
+              {`Buy ${formatCompactIDR(negotiatedBuyNotional)} | Sell ${formatCompactIDR(negotiatedSellNotional)} | Dominance ${negotiatedBuySharePct.toFixed(1)}%`}
+            </div>
+          ) : null}
           {negotiatedFeed.length === 0 ? <div className="text-[10px] text-slate-600 px-2 py-1">No NEGO/CROSS activity</div> : null}
         </div>
       </div>
