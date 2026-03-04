@@ -13,9 +13,11 @@ import { GET as daytradeGet } from '@/app/api/screener/daytrade/route';
 import { POST as deploymentGatePost } from '@/app/api/system-control/deployment-gate/route';
 import { POST as coolingOffPost } from '@/app/api/system-control/cooling-off/route';
 import { POST as deadmanPost } from '@/app/api/system-control/deadman/route';
+import { POST as systemControlPost } from '@/app/api/system-control/route';
 import { POST as workerResetPost } from '@/app/api/system-control/worker-reset/route';
 import { POST as telegramAlertPost } from '@/app/api/telegram-alert/route';
 import { POST as updateTokenPost } from '@/app/api/update-token/route';
+import { POST as narrativePost } from '@/app/api/narrative/route';
 import { verifyRuntimeConfigAuditChain } from '@/lib/security/immutableAudit';
 import { readCoolingOffLockState } from '@/lib/security/coolingOff';
 
@@ -242,6 +244,59 @@ describe('Guardrail lock response consistency', () => {
         checked_rows: 10,
         hash_mismatches: 3,
         linkage_mismatches: 1,
+      },
+    });
+  });
+
+  it('returns 423 immutable-audit lock payload for system-control route', async () => {
+    const mockedVerify = verifyRuntimeConfigAuditChain as jest.MockedFunction<typeof verifyRuntimeConfigAuditChain>;
+    mockedVerify.mockResolvedValueOnce({
+      valid: false,
+      checkedRows: 12,
+      hashMismatches: 4,
+      linkageMismatches: 2,
+    });
+
+    const req = {
+      json: async () => ({ is_system_active: false }),
+    } as unknown as Request;
+
+    const response = await systemControlPost(req);
+    const body = await response.json();
+
+    expect(response.status).toBe(423);
+    expect(body).toEqual({
+      success: false,
+      error: 'Runtime config audit chain verification failed',
+      lock: {
+        checked_rows: 12,
+        hash_mismatches: 4,
+        linkage_mismatches: 2,
+      },
+    });
+  });
+
+  it('returns 423 cooling-off lock payload for narrative route', async () => {
+    const mockedCooling = readCoolingOffLockState as jest.MockedFunction<typeof readCoolingOffLockState>;
+    mockedCooling.mockResolvedValueOnce({
+      active: true,
+      activeUntil: '2026-03-04T12:30:00.000Z',
+      remainingSeconds: 1800,
+    });
+
+    const req = {
+      json: async () => ({ type: 'screener', data: { mode: 'daytrade' } }),
+    } as unknown as Request;
+
+    const response = await narrativePost(req);
+    const body = await response.json();
+
+    expect(response.status).toBe(423);
+    expect(body).toEqual({
+      error: 'Cooling-off active: recommendation temporarily locked',
+      lock: {
+        active_until: '2026-03-04T12:30:00.000Z',
+        remaining_seconds: 1800,
       },
     });
   });
