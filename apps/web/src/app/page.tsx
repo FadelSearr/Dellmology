@@ -2316,6 +2316,34 @@ function LeftSidebar({
                   </span>
                 </div>
                 <div className="text-[10px] text-slate-500 mt-0.5 font-mono">{item.status}</div>
+                <div className="mt-1 flex items-center gap-1 text-[9px] font-mono">
+                  <span
+                    className={cn(
+                      'px-1 py-0.5 rounded border',
+                      item.score >= 65
+                        ? 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10'
+                        : item.score >= 45
+                          ? 'text-amber-300 border-amber-500/40 bg-amber-500/10'
+                          : 'text-rose-300 border-rose-500/40 bg-rose-500/10',
+                    )}
+                    title="Mini regime proxy from watchlist UPS"
+                  >
+                    {`REG ${item.score >= 65 ? 'UP' : item.score >= 45 ? 'SIDE' : 'DOWN'}`}
+                  </span>
+                  <span
+                    className={cn(
+                      'px-1 py-0.5 rounded border',
+                      item.score >= 80 && item.change.startsWith('+')
+                        ? 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10'
+                        : item.score < 45 || item.change.startsWith('-')
+                          ? 'text-rose-300 border-rose-500/40 bg-rose-500/10'
+                          : 'text-amber-300 border-amber-500/40 bg-amber-500/10',
+                    )}
+                    title="Quick risk flag from UPS + intraday change"
+                  >
+                    {`RISK ${item.score >= 80 && item.change.startsWith('+') ? 'LOW' : item.score < 45 || item.change.startsWith('-') ? 'HIGH' : 'MED'}`}
+                  </span>
+                </div>
               </div>
               <div className="flex flex-col items-end">
                 <span className="text-xs font-mono text-slate-300">{item.price.toLocaleString()}</span>
