@@ -205,6 +205,7 @@ interface AdapterHealthState {
   selectedSource: string;
   primaryLatencyMs: number | null;
   fallbackLatencyMs: number | null;
+  fallbackDelayMinutes: number | null;
   primaryError: string | null;
   checkedAt: string | null;
   degraded: boolean;
@@ -1418,7 +1419,7 @@ function TopNavigation({
             'text-[10px] font-mono border rounded px-2 py-1',
             marketIntelAdapter.degraded ? 'text-amber-300 border-amber-500/40 bg-amber-500/10' : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10',
           )}
-          title={`SRC ${marketIntelAdapter.selectedSource} | P ${marketIntelAdapter.primaryLatencyMs ?? '-'}ms | F ${marketIntelAdapter.fallbackLatencyMs ?? '-'}ms${marketIntelAdapter.primaryError ? ` | ${marketIntelAdapter.primaryError}` : ''}`}
+          title={`SRC ${marketIntelAdapter.selectedSource} | P ${marketIntelAdapter.primaryLatencyMs ?? '-'}ms | F ${marketIntelAdapter.fallbackLatencyMs ?? '-'}ms | Delay ${marketIntelAdapter.fallbackDelayMinutes ?? '-'}m${marketIntelAdapter.primaryError ? ` | ${marketIntelAdapter.primaryError}` : ''}`}
         >
           {`ADAPTER ${marketIntelAdapter.degraded ? 'DEGRADED' : 'OK'}`}
         </div>
@@ -2268,7 +2269,7 @@ function RightSidebar({
             {marketIntelAdapter.degraded ? 'Market-Intel Adapter Degraded' : 'Market-Intel Adapter Healthy'}
           </div>
           <div className="text-[9px] text-slate-500 font-mono mt-1">
-            {`SRC ${marketIntelAdapter.selectedSource} | P ${marketIntelAdapter.primaryLatencyMs ?? '-'}ms | F ${marketIntelAdapter.fallbackLatencyMs ?? '-'}ms`}
+            {`SRC ${marketIntelAdapter.selectedSource} | P ${marketIntelAdapter.primaryLatencyMs ?? '-'}ms | F ${marketIntelAdapter.fallbackLatencyMs ?? '-'}ms | Delay ${marketIntelAdapter.fallbackDelayMinutes ?? '-'}m`}
           </div>
           {marketIntelAdapter.primaryError ? <div className="text-[9px] text-slate-500 font-mono mt-1">{marketIntelAdapter.primaryError}</div> : null}
           {sourceHealth.slice(0, 4).map((item) => (
@@ -2282,7 +2283,7 @@ function RightSidebar({
                 {item.degraded ? `${item.name} Degraded` : `${item.name} Healthy`}
               </div>
               <div className="text-[9px] text-slate-500 font-mono mt-1">
-                {`SRC ${item.selectedSource} | P ${item.primaryLatencyMs ?? '-'}ms | F ${item.fallbackLatencyMs ?? '-'}ms`}
+                {`SRC ${item.selectedSource} | P ${item.primaryLatencyMs ?? '-'}ms | F ${item.fallbackLatencyMs ?? '-'}ms | Delay ${item.fallbackDelayMinutes ?? '-'}m`}
               </div>
               {item.primaryError ? <div className="text-[9px] text-slate-500 font-mono mt-1">{item.primaryError}</div> : null}
             </div>
@@ -2932,6 +2933,7 @@ export default function Home() {
     selectedSource: 'UNKNOWN',
     primaryLatencyMs: null,
     fallbackLatencyMs: null,
+    fallbackDelayMinutes: null,
     primaryError: null,
     checkedAt: null,
     degraded: false,
@@ -3441,6 +3443,7 @@ export default function Home() {
         selectedSource: diagnostics?.selected_source || source?.provider || 'UNKNOWN',
         primaryLatencyMs: typeof diagnostics?.primary_latency_ms === 'number' ? diagnostics.primary_latency_ms : null,
         fallbackLatencyMs: typeof diagnostics?.fallback_latency_ms === 'number' ? diagnostics.fallback_latency_ms : null,
+        fallbackDelayMinutes: typeof source?.fallback_delay_minutes === 'number' ? source.fallback_delay_minutes : null,
         primaryError: diagnostics?.primary_error || fallbackReason || null,
         checkedAt: diagnostics?.checked_at || null,
         degraded: Boolean(source?.degraded || fallbackReason),
@@ -3452,6 +3455,7 @@ export default function Home() {
       selectedSource: marketIntelHealth.selectedSource,
       primaryLatencyMs: marketIntelHealth.primaryLatencyMs,
       fallbackLatencyMs: marketIntelHealth.fallbackLatencyMs,
+      fallbackDelayMinutes: marketIntelHealth.fallbackDelayMinutes,
       primaryError: marketIntelHealth.primaryError,
       checkedAt: marketIntelHealth.checkedAt,
       degraded: marketIntelHealth.degraded,
