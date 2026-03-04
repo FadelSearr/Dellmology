@@ -11,6 +11,8 @@ jest.mock('next/server', () => ({
 import { POST as backtestPost } from '@/app/api/backtest/route';
 import { GET as daytradeGet } from '@/app/api/screener/daytrade/route';
 import { POST as deploymentGatePost } from '@/app/api/system-control/deployment-gate/route';
+import { POST as coolingOffPost } from '@/app/api/system-control/cooling-off/route';
+import { POST as deadmanPost } from '@/app/api/system-control/deadman/route';
 import { POST as workerResetPost } from '@/app/api/system-control/worker-reset/route';
 import { POST as telegramAlertPost } from '@/app/api/telegram-alert/route';
 import { POST as updateTokenPost } from '@/app/api/update-token/route';
@@ -187,6 +189,58 @@ describe('Guardrail lock response consistency', () => {
       lock: {
         checked_rows: 8,
         hash_mismatches: 1,
+        linkage_mismatches: 1,
+      },
+    });
+  });
+
+  it('returns 423 immutable-audit lock payload for deadman route', async () => {
+    const mockedVerify = verifyRuntimeConfigAuditChain as jest.MockedFunction<typeof verifyRuntimeConfigAuditChain>;
+    mockedVerify.mockResolvedValueOnce({
+      valid: false,
+      checkedRows: 6,
+      hashMismatches: 1,
+      linkageMismatches: 0,
+    });
+
+    const response = await deadmanPost();
+    const body = await response.json();
+
+    expect(response.status).toBe(423);
+    expect(body).toEqual({
+      success: false,
+      error: 'Runtime config audit chain verification failed',
+      lock: {
+        checked_rows: 6,
+        hash_mismatches: 1,
+        linkage_mismatches: 0,
+      },
+    });
+  });
+
+  it('returns 423 immutable-audit lock payload for cooling-off route', async () => {
+    const mockedVerify = verifyRuntimeConfigAuditChain as jest.MockedFunction<typeof verifyRuntimeConfigAuditChain>;
+    mockedVerify.mockResolvedValueOnce({
+      valid: false,
+      checkedRows: 10,
+      hashMismatches: 3,
+      linkageMismatches: 1,
+    });
+
+    const req = {
+      json: async () => ({ action: 'evaluate', max_drawdown_pct: 6 }),
+    } as unknown as Request;
+
+    const response = await coolingOffPost(req);
+    const body = await response.json();
+
+    expect(response.status).toBe(423);
+    expect(body).toEqual({
+      success: false,
+      error: 'Runtime config audit chain verification failed',
+      lock: {
+        checked_rows: 10,
+        hash_mismatches: 3,
         linkage_mismatches: 1,
       },
     });
