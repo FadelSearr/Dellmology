@@ -151,6 +151,25 @@ interface ModelConfidenceTracking {
   reason: string | null;
 }
 
+interface RuleEnginePostmortemRow {
+  rule_engine_mode: string;
+  rule_engine_version: string;
+  rule_engine_source: string;
+  total_signals: number;
+  evaluated_signals: number;
+  hits: number;
+  misses: number;
+  pending: number;
+  accuracy_pct: number;
+}
+
+interface RuleEnginePostmortemState {
+  rows: RuleEnginePostmortemRow[];
+  generatedAt: string | null;
+  summaryAccuracyPct: number;
+  summaryEvaluatedSignals: number;
+}
+
 interface PredictionResponse {
   success?: boolean;
   data?: {
@@ -1690,6 +1709,7 @@ function BottomPanel({
   adversarialNarrative,
   confidence,
   confidenceTracking,
+  ruleEnginePostmortem,
   latencyMs,
   activeSymbol,
   upsScore,
@@ -1740,6 +1760,7 @@ function BottomPanel({
   adversarialNarrative: AdversarialNarrative;
   confidence: ModelConfidenceResponse | null;
   confidenceTracking: ModelConfidenceTracking;
+  ruleEnginePostmortem: RuleEnginePostmortemState;
   latencyMs: number;
   activeSymbol: string;
   upsScore: number;
@@ -1788,6 +1809,8 @@ function BottomPanel({
 }) {
   const label = confidenceTracking.warning ? 'LOW' : confidence?.confidence_label || 'MEDIUM';
   const accuracy = confidenceTracking.evaluated > 0 ? confidenceTracking.accuracyPct : Number(confidence?.accuracy_pct || 0);
+  const postmortemCurrentRule =
+    ruleEnginePostmortem.rows.find((row) => row.rule_engine_version === runtimeRuleEngineVersion) || ruleEnginePostmortem.rows[0] || null;
   const coolingTriggerLabel = coolingTriggerFromReason(coolingOff.reason, coolingOff.active);
   const coolingLastTriggerLabel = coolingOff.lastBreachAt ? new Date(coolingOff.lastBreachAt).toLocaleString('id-ID') : '-';
   const engineHeartbeatLocked = engineHeartbeat.checkedAt !== null && !engineHeartbeat.online;
@@ -1861,6 +1884,23 @@ function BottomPanel({
               {`Hist Acc (${confidenceTracking.windowSize}): ${confidenceTracking.evaluated > 0 ? confidenceTracking.accuracyPct.toFixed(1) : '-'}% | W/L ${confidenceTracking.wins}/${confidenceTracking.losses}`}
             </div>
             {confidenceTracking.warning ? <div className="text-[9px] text-rose-400 font-bold mt-1">{confidenceTracking.reason}</div> : null}
+            <div className="mt-2 border border-slate-800 rounded px-2 py-1 bg-slate-950/60 text-[9px] font-mono text-slate-400">
+              <div className="text-slate-500 uppercase tracking-wider">Rule Engine Post-Mortem</div>
+              {postmortemCurrentRule ? (
+                <>
+                  <div className="mt-1 text-cyan-400">
+                    {`${postmortemCurrentRule.rule_engine_mode}:${postmortemCurrentRule.rule_engine_version}`}
+                  </div>
+                  <div>{`Eval: ${postmortemCurrentRule.evaluated_signals} | Hit/Miss: ${postmortemCurrentRule.hits}/${postmortemCurrentRule.misses}`}</div>
+                  <div>{`Accuracy: ${postmortemCurrentRule.accuracy_pct.toFixed(1)}% | Pending: ${postmortemCurrentRule.pending}`}</div>
+                </>
+              ) : (
+                <div className="mt-1 text-slate-500">Belum ada data post-mortem yang tervalidasi.</div>
+              )}
+              <div className="mt-1 text-slate-500">
+                {`Global Eval: ${ruleEnginePostmortem.summaryEvaluatedSignals} | Global Acc: ${ruleEnginePostmortem.summaryAccuracyPct.toFixed(1)}%`}
+              </div>
+            </div>
             <div className="mt-2 border border-slate-800 rounded px-2 py-1 bg-slate-950/60 text-[9px] font-mono text-slate-400">
               <div>{`Daily Vol: ${liquidityGuard.dailyVolumeLots.toLocaleString()} lots`}</div>
               <div>{`Participation Cap: ${(liquidityGuard.capPct * 100).toFixed(1)}%`}</div>
@@ -2171,6 +2211,12 @@ export default function Home() {
     warning: false,
     reason: null,
   });
+  const [ruleEnginePostmortem, setRuleEnginePostmortem] = useState<RuleEnginePostmortemState>({
+    rows: [],
+    generatedAt: null,
+    summaryAccuracyPct: 0,
+    summaryEvaluatedSignals: 0,
+  });
   const [prediction, setPrediction] = useState<PredictionResponse | null>(null);
   const [narrative, setNarrative] = useState('System: Waiting for market stream...');
   const [adversarialNarrative, setAdversarialNarrative] = useState<AdversarialNarrative>({
@@ -2475,6 +2521,9 @@ export default function Home() {
       fetch(`/api/negotiated-monitor?symbol=${activeSymbol}&limit=25`).then((response) => (response.ok ? response.json() : null)).catch(() => null),
       fetch(`/api/exit-whale?symbol=${activeSymbol}&days=7`).then((response) => (response.ok ? response.json() : null)).catch(() => null),
       fetch('/api/golden-record').then((response) => (response.ok ? response.json() : null)).catch(() => null),
+      fetch(`/api/signal-snapshots/postmortem?symbol=${activeSymbol}&top=3&window=200&minEvaluated=1`)
+        .then((response) => (response.ok ? response.json() : null))
+        .catch(() => null),
     ]);
 
     const marketIntel = requests[0] as (MarketIntelResponse & { data_source?: SourceAdapterMetaClient }) | null;
@@ -2640,6 +2689,21 @@ export default function Home() {
       failed_symbols?: string[];
       checked_at?: string;
     } | null;
+    const postmortem = requests[22] as {
+      rows?: RuleEnginePostmortemRow[];
+      summary?: {
+        accuracy_pct?: number;
+        evaluated_signals?: number;
+      };
+      generated_at?: string;
+    } | null;
+
+    setRuleEnginePostmortem({
+      rows: Array.isArray(postmortem?.rows) ? postmortem.rows.slice(0, 3) : [],
+      generatedAt: postmortem?.generated_at || null,
+      summaryAccuracyPct: Number(postmortem?.summary?.accuracy_pct || 0),
+      summaryEvaluatedSignals: Number(postmortem?.summary?.evaluated_signals || 0),
+    });
 
     const nextDegradedSources: string[] = [];
     const trackDegraded = (name: string, source?: SourceAdapterMetaClient | null, fallbackReason?: string | null) => {
@@ -3486,7 +3550,7 @@ export default function Home() {
 
   const liquidityGuard: LiquidityGuard = calculateLiquidityGuard({
     marketData,
-    marketTotalVolume,
+    marketTotalVolume: marketTotalVolume ?? undefined,
     currentPrice,
     killSwitchActive,
     runtimeParticipationCapNormalPct,
@@ -4734,6 +4798,7 @@ export default function Home() {
           adversarialNarrative={adversarialNarrative}
           confidence={modelConfidence}
           confidenceTracking={confidenceTracking}
+          ruleEnginePostmortem={ruleEnginePostmortem}
           latencyMs={latencyMs}
           activeSymbol={activeSymbol}
           upsScore={upsScore}
