@@ -2142,7 +2142,7 @@ function BottomPanel({
           </button>
           <button
             onClick={onResetDeadman}
-            disabled={actionState.busy || deadmanResetCooldown > 0}
+            disabled={actionState.busy || deadmanResetCooldown > 0 || riskConfigLocked}
             className="flex items-center justify-center space-x-2 bg-amber-600/20 hover:bg-amber-600/30 disabled:opacity-50 text-amber-300 text-xs font-bold py-2 rounded transition-colors border border-amber-500/30"
           >
             <RefreshCw className="w-3.5 h-3.5" />
@@ -2150,7 +2150,7 @@ function BottomPanel({
           </button>
           <button
             onClick={onResetCoolingOff}
-            disabled={actionState.busy || !coolingOff.active}
+            disabled={actionState.busy || !coolingOff.active || riskConfigLocked}
             className="flex items-center justify-center space-x-2 bg-emerald-600/20 hover:bg-emerald-600/30 disabled:opacity-50 text-emerald-300 text-xs font-bold py-2 rounded transition-colors border border-emerald-500/30"
           >
             <RefreshCw className="w-3.5 h-3.5" />
@@ -4719,6 +4719,10 @@ export default function Home() {
         method: 'POST',
       });
       const body = (await response.json()) as { success?: boolean; error?: string; retry_after_seconds?: number };
+      if (response.status === 423) {
+        setActionState({ busy: false, message: `Deadman reset locked: ${body.error || 'immutable audit chain lock active'}` });
+        return;
+      }
       if (!response.ok || !body.success) {
         if (response.status === 429 && typeof body.retry_after_seconds === 'number') {
           setDeadmanResetCooldown(Math.max(1, Math.floor(body.retry_after_seconds)));
@@ -4762,6 +4766,11 @@ export default function Home() {
         last_breach_at?: string | null;
         reason?: string;
       };
+
+      if (response.status === 423) {
+        setActionState({ busy: false, message: `Cooling-off reset locked: ${body.error || 'immutable audit chain lock active'}` });
+        return;
+      }
 
       if (!response.ok || !body.success) {
         throw new Error(body.error || 'Cooling-off reset failed');
