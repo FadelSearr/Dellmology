@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { verifyRuntimeConfigAuditChain } from '@/lib/security/immutableAudit';
 
 export const dynamic = 'force-dynamic';
 
@@ -45,6 +46,21 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
+    const immutableAudit = await verifyRuntimeConfigAuditChain();
+    if (!immutableAudit.valid) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Immutable audit chain lock active; worker reset blocked',
+          lock: true,
+          checked_rows: immutableAudit.checkedRows,
+          hash_mismatches: immutableAudit.hashMismatches,
+          linkage_mismatches: immutableAudit.linkageMismatches,
+        },
+        { status: 423 },
+      );
+    }
+
     const body = (await request.json().catch(() => ({}))) as {
       action?: Action;
       reason?: string;
