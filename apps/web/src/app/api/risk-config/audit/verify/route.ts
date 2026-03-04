@@ -3,6 +3,10 @@ import { createHash } from 'crypto';
 import { db } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
+const AUDIT_ALERT_COOLDOWN_MS = Math.min(
+  60 * 60 * 1000,
+  Math.max(30 * 1000, Number(process.env.IMMUTABLE_AUDIT_ALERT_COOLDOWN_MS || 10 * 60 * 1000)),
+);
 
 interface AuditRow {
   id: number;
@@ -26,6 +30,18 @@ interface LockEventRow {
   linkage_mismatches: number;
   note: string | null;
   created_at: string;
+}
+
+interface TransitionAlertResult {
+  enabled: boolean;
+  allowed: boolean;
+  event_type: 'LOCK' | 'UNLOCK';
+  chain_key: string;
+  cooldown_ms: number;
+  remaining_ms: number;
+  dispatched: boolean;
+  dispatch_error: string | null;
+  checked_at: string;
 }
 
 export async function GET(request: Request) {
@@ -173,6 +189,17 @@ export async function GET(request: Request) {
       [chainKey],
     );
 
+    let transitionAlert: TransitionAlertResult | null = null;
+    if (transition.changed && transition.event_type) {
+      transitionAlert = await emitTransitionAlert({
+        chainKey,
+        eventType: transition.event_type,
+        checkedRows: rows.length,
+        hashMismatches,
+        linkageMismatches,
+      });
+    }
+
     return NextResponse.json({
       success: true,
       key,
@@ -182,6 +209,7 @@ export async function GET(request: Request) {
       linkage_mismatches: linkageMismatches,
       failures: failures.slice(0, 20),
       transition,
+      transition_alert: transitionAlert,
       recent_events: recentEventsResult.rows as LockEventRow[],
       verified_at: new Date().toISOString(),
     });
@@ -263,4 +291,175 @@ async function ensureConfigChainStateTables() {
 
 function sha256(input: string): string {
   return createHash('sha256').update(input).digest('hex');
+}
+
+async function emitTransitionAlert({
+  chainKey,
+  eventType,
+  checkedRows,
+  hashMismatches,
+  linkageMismatches,
+}: {
+  chainKey: string;
+  eventType: 'LOCK' | 'UNLOCK';
+  checkedRows: number;
+  hashMismatches: number;
+  linkageMismatches: number;
+}): Promise<TransitionAlertResult> {
+  const alertsEnabled = process.env.ENABLE_IMMUTABLE_AUDIT_ALERTS !== 'false';
+
+  const gate = await evaluateAlertGate({
+    chainKey,
+    eventType,
+    cooldownMs: AUDIT_ALERT_COOLDOWN_MS,
+  });
+
+  if (!alertsEnabled || !gate.allowed) {
+    return {
+      enabled: alertsEnabled,
+      allowed: gate.allowed,
+      event_type: eventType,
+      chain_key: chainKey,
+      cooldown_ms: AUDIT_ALERT_COOLDOWN_MS,
+      remaining_ms: gate.remainingMs,
+      dispatched: false,
+      dispatch_error: null,
+      checked_at: new Date().toISOString(),
+    };
+  }
+
+  const actionText = eventType === 'LOCK' ? 'BROKEN' : 'RECOVERED';
+  const titleText = eventType === 'LOCK' ? 'IMMUTABLE_AUDIT_LOCK' : 'IMMUTABLE_AUDIT_RECOVERED';
+
+  try {
+    const ML_ENGINE_URL = process.env.ML_ENGINE_URL || 'http://localhost:8001';
+    const response = await fetch(`${ML_ENGINE_URL}/telegram/alert`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.ML_ENGINE_KEY || ''}`,
+      },
+      body: JSON.stringify({
+        type: 'market',
+        symbol: 'SYSTEM',
+        data: {
+          event: titleText,
+          status: actionText,
+          chain_key: chainKey,
+          checked_rows: checkedRows,
+          hash_mismatches: hashMismatches,
+          linkage_mismatches: linkageMismatches,
+          timestamp: new Date().toISOString(),
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`ML Engine alert failed with status ${response.status}`);
+    }
+
+    return {
+      enabled: true,
+      allowed: true,
+      event_type: eventType,
+      chain_key: chainKey,
+      cooldown_ms: AUDIT_ALERT_COOLDOWN_MS,
+      remaining_ms: 0,
+      dispatched: true,
+      dispatch_error: null,
+      checked_at: new Date().toISOString(),
+    };
+  } catch (error) {
+    return {
+      enabled: true,
+      allowed: true,
+      event_type: eventType,
+      chain_key: chainKey,
+      cooldown_ms: AUDIT_ALERT_COOLDOWN_MS,
+      remaining_ms: 0,
+      dispatched: false,
+      dispatch_error: error instanceof Error ? error.message : 'Failed to dispatch immutable audit alert',
+      checked_at: new Date().toISOString(),
+    };
+  }
+}
+
+async function evaluateAlertGate({
+  chainKey,
+  eventType,
+  cooldownMs,
+}: {
+  chainKey: string;
+  eventType: 'LOCK' | 'UNLOCK';
+  cooldownMs: number;
+}): Promise<{ allowed: boolean; remainingMs: number }> {
+  let client;
+  try {
+    client = await db.connect();
+    await client.query('BEGIN');
+
+    await client.query(
+      `
+        INSERT INTO runtime_config_chain_state (
+          chain_key,
+          is_valid,
+          checked_rows,
+          hash_mismatches,
+          linkage_mismatches,
+          last_verified_at,
+          updated_at
+        ) VALUES ($1, TRUE, 0, 0, 0, NOW(), NOW())
+        ON CONFLICT (chain_key) DO NOTHING
+      `,
+      [chainKey],
+    );
+
+    const state = await client.query(
+      `
+        SELECT last_lock_alert_at, last_unlock_alert_at
+        FROM runtime_config_chain_state
+        WHERE chain_key = $1
+        LIMIT 1
+        FOR UPDATE
+      `,
+      [chainKey],
+    );
+
+    const row = state.rows[0] as { last_lock_alert_at?: string | null; last_unlock_alert_at?: string | null } | undefined;
+    const lastAlertAtRaw = eventType === 'LOCK' ? row?.last_lock_alert_at || null : row?.last_unlock_alert_at || null;
+    const nowMs = Date.now();
+    const lastMs = lastAlertAtRaw ? new Date(lastAlertAtRaw).getTime() : 0;
+    const elapsedMs = lastMs > 0 ? Math.max(0, nowMs - lastMs) : Number.POSITIVE_INFINITY;
+    const allowed = elapsedMs >= cooldownMs;
+    const remainingMs = allowed ? 0 : Math.max(0, cooldownMs - elapsedMs);
+
+    if (allowed) {
+      const updateColumn = eventType === 'LOCK' ? 'last_lock_alert_at' : 'last_unlock_alert_at';
+      await client.query(
+        `
+          UPDATE runtime_config_chain_state
+          SET ${updateColumn} = NOW(), updated_at = NOW()
+          WHERE chain_key = $1
+        `,
+        [chainKey],
+      );
+    }
+
+    await client.query('COMMIT');
+    return { allowed, remainingMs };
+  } catch (error) {
+    if (client) {
+      try {
+        await client.query('ROLLBACK');
+      } catch {
+        // noop
+      }
+    }
+    console.error('evaluate immutable audit alert gate failed:', error);
+    return { allowed: false, remainingMs: cooldownMs };
+  } finally {
+    if (client) {
+      client.release();
+    }
+  }
 }

@@ -26,6 +26,13 @@ SESSION_TOKEN_AES_KEY=replace-with-strong-random-secret
 
 The `/api/update-token` and `/api/session` flow now requires encrypted token format and rejects legacy plaintext token rows.
 
+Optional anti-tampering alert settings for immutable audit transitions:
+
+```bash
+ENABLE_IMMUTABLE_AUDIT_ALERTS=true
+IMMUTABLE_AUDIT_ALERT_COOLDOWN_MS=600000
+```
+
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
