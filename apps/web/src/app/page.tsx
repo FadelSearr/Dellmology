@@ -452,6 +452,9 @@ interface DataSanityState {
   issueCount: number;
   maxJumpPct: number;
   checkedAt: string | null;
+  lockActive: boolean;
+  lockUntil: string | null;
+  lockSymbols: string[];
 }
 
 interface ChampionChallengerState {
@@ -1837,6 +1840,7 @@ function BottomPanel({
   lastRiskAudit,
   staleAudit,
   coolingOff,
+  dataSanity,
   modelConsensus,
   deploymentGate,
   systemKillSwitch,
@@ -1885,6 +1889,7 @@ function BottomPanel({
   lastRiskAudit: RiskAuditInfo;
   staleAudit: boolean;
   coolingOff: CoolingOffState;
+  dataSanity: DataSanityState;
   modelConsensus: ModelConsensus;
   deploymentGate: DeploymentGateState;
   systemKillSwitch: SystemKillSwitchState;
@@ -2105,7 +2110,7 @@ function BottomPanel({
         <div className="p-3 grid grid-cols-1 gap-2">
           <button
             onClick={onSendTelegram}
-            disabled={actionState.busy || coolingOff.active || !modelConsensus.pass || systemKillSwitch.active || engineHeartbeatLocked}
+            disabled={actionState.busy || coolingOff.active || !modelConsensus.pass || systemKillSwitch.active || engineHeartbeatLocked || dataSanity.warning}
             className="flex items-center justify-center space-x-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-xs font-bold py-2 rounded transition-colors"
           >
             <Send className="w-3.5 h-3.5" />
@@ -2113,7 +2118,7 @@ function BottomPanel({
           </button>
           <button
             onClick={onRunBacktest}
-            disabled={actionState.busy || coolingOff.active || deploymentGate.blocked || systemKillSwitch.active || engineHeartbeatLocked}
+            disabled={actionState.busy || coolingOff.active || deploymentGate.blocked || systemKillSwitch.active || engineHeartbeatLocked || dataSanity.warning}
             className="flex items-center justify-center space-x-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-200 text-xs font-bold py-2 rounded transition-colors border border-slate-700"
           >
             <Clock className="w-3.5 h-3.5" />
@@ -2446,6 +2451,9 @@ export default function Home() {
     issueCount: 0,
     maxJumpPct: DATA_SANITY_MAX_JUMP_PCT,
     checkedAt: null,
+    lockActive: false,
+    lockUntil: null,
+    lockSymbols: [],
   });
   const [championChallenger, setChampionChallenger] = useState<ChampionChallengerState>({
     warning: false,
@@ -2628,6 +2636,13 @@ export default function Home() {
       issues?: Array<{ type?: string; detail?: string }>;
       max_jump_pct?: number;
       checked_at?: string;
+      lock_state?: {
+        active?: boolean;
+        lock_until?: string | null;
+        reason?: string | null;
+        symbols?: string[];
+        updated_at?: string | null;
+      };
     } | null;
     const championComparison = requests[15] as {
       success?: boolean;
@@ -3008,16 +3023,20 @@ export default function Home() {
     });
 
     const sanityIssueCount = Array.isArray(sanity?.issues) ? sanity?.issues.length : 0;
-    const sanityWarning = Boolean(sanity?.contaminated) || Boolean(sanity?.lock_recommended);
+    const sanityLockActive = Boolean(sanity?.lock_state?.active);
+    const sanityWarning = Boolean(sanity?.contaminated) || Boolean(sanity?.lock_recommended) || sanityLockActive;
     setDataSanity({
       warning: sanityWarning,
       reason: sanityWarning
-        ? sanity?.issues?.[0]?.detail || `Anomali data terdeteksi (${sanityIssueCount} issues).`
+        ? sanity?.lock_state?.reason || sanity?.issues?.[0]?.detail || `Anomali data terdeteksi (${sanityIssueCount} issues).`
         : null,
       checkedPoints: Number(sanity?.checked_points || 0),
       issueCount: sanityIssueCount,
       maxJumpPct: Number(sanity?.max_jump_pct || DATA_SANITY_MAX_JUMP_PCT),
-      checkedAt: sanity?.checked_at || null,
+      checkedAt: sanity?.lock_state?.updated_at || sanity?.checked_at || null,
+      lockActive: sanityLockActive,
+      lockUntil: sanity?.lock_state?.lock_until || null,
+      lockSymbols: Array.isArray(sanity?.lock_state?.symbols) ? sanity?.lock_state?.symbols : [],
     });
 
     const championAccuracy = Number(championComparison?.champion?.accuracy_pct || 0);
@@ -4463,6 +4482,14 @@ export default function Home() {
       return;
     }
 
+    if (dataSanity.warning) {
+      setActionState({
+        busy: false,
+        message: `Backtest locked: DATA CONTAMINATED (${dataSanity.reason || `${dataSanity.issueCount} issues`})`,
+      });
+      return;
+    }
+
     setActionState({ busy: true, message: 'Running backtest...' });
     try {
       const now = new Date();
@@ -4582,6 +4609,9 @@ export default function Home() {
     coolingOff.active,
     deploymentGate.blocked,
     deploymentGate.reason,
+    dataSanity.warning,
+    dataSanity.reason,
+    dataSanity.issueCount,
     runtimeCoolingOffDrawdownPct,
     runtimeCoolingOffHours,
     runtimeCoolingOffRequiredBreaches,
@@ -4815,6 +4845,7 @@ export default function Home() {
           lastRiskAudit={lastRiskAudit}
           staleAudit={staleAudit}
           coolingOff={coolingOff}
+          dataSanity={dataSanity}
           modelConsensus={modelConsensus}
           deploymentGate={deploymentGate}
           systemKillSwitch={systemKillSwitch}
