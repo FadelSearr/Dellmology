@@ -2775,6 +2775,15 @@ function RightSidebar({
           ? 'SELL DOM'
           : 'BALANCED';
   const negotiatedCombatRows = negotiatedFeed.slice(0, 2);
+  const brokerAbsNetTotal = brokers.reduce((sum, broker) => sum + Math.abs(Number(broker.net) || 0), 0);
+  const dominantBroker =
+    brokers.length > 0
+      ? brokers.reduce(
+          (best, broker) => (Math.abs(Number(broker.net) || 0) > Math.abs(Number(best.net) || 0) ? broker : best),
+          brokers[0],
+        )
+      : null;
+  const dominantBrokerSharePct = dominantBroker && brokerAbsNetTotal > 0 ? (Math.abs(Number(dominantBroker.net) || 0) / brokerAbsNetTotal) * 100 : 0;
 
   if (combatMode.active) {
     return (
@@ -2820,6 +2829,22 @@ function RightSidebar({
       <SectionHeader title="Whale & Flow Engine" icon={Database} />
 
       <div className="flex-1 flex flex-col min-h-0 border-b border-slate-800">
+        <div className="px-3 py-1.5 border-b border-slate-800 bg-slate-950/60 flex items-center justify-between text-[9px] font-mono">
+          <span className="text-slate-500">Broker Dominance</span>
+          <span
+            className={cn(
+              'px-1.5 py-0.5 rounded border',
+              dominantBrokerSharePct >= 35
+                ? 'text-rose-300 border-rose-500/40 bg-rose-500/10'
+                : dominantBrokerSharePct >= 20
+                  ? 'text-amber-300 border-amber-500/40 bg-amber-500/10'
+                  : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10',
+            )}
+            title={dominantBroker ? `${dominantBroker.broker} dominates ${dominantBrokerSharePct.toFixed(1)}% of abs net flow` : 'No broker data'}
+          >
+            {dominantBroker ? `DOM ${dominantBroker.broker} ${dominantBrokerSharePct.toFixed(0)}%` : 'DOM N/A'}
+          </span>
+        </div>
         <div className="grid grid-cols-5 gap-1 px-3 py-2 bg-slate-900 text-[10px] text-slate-500 font-bold uppercase tracking-wider border-b border-slate-800">
           <span>Broker</span>
           <span className="text-center">Type</span>
@@ -2835,6 +2860,34 @@ function RightSidebar({
                 <div className="flex flex-col">
                   <span className="font-bold text-slate-200 text-xs">{broker.broker}</span>
                   {broker.profile ? <span className="text-[9px] text-slate-500 font-mono">{broker.profile}</span> : null}
+                  <div className="mt-0.5 flex items-center gap-1 text-[8px] font-mono">
+                    <span
+                      className={cn(
+                        'px-1 py-0.5 rounded border',
+                        brokerAbsNetTotal > 0 && (Math.abs(Number(broker.net) || 0) / brokerAbsNetTotal) * 100 >= 25
+                          ? 'text-amber-300 border-amber-500/40 bg-amber-500/10'
+                          : 'text-slate-400 border-slate-700 bg-slate-800/60',
+                      )}
+                      title="Broker dominance share by absolute net flow"
+                    >
+                      {`DOM ${brokerAbsNetTotal > 0 ? ((Math.abs(Number(broker.net) || 0) / brokerAbsNetTotal) * 100).toFixed(0) : '0'}%`}
+                    </span>
+                    <span
+                      className={cn(
+                        'px-1 py-0.5 rounded border',
+                        broker.consistency >= 75
+                          ? 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10'
+                          : broker.consistency >= 55
+                            ? 'text-cyan-300 border-cyan-500/40 bg-cyan-500/10'
+                            : broker.consistency >= 35
+                              ? 'text-amber-300 border-amber-500/40 bg-amber-500/10'
+                              : 'text-rose-300 border-rose-500/40 bg-rose-500/10',
+                      )}
+                      title="Consistency tier"
+                    >
+                      {`CONS ${broker.consistency >= 75 ? 'A' : broker.consistency >= 55 ? 'B' : broker.consistency >= 35 ? 'C' : 'D'}`}
+                    </span>
+                  </div>
                 </div>
               </div>
               <div className="text-center">
