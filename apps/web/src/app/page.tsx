@@ -1852,6 +1852,7 @@ function LeftSidebar({
   const [customMaxPrice, setCustomMaxPrice] = useState('500');
   const [watchlist, setWatchlist] = useState<WatchlistItem[]>(FALLBACK_WATCHLIST);
   const [screenerLoading, setScreenerLoading] = useState(false);
+  const screenerLockReason = 'Locked by forced cooling-off policy';
 
   useEffect(() => {
     let cancelled = false;
@@ -1944,6 +1945,7 @@ function LeftSidebar({
           <button
             key={tab}
             disabled={coolingOffActive}
+            title={coolingOffActive ? screenerLockReason : `Switch to ${tab.toUpperCase()} screener`}
             onClick={() => setActiveTab(tab)}
             className={cn(
               'text-[10px] uppercase font-bold py-1.5 rounded transition-colors border disabled:opacity-40',
@@ -1966,6 +1968,7 @@ function LeftSidebar({
           {activeTab === 'custom' && `Custom filter active: Price ${Math.max(1, Number(customMinPrice) || 100)}-${Math.max(1, Number(customMaxPrice) || 500)} + mixed flow score.`}
           {screenerLoading ? ' Refreshing screener...' : ''}
         </div>
+        {coolingOffActive ? <div className="text-[9px] text-amber-300 font-mono mt-1">{`${screenerLockReason}: tabs, custom range, and symbol switching disabled`}</div> : null}
         {activeTab === 'custom' ? (
           <div className="mt-2 grid grid-cols-2 gap-2">
             <input
@@ -1974,6 +1977,7 @@ function LeftSidebar({
               step={1}
               value={customMinPrice}
               disabled={coolingOffActive}
+              title={coolingOffActive ? screenerLockReason : 'Custom minimum price'}
               onChange={(event) => setCustomMinPrice(event.target.value)}
               className="w-full bg-slate-950 border border-slate-800 text-slate-300 text-[10px] font-mono px-2 py-1 rounded focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/30 outline-none disabled:opacity-50"
               placeholder="Min"
@@ -1984,6 +1988,7 @@ function LeftSidebar({
               step={1}
               value={customMaxPrice}
               disabled={coolingOffActive}
+              title={coolingOffActive ? screenerLockReason : 'Custom maximum price'}
               onChange={(event) => setCustomMaxPrice(event.target.value)}
               className="w-full bg-slate-950 border border-slate-800 text-slate-300 text-[10px] font-mono px-2 py-1 rounded focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/30 outline-none disabled:opacity-50"
               placeholder="Max"
@@ -1993,11 +1998,15 @@ function LeftSidebar({
       </div>
 
       <div className="flex-1 overflow-y-auto custom-scrollbar">
-        <div className="px-3 py-2 text-[10px] text-slate-500 uppercase tracking-wider font-bold">Watchlist</div>
+        <div className="px-3 py-2 text-[10px] text-slate-500 uppercase tracking-wider font-bold flex justify-between">
+          <span>Watchlist</span>
+          <span className={coolingOffActive ? 'text-amber-400 font-mono' : 'text-slate-600 font-mono'}>{coolingOffActive ? 'LOCKED' : 'READY'}</span>
+        </div>
         <div className="space-y-px">
           {watchlist.map((item) => (
             <div
               key={item.symbol}
+              title={coolingOffActive ? `${screenerLockReason}: cannot switch active symbol` : `Set active symbol ${item.symbol}`}
               onClick={() => {
                 if (!coolingOffActive) {
                   setActiveSymbol(item.symbol);
