@@ -1,0 +1,78 @@
+jest.mock('next/server', () => ({
+  NextResponse: {
+    json: (body: unknown, init?: { status?: number }) => ({
+      status: init?.status ?? 200,
+      json: async () => body,
+    }),
+  },
+  NextRequest: class NextRequest {},
+}));
+
+import { POST as backtestPost } from '@/app/api/backtest/route';
+import { GET as daytradeGet } from '@/app/api/screener/daytrade/route';
+import { verifyRuntimeConfigAuditChain } from '@/lib/security/immutableAudit';
+import { readCoolingOffLockState } from '@/lib/security/coolingOff';
+
+jest.mock('@/lib/security/immutableAudit', () => ({
+  verifyRuntimeConfigAuditChain: jest.fn(),
+}));
+
+jest.mock('@/lib/security/coolingOff', () => ({
+  readCoolingOffLockState: jest.fn(),
+}));
+
+describe('Guardrail lock response consistency', () => {
+  it('returns 423 immutable-audit lock payload for backtest route', async () => {
+    const mockedVerify = verifyRuntimeConfigAuditChain as jest.MockedFunction<typeof verifyRuntimeConfigAuditChain>;
+    mockedVerify.mockResolvedValueOnce({
+      valid: false,
+      checkedRows: 17,
+      hashMismatches: 2,
+      linkageMismatches: 1,
+    });
+
+    const req = {
+      json: async () => ({}),
+    } as Request;
+
+    const response = await backtestPost(req);
+    const body = await response.json();
+
+    expect(response.status).toBe(423);
+    expect(body).toEqual({
+      success: false,
+      error: 'Immutable audit chain lock active; backtest blocked',
+      lock: {
+        checked_rows: 17,
+        hash_mismatches: 2,
+        linkage_mismatches: 1,
+      },
+    });
+  });
+
+  it('returns 423 cooling-off lock payload for daytrade screener route', async () => {
+    const mockedCooling = readCoolingOffLockState as jest.MockedFunction<typeof readCoolingOffLockState>;
+    mockedCooling.mockResolvedValueOnce({
+      active: true,
+      activeUntil: '2026-03-04T10:00:00.000Z',
+      remainingSeconds: 600,
+    });
+
+    const req = {
+      url: 'http://localhost/api/screener/daytrade?minutes=30&limit=12',
+    } as unknown as Request;
+
+    const response = await daytradeGet(req as never);
+    const body = await response.json();
+
+    expect(response.status).toBe(423);
+    expect(body).toEqual({
+      success: false,
+      error: 'Cooling-off active: screener temporarily locked',
+      lock: {
+        active_until: '2026-03-04T10:00:00.000Z',
+        remaining_seconds: 600,
+      },
+    });
+  });
+});
