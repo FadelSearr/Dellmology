@@ -1472,6 +1472,19 @@ function TopNavigation({
       : adapterIssueCount > 0
         ? 'text-amber-300 border-amber-500/40 bg-amber-500/10'
         : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10';
+  const caggInputStable = !engineOffline && !dataSanity.warning && !incompleteData.warning;
+  const caggDelayMinutes = maxFallbackDelayMinutes ?? 0;
+  const caggGapSeconds = Math.max(0, Number(incompleteData.maxGapSeconds) || 0);
+  const cagg1mReady = caggInputStable && caggGapSeconds <= 5;
+  const cagg5mReady = caggInputStable && caggDelayMinutes <= 5 && caggGapSeconds <= 10;
+  const caggReadyCount = Number(cagg1mReady) + Number(cagg5mReady);
+  const caggTone =
+    caggReadyCount <= 0
+      ? 'text-rose-300 border-rose-500/40 bg-rose-500/10'
+      : caggReadyCount === 1
+        ? 'text-amber-300 border-amber-500/40 bg-amber-500/10'
+        : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10';
+  const caggTitle = `Continuous Aggregation readiness | 1m ${cagg1mReady ? 'READY' : 'LAG'} | 5m ${cagg5mReady ? 'READY' : 'LAG'} | gap ${caggGapSeconds.toFixed(1)}s | fallback delay ${caggDelayMinutes}m`;
   const feedDelayed = fallbackEmergencyActive || fallbackEndpointCount > 0 || marketIntelAdapter.degraded;
   const feedBadgeTone = feedDelayed
     ? fallbackEmergencyActive
@@ -2079,6 +2092,9 @@ function TopNavigation({
           title="Infrastructure Health: Go+SSE, TimescaleDB, Data Integrity Shield"
         >
           {`INFRA ${infraCoreHealthyCount}/3${infraCoreIssueCount > 0 ? ` W${infraCoreIssueCount}` : ''}`}
+        </div>
+        <div className={cn('text-[10px] font-mono border rounded px-2 py-1', caggTone)} title={caggTitle}>
+          {`CAGG ${caggReadyCount}/2${caggReadyCount < 2 ? ` ${cagg1mReady ? '5m-LAG' : '1m-LAG'}` : ''}`}
         </div>
         <div
           className={cn('text-[10px] font-mono border rounded px-2 py-1', adapterHealthTone)}
