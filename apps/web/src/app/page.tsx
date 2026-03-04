@@ -1031,6 +1031,9 @@ function TopNavigation({
       : null;
   const endpointPrimaryLatencies = sourceHealth.map((item) => (typeof item.primaryLatencyMs === 'number' ? item.primaryLatencyMs : null)).filter((value): value is number => value !== null);
   const maxEndpointPrimaryLatency = endpointPrimaryLatencies.length > 0 ? Math.max(...endpointPrimaryLatencies) : null;
+  const infraCoreStatuses: Tone[] = [infraStatus.sse, infraStatus.db, infraStatus.integrity];
+  const infraCoreHealthyCount = infraCoreStatuses.filter((status) => status === 'good').length;
+  const infraCoreIssueCount = infraCoreStatuses.length - infraCoreHealthyCount;
   const regimeLabel = !modelConsensus.pass ? 'SIDEWAYS' : modelConsensus.status === 'CONSENSUS_BULL' ? 'UPTREND' : 'DOWNTREND';
   const regimeTone = !modelConsensus.pass
     ? 'text-amber-300 border-amber-500/40 bg-amber-500/10'
@@ -1514,9 +1517,18 @@ function TopNavigation({
         >
           {combatMode.active ? 'COMBAT MODE ON' : 'COMBAT MODE OFF'}
         </div>
+        <div
+          className={cn(
+            'text-[10px] font-mono border rounded px-2 py-1',
+            infraCoreIssueCount > 0 ? 'text-amber-300 border-amber-500/40 bg-amber-500/10' : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10',
+          )}
+          title="Infrastructure Health: Go+SSE, TimescaleDB, Data Integrity Shield"
+        >
+          {`INFRA ${infraCoreHealthyCount}/3${infraCoreIssueCount > 0 ? ` W${infraCoreIssueCount}` : ''}`}
+        </div>
         <StatusDot status={infraStatus.sse} label="Go+SSE" />
         <StatusDot status={infraStatus.db} label="TimescaleDB" />
-        <StatusDot status={infraStatus.integrity} label="Integrity" />
+        <StatusDot status={infraStatus.integrity} label="Data Integrity Shield" />
         <StatusDot status={infraStatus.token} label="Token" />
       </div>
     </header>
@@ -2634,15 +2646,15 @@ function BottomPanel({
   const deploymentGateTopRuleEngine =
     deploymentGate.regression?.ruleEngineHealth.find((row) => row.mismatches > 0) || deploymentGate.regression?.ruleEngineHealth[0] || null;
   const technicalTone =
-    modelConsensus.technical === 'BULLISH'
+    modelConsensus.technical === 'BUY'
       ? 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10'
-      : modelConsensus.technical === 'BEARISH'
+      : modelConsensus.technical === 'SELL'
         ? 'text-rose-300 border-rose-500/40 bg-rose-500/10'
         : 'text-amber-300 border-amber-500/40 bg-amber-500/10';
   const bandarmologyTone =
-    modelConsensus.bandarmology === 'BULLISH'
+    modelConsensus.bandarmology === 'BUY'
       ? 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10'
-      : modelConsensus.bandarmology === 'BEARISH'
+      : modelConsensus.bandarmology === 'SELL'
         ? 'text-rose-300 border-rose-500/40 bg-rose-500/10'
         : 'text-amber-300 border-amber-500/40 bg-amber-500/10';
   const consensusTone = !modelConsensus.pass
