@@ -896,6 +896,7 @@ function TopNavigation({
   priceCrossCheck,
   confidenceTracking,
   championChallenger,
+  modelConsensus,
   newsImpact,
   mtfValidation,
   systemicRisk,
@@ -934,6 +935,7 @@ function TopNavigation({
   priceCrossCheck: PriceCrossCheckState;
   confidenceTracking: ModelConfidenceTracking;
   championChallenger: ChampionChallengerState;
+  modelConsensus: ModelConsensus;
   newsImpact: NewsImpactState;
   mtfValidation: MultiTimeframeValidationState;
   systemicRisk: SystemicRisk;
@@ -1106,6 +1108,19 @@ function TopNavigation({
           title={championChallenger.reason || 'Champion-challenger stable'}
         >
           {`DRIFT ${championChallenger.warning ? 'WARN' : 'OK'}${championChallenger.swapRecommended ? ' SWAP' : ''}`}
+        </div>
+        <div
+          className={cn(
+            'text-[10px] font-mono border rounded px-2 py-1',
+            !modelConsensus.pass
+              ? 'text-rose-300 border-rose-500/40 bg-rose-500/10'
+              : modelConsensus.status === 'CONSENSUS_BULL'
+                ? 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10'
+                : 'text-amber-300 border-amber-500/40 bg-amber-500/10',
+          )}
+          title={`${modelConsensus.message} | T/B/S ${modelConsensus.technical}/${modelConsensus.bandarmology}/${modelConsensus.sentiment}`}
+        >
+          {`VOTE ${!modelConsensus.pass ? 'CONFUSE' : modelConsensus.status === 'CONSENSUS_BULL' ? 'BULL' : 'BEAR'} ${modelConsensus.bullishVotes}-${modelConsensus.bearishVotes}`}
         </div>
         <div
           className={cn(
@@ -5262,6 +5277,7 @@ export default function Home() {
         priceCrossCheck={priceCrossCheck}
         confidenceTracking={confidenceTracking}
         championChallenger={championChallenger}
+        modelConsensus={modelConsensus}
         newsImpact={newsImpact}
         mtfValidation={mtfValidation}
         systemicRisk={systemicRisk}
