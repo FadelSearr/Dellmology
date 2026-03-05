@@ -7176,6 +7176,7 @@ export default function Home() {
     engineHeartbeat.checkedAt !== null &&
     !engineHeartbeat.online &&
     (marketIntelAdapter.degraded || degradedSources.length > 0 || fallbackDegradedCount > 0);
+  const fingerprintEngineEscalationActive = volumeFingerprint.hardReset && engineHeartbeat.checkedAt !== null && !engineHeartbeat.online;
   const coolingTriggerLabel = coolingTriggerFromReason(coolingOff.reason, coolingOff.active);
   const coolingTriggerReason = coolingTriggerExplain(coolingTriggerLabel);
   const coolingRemainingLabel = formatCoolingRemaining(coolingOff.remainingSeconds);
@@ -7285,6 +7286,29 @@ export default function Home() {
           </button>
         </div>
       ) : null}
+      {fingerprintEngineEscalationActive ? (
+        <div className="border-b border-rose-500/50 bg-rose-500/20 px-4 py-2 flex items-center justify-between gap-3">
+          <div className="text-[10px] font-mono text-rose-100">
+            {`CRITICAL ESCALATION | FPRINT FAIL ${volumeFingerprint.deviationPct.toFixed(1)}% + ENGINE OFFLINE | hard reset & token refresh required`}
+          </div>
+          <button
+            onClick={resetDeadman}
+            disabled={actionState.busy || deadmanResetCooldown > 0 || riskConfigLocked}
+            className="shrink-0 text-[10px] font-bold px-3 py-1 rounded border border-rose-300/50 bg-rose-500/25 text-rose-50 hover:bg-rose-500/35 disabled:opacity-50"
+            title={
+              actionState.busy
+                ? 'Recovery blocked: action in progress'
+                : deadmanResetCooldown > 0
+                  ? `Recovery blocked: rate-limit cooldown ${deadmanResetCooldown}s`
+                  : riskConfigLocked
+                    ? 'Recovery blocked: runtime risk config locked'
+                    : 'Execute hard reset recovery and refresh engine heartbeat/token'
+            }
+          >
+            {deadmanResetCooldown > 0 ? `Hard Reset (${deadmanResetCooldown}s)` : 'Hard Reset Now'}
+          </button>
+        </div>
+      ) : null}
       {fallbackEmergencyActive ? (
         <div className="border-b border-amber-500/40 bg-amber-500/10 px-4 py-1.5 text-[10px] font-mono text-amber-300">
           {`FALLBACK EMERGENCY MODE | degraded ${fallbackDegradedCount}/${sourceHealth.length} endpoints | source ${marketIntelAdapter.selectedSource} | delay ${fallbackMaxDelayMinutes !== null ? `${Math.round(fallbackMaxDelayMinutes)}m` : '-'} | data may be delayed`}
@@ -7299,7 +7323,7 @@ export default function Home() {
         <LeftSidebar
           activeSymbol={activeSymbol}
           setActiveSymbol={(symbol) => {
-            if (!coolingOff.active) {
+            if (!coolingOff.active && !volumeFingerprint.hardReset) {
               setActiveSymbol(symbol.toUpperCase());
             }
           }}
