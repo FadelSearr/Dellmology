@@ -61,10 +61,15 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const limit = Math.min(100, Math.max(1, Number(searchParams.get('limit') || 20)));
+    const windowMinutes = Math.min(24 * 60, Math.max(0, Math.floor(Number(searchParams.get('window_minutes') || 0))));
+    const windowFilterClause =
+      windowMinutes > 0
+        ? `WHERE created_at >= NOW() - INTERVAL '${windowMinutes} minutes'`
+        : '';
 
     await ensureRecoveryEscalationAuditTable();
 
-    const [summaryResult, logsResult, sourceSummaryResult] = await Promise.all([
+    const [summaryResult, logsResult, sourceSummaryResult, windowSourceSummaryResult, windowLogsResult] = await Promise.all([
       db.query(`
         SELECT
           COUNT(*) FILTER (
@@ -117,6 +122,45 @@ export async function GET(request: Request) {
         GROUP BY COALESCE(source, 'unknown')
         ORDER BY suppressed_count DESC, detected_count DESC
       `),
+      db.query(`
+        SELECT
+          COALESCE(source, 'unknown') AS source,
+          COUNT(*) FILTER (
+            WHERE event_type = 'DETECTED'
+               OR event_type = 'SUPPRESSED'
+               OR (event_type = 'DETECTED' AND suppressed = TRUE)
+          )::INT AS detected_count,
+          COUNT(*) FILTER (
+            WHERE event_type = 'SUPPRESSED'
+               OR (event_type = 'DETECTED' AND suppressed = TRUE)
+          )::INT AS suppressed_count,
+          MAX(created_at) AS last_event_at
+        FROM system_recovery_escalation_audit
+        ${windowFilterClause}
+        GROUP BY COALESCE(source, 'unknown')
+        ORDER BY suppressed_count DESC, detected_count DESC
+      `),
+      db.query(
+        `
+          SELECT
+            id,
+            event_type,
+            COALESCE(level, 'WARN') AS level,
+            signature,
+            source,
+            symbol,
+            created_at,
+            CASE
+              WHEN event_type = 'SUPPRESSED' OR (event_type = 'DETECTED' AND suppressed = TRUE) THEN TRUE
+              ELSE FALSE
+            END AS suppressed
+          FROM system_recovery_escalation_audit
+          ${windowFilterClause}
+          ORDER BY created_at DESC
+          LIMIT $1
+        `,
+        [limit],
+      ),
     ]);
 
     const row = summaryResult.rows[0] || {};
@@ -143,7 +187,20 @@ export async function GET(request: Request) {
           last_event_at: item.last_event_at || null,
         };
       }),
+      window_minutes: windowMinutes,
+      window_source_summary: windowSourceSummaryResult.rows.map((item) => {
+        const sourceDetectedCount = Number(item.detected_count || 0);
+        const sourceSuppressedCount = Number(item.suppressed_count || 0);
+        return {
+          source: item.source || 'unknown',
+          detected_count: sourceDetectedCount,
+          suppressed_count: sourceSuppressedCount,
+          suppression_ratio_pct: sourceDetectedCount > 0 ? (sourceSuppressedCount / sourceDetectedCount) * 100 : 0,
+          last_event_at: item.last_event_at || null,
+        };
+      }),
       logs: logsResult.rows,
+      window_logs: windowLogsResult.rows,
     });
   } catch (error) {
     console.error('system-control recovery-escalation-audit GET failed:', error);

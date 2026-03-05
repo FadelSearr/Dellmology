@@ -4855,6 +4855,7 @@ export default function Home() {
   });
   const [recoveryEscalationRecentEvents, setRecoveryEscalationRecentEvents] = useState<RecoveryEscalationAuditEvent[]>([]);
   const [recoveryEscalationSourceStats, setRecoveryEscalationSourceStats] = useState<RecoveryEscalationSourceStat[]>([]);
+  const [recoveryEscalationWindowSourceStats, setRecoveryEscalationWindowSourceStats] = useState<RecoveryEscalationSourceStat[]>([]);
   const recoveryEscalationLastCountedRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -4862,7 +4863,7 @@ export default function Home() {
 
     const hydrateRecoveryEscalationAudit = async () => {
       try {
-        const response = await fetch('/api/system-control/recovery-escalation-audit?limit=30');
+        const response = await fetch('/api/system-control/recovery-escalation-audit?limit=30&window_minutes=30');
         if (!response.ok) {
           return;
         }
@@ -4886,6 +4887,13 @@ export default function Home() {
             created_at?: string;
           }>;
           source_summary?: Array<{
+            source?: string | null;
+            detected_count?: number;
+            suppressed_count?: number;
+            suppression_ratio_pct?: number;
+            last_event_at?: string | null;
+          }>;
+          window_source_summary?: Array<{
             source?: string | null;
             detected_count?: number;
             suppressed_count?: number;
@@ -4929,6 +4937,22 @@ export default function Home() {
               lastEventAt: item.last_event_at || null,
             }))
             .sort((a, b) => b.suppressionRatioPct - a.suppressionRatioPct),
+        );
+        setRecoveryEscalationWindowSourceStats(
+          (body.window_source_summary || [])
+            .map((item) => ({
+              source: String(item.source || 'unknown'),
+              detectedCount: Number(item.detected_count || 0),
+              suppressedCount: Number(item.suppressed_count || 0),
+              suppressionRatioPct: Number(item.suppression_ratio_pct || 0),
+              lastEventAt: item.last_event_at || null,
+            }))
+            .sort((a, b) => {
+              if (b.suppressionRatioPct !== a.suppressionRatioPct) {
+                return b.suppressionRatioPct - a.suppressionRatioPct;
+              }
+              return b.suppressedCount - a.suppressedCount;
+            }),
         );
       } catch {
         return;
@@ -7941,6 +7965,25 @@ export default function Home() {
           .map((item) => `${item.status}@${item.source} ${new Date(item.at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}`)
           .join('  •  ')
       : 'No recent recovery events';
+  const recoveryEscalationNoisySource30m =
+    recoveryEscalationWindowSourceStats.length > 0
+      ? recoveryEscalationWindowSourceStats.reduce((best, item) => {
+          if (item.suppressionRatioPct > best.suppressionRatioPct) {
+            return item;
+          }
+          if (item.suppressionRatioPct === best.suppressionRatioPct && item.suppressedCount > best.suppressedCount) {
+            return item;
+          }
+          return best;
+        }, recoveryEscalationWindowSourceStats[0])
+      : null;
+  const recoveryEscalationNoisySourceHot =
+    Boolean(recoveryEscalationNoisySource30m) &&
+    recoveryEscalationNoisySource30m!.suppressionRatioPct >= 60 &&
+    recoveryEscalationNoisySource30m!.suppressedCount >= 2;
+  const recoveryEscalationNoisySourceLabel = recoveryEscalationNoisySource30m
+    ? `Noisy 30m ${recoveryEscalationNoisySource30m.source} ${recoveryEscalationNoisySource30m.suppressedCount}/${recoveryEscalationNoisySource30m.detectedCount} (${recoveryEscalationNoisySource30m.suppressionRatioPct.toFixed(0)}%)`
+    : 'Noisy 30m: none';
   useEffect(() => {
     if (!recoveryEscalationAck.signature || !recoveryEscalationAck.silencedUntil || !recoveryEscalationAck.ackedAt) {
       return;
@@ -8090,6 +8133,19 @@ export default function Home() {
             <div className="text-[9px] font-mono text-slate-200/80 truncate" title={recoveryEscalationTrail}>{`Trail: ${recoveryEscalationTrail}`}</div>
           </div>
           <div className="shrink-0 flex items-center gap-2">
+            {recoveryEscalationNoisySource30m ? (
+              <span
+                className={cn(
+                  'text-[10px] font-mono px-2 py-1 rounded border',
+                  recoveryEscalationNoisySourceHot
+                    ? 'border-amber-400/50 bg-amber-500/15 text-amber-200'
+                    : 'border-slate-300/20 bg-slate-900/30 text-slate-200',
+                )}
+                title={recoveryEscalationNoisySourceLabel}
+              >
+                {recoveryEscalationNoisySourceLabel}
+              </span>
+            ) : null}
             <button
               onClick={acknowledgeRecoveryEscalation}
               className="text-[10px] font-bold px-2.5 py-1 rounded border border-slate-200/20 bg-slate-900/30 text-slate-100 hover:bg-slate-900/45"
