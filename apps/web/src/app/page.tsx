@@ -297,6 +297,15 @@ interface RecoveryAttemptTelemetry {
 
 type RecoveryTelemetrySource = 'deadman' | 'cooling-off' | 'deploy-gate';
 
+interface RecoveryPulseState {
+  attempts: number;
+  failures: number;
+  failRatePct: number;
+  lastStatus: 'IDLE' | 'SUCCESS' | 'FAILED' | 'LOCKED';
+  lastAttemptAt: string | null;
+  lastSource: RecoveryTelemetrySource | null;
+}
+
 interface TokenTelemetry {
   status: 'fresh' | 'expiring' | 'expired' | 'missing';
   syncReason: string | null;
@@ -1367,6 +1376,7 @@ function TopNavigation({
   sourceHealth,
   degradedSources,
   tokenTelemetry,
+  recoveryPulse,
   deadmanResetCooldown,
   killSwitchActive,
   ihsgChangePct,
@@ -1426,6 +1436,7 @@ function TopNavigation({
   sourceHealth: EndpointSourceHealthState[];
   degradedSources: string[];
   tokenTelemetry: TokenTelemetry;
+  recoveryPulse: RecoveryPulseState;
   deadmanResetCooldown: number;
   killSwitchActive: boolean;
   ihsgChangePct: number;
@@ -1462,6 +1473,28 @@ function TopNavigation({
       ? 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10'
       : 'text-rose-300 border-rose-500/40 bg-rose-500/10';
   const tokenAlert = tokenTelemetry.status !== 'fresh' || tokenTelemetry.deadmanTriggered;
+  const recoveryPulseLabel =
+    recoveryPulse.lastStatus === 'LOCKED'
+      ? 'FAIL'
+      : recoveryPulse.attempts <= 0
+        ? 'IDLE'
+        : recoveryPulse.failRatePct >= 60
+          ? 'FAIL'
+          : recoveryPulse.failRatePct >= 30 || recoveryPulse.lastStatus === 'FAILED'
+            ? 'WARN'
+            : 'OK';
+  const recoveryPulseTone =
+    recoveryPulseLabel === 'FAIL'
+      ? 'text-rose-300 border-rose-500/40 bg-rose-500/10'
+      : recoveryPulseLabel === 'WARN'
+        ? 'text-amber-300 border-amber-500/40 bg-amber-500/10'
+        : recoveryPulseLabel === 'IDLE'
+          ? 'text-slate-500 border-slate-800 bg-slate-900/30'
+          : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10';
+  const recoveryPulseTitle =
+    recoveryPulse.attempts <= 0
+      ? 'Recovery telemetry idle (no reset attempts logged yet)'
+      : `Attempts ${recoveryPulse.attempts} | Fail ${recoveryPulse.failures} (${recoveryPulse.failRatePct.toFixed(1)}%) | Last ${recoveryPulse.lastStatus}${recoveryPulse.lastSource ? ` @ ${recoveryPulse.lastSource}` : ''}${recoveryPulse.lastAttemptAt ? ` ${new Date(recoveryPulse.lastAttemptAt).toLocaleTimeString('id-ID')}` : ''}`;
   const highChurnLowAccumulation = washSaleRisk.warning && artificialLiquidity.warning;
   const negotiatedNotionalTotal = negotiatedFeed.reduce((total, item) => total + Math.max(0, Number(item.notional) || 0), 0);
   const negotiatedSymbolBreadth = new Set(negotiatedFeed.map((item) => String(item.symbol || '').toUpperCase()).filter(Boolean)).size;
@@ -2180,6 +2213,9 @@ function TopNavigation({
           title={deadmanResetCooldown > 0 ? `Reset endpoint rate-limited, retry in ${deadmanResetCooldown}s` : 'No active API rate-limit cooldown'}
         >
           {`RLIMIT ${deadmanResetCooldown > 0 ? `${deadmanResetCooldown}s` : 'OK'}`}
+        </div>
+        <div className={cn('text-[10px] font-mono border rounded px-2 py-1', recoveryPulseTone)} title={recoveryPulseTitle}>
+          {`RECOV ${recoveryPulseLabel}${recoveryPulse.attempts > 0 ? ` ${Math.round(recoveryPulse.failRatePct)}%` : ''}`}
         </div>
         <div
           className={cn(
@@ -4661,6 +4697,14 @@ export default function Home() {
   });
   const [deadmanResetCooldown, setDeadmanResetCooldown] = useState(0);
   const [recoveryTelemetrySource, setRecoveryTelemetrySource] = useState<RecoveryTelemetrySource>('deadman');
+  const [recoveryPulse, setRecoveryPulse] = useState<RecoveryPulseState>({
+    attempts: 0,
+    failures: 0,
+    failRatePct: 0,
+    lastStatus: 'IDLE',
+    lastAttemptAt: null,
+    lastSource: null,
+  });
   const [recoveryTelemetry, setRecoveryTelemetry] = useState<RecoveryAttemptTelemetry>({
     attempts: 0,
     successes: 0,
@@ -4732,6 +4776,80 @@ export default function Home() {
       cancelled = true;
     };
   }, [recoveryTelemetrySource]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const sources: RecoveryTelemetrySource[] = ['deadman', 'cooling-off', 'deploy-gate'];
+
+    const hydrateRecoveryPulse = async () => {
+      try {
+        const responses = await Promise.all(
+          sources.map(async (source) => {
+            const response = await fetch(`/api/system-control/recovery-telemetry?source=${encodeURIComponent(source)}&limit=1`);
+            if (!response.ok) {
+              return null;
+            }
+
+            const body = (await response.json()) as {
+              success?: boolean;
+              summary?: {
+                attempts?: number;
+                failures?: number;
+                last_attempt_at?: string | null;
+                last_status?: 'IDLE' | 'SUCCESS' | 'FAILED' | 'LOCKED';
+              };
+            };
+
+            if (!body.success) {
+              return null;
+            }
+
+            return {
+              source,
+              attempts: Number(body.summary?.attempts || 0),
+              failures: Number(body.summary?.failures || 0),
+              lastAttemptAt: body.summary?.last_attempt_at || null,
+              lastStatus: body.summary?.last_status || 'IDLE',
+            };
+          }),
+        );
+
+        if (cancelled) {
+          return;
+        }
+
+        const valid = responses.filter((item): item is NonNullable<typeof item> => item !== null);
+        const attempts = valid.reduce((sum, item) => sum + item.attempts, 0);
+        const failures = valid.reduce((sum, item) => sum + item.failures, 0);
+        const failRatePct = attempts > 0 ? (failures / attempts) * 100 : 0;
+        const latest = valid
+          .filter((item) => item.lastAttemptAt)
+          .sort((a, b) => new Date(b.lastAttemptAt || 0).getTime() - new Date(a.lastAttemptAt || 0).getTime())[0];
+
+        setRecoveryPulse({
+          attempts,
+          failures,
+          failRatePct,
+          lastStatus: latest?.lastStatus || 'IDLE',
+          lastAttemptAt: latest?.lastAttemptAt || null,
+          lastSource: latest?.source || null,
+        });
+      } catch {
+        return;
+      }
+    };
+
+    void hydrateRecoveryPulse();
+    const timer = window.setInterval(() => {
+      void hydrateRecoveryPulse();
+    }, 30_000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, []);
 
   const appendRecoveryTelemetryEvent = useCallback(
     (source: RecoveryTelemetrySource, status: 'SUCCESS' | 'FAILED' | 'LOCKED', message: string, cooldownSeconds: number | null) => {
@@ -7477,6 +7595,7 @@ export default function Home() {
         sourceHealth={sourceHealth}
         degradedSources={degradedSources}
         tokenTelemetry={tokenTelemetry}
+        recoveryPulse={recoveryPulse}
         deadmanResetCooldown={deadmanResetCooldown}
         killSwitchActive={killSwitchActive}
         ihsgChangePct={ihsgChangePct}
