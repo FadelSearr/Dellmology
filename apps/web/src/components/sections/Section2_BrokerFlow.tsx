@@ -172,7 +172,7 @@ export const Section2_BrokerFlow: React.FC<Section2Props> = ({
               return (
                 <>
                   <StatusBadge
-                    status={isRisky ? 'error' : 'success'}
+                    status={isRisky ? 'critical' : 'success'}
                     label={isRisky ? 'HIGH CHURN ALERT' : 'FLOW HEALTHY'}
                     icon={<AlertCircle className="w-3 h-3" />}
                   />
