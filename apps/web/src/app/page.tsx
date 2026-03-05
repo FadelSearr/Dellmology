@@ -118,6 +118,7 @@ interface WatchlistItem {
   status: string;
   flowQuality?: 'STRONG' | 'WATCH' | 'WEAK';
   setupTag?: 'SCALP' | 'SWING' | 'RANGE';
+  divergenceTag?: 'ALERT' | 'CAUTION' | 'OK';
 }
 
 interface MarketIntelResponse {
@@ -2390,6 +2391,9 @@ function LeftSidebar({
   coolingOffActive,
   marketRegimeLabel,
   minUpsForLong,
+  retailDivergenceWarning,
+  retailSentimentScore,
+  whaleFlowBias,
   onWatchlistUpdate,
 }: {
   activeSymbol: string;
@@ -2399,6 +2403,9 @@ function LeftSidebar({
   coolingOffActive: boolean;
   marketRegimeLabel: MarketRegimeLabel;
   minUpsForLong: number;
+  retailDivergenceWarning: boolean;
+  retailSentimentScore: number;
+  whaleFlowBias: number;
   onWatchlistUpdate: (items: WatchlistItem[]) => void;
 }) {
   const [activeTab, setActiveTab] = useState<'day' | 'swing' | 'custom'>('day');
@@ -2500,7 +2507,22 @@ function LeftSidebar({
                   : netAccumulation <= 0
                     ? -6
                     : 0;
-          const score = Math.max(0, Math.min(100, baseScore + regimeModifier + flowModifier));
+            const scoreBeforeDivergence = baseScore + regimeModifier + flowModifier;
+            const sentimentWhaleGap = retailSentimentScore - whaleFlowBias;
+            const divergencePenalty =
+              retailDivergenceWarning && sentimentWhaleGap >= 8
+                ? activeTab === 'day'
+                  ? 12
+                  : activeTab === 'swing'
+                    ? 8
+                    : 10
+                : retailDivergenceWarning && sentimentWhaleGap >= 3
+                  ? activeTab === 'day'
+                    ? 8
+                    : 5
+                  : 0;
+            const momentumEuphoriaPenalty = retailDivergenceWarning && changePct > 0 && scoreBeforeDivergence >= 65 ? 4 : 0;
+            const score = Math.max(0, Math.min(100, scoreBeforeDivergence - divergencePenalty - momentumEuphoriaPenalty));
           const status =
             typeof row.status === 'string' && row.status.trim().length > 0
               ? row.status
@@ -2528,19 +2550,28 @@ function LeftSidebar({
                     ? 'WATCH'
                     : 'WEAK';
           const setupTag: 'SCALP' | 'SWING' | 'RANGE' = activeTab === 'day' ? 'SCALP' : activeTab === 'swing' ? 'SWING' : 'RANGE';
+          const divergenceTag: 'ALERT' | 'CAUTION' | 'OK' =
+            retailDivergenceWarning && sentimentWhaleGap >= 8 && changePct > 0 && scoreBeforeDivergence >= 60
+              ? 'ALERT'
+              : retailDivergenceWarning
+                ? 'CAUTION'
+                : 'OK';
           return {
             symbol,
             price: Number.isFinite(price) ? Math.round(price) : 0,
             change: `${changePct >= 0 ? '+' : ''}${Number.isFinite(changePct) ? changePct.toFixed(2) : '0.00'}%`,
             score,
-            status: `${status} | Gate ${minUpsForLong} (${marketRegimeLabel})`,
+            status: `${status} | Gate ${minUpsForLong} (${marketRegimeLabel})${retailDivergenceWarning ? ' | Diverge Guard' : ''}`,
             flowQuality,
             setupTag,
+            divergenceTag,
           };
         });
 
+        const ranked = [...mapped].sort((a, b) => b.score - a.score);
+
         if (!cancelled) {
-          setWatchlist(mapped.length > 0 ? mapped : buildFallback());
+          setWatchlist(ranked.length > 0 ? ranked : buildFallback());
         }
       } catch {
         if (!cancelled) setWatchlist(buildFallback());
@@ -2554,7 +2585,20 @@ function LeftSidebar({
     return () => {
       cancelled = true;
     };
-  }, [activeTab, activeSymbol, currentPrice, priceChangePct, customMinPrice, customMaxPrice, coolingOffActive, marketRegimeLabel, minUpsForLong]);
+  }, [
+    activeTab,
+    activeSymbol,
+    currentPrice,
+    priceChangePct,
+    customMinPrice,
+    customMaxPrice,
+    coolingOffActive,
+    marketRegimeLabel,
+    minUpsForLong,
+    retailDivergenceWarning,
+    retailSentimentScore,
+    whaleFlowBias,
+  ]);
 
   useEffect(() => {
     onWatchlistUpdate(watchlist);
@@ -2570,6 +2614,7 @@ function LeftSidebar({
   const buySignalCount = watchlist.filter((item) => item.score >= 65 && item.score < 85).length;
   const neutralSignalCount = watchlist.filter((item) => item.score >= 45 && item.score < 65).length;
   const sellRiskCount = watchlist.filter((item) => item.score < 45).length;
+  const divergenceAlertCount = watchlist.filter((item) => item.divergenceTag === 'ALERT').length;
 
   return (
     <Card className="h-full border-r border-t-0 border-l-0 border-b-0 rounded-none w-64 flex flex-col">
@@ -2654,7 +2699,7 @@ function LeftSidebar({
             {`WEAK ${weakUpsItem ? weakUpsItem.symbol : '-'}`}
           </div>
         </div>
-        <div className="px-3 pb-2 grid grid-cols-4 gap-1 text-[9px] font-mono">
+        <div className="px-3 pb-2 grid grid-cols-5 gap-1 text-[9px] font-mono">
           <div className="border border-emerald-500/30 rounded px-1.5 py-1 bg-emerald-500/10 text-emerald-300 text-center" title="Strong Buy candidates (UPS >= 85)">
             {`STR ${strongSignalCount}`}
           </div>
@@ -2666,6 +2711,17 @@ function LeftSidebar({
           </div>
           <div className="border border-rose-500/30 rounded px-1.5 py-1 bg-rose-500/10 text-rose-300 text-center" title="Sell risk candidates (UPS < 45)">
             {`SEL ${sellRiskCount}`}
+          </div>
+          <div
+            className={cn(
+              'rounded px-1.5 py-1 text-center border',
+              divergenceAlertCount > 0
+                ? 'border-rose-500/30 bg-rose-500/10 text-rose-300'
+                : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300',
+            )}
+            title={`Retail sentiment divergence alerts in watchlist (${divergenceAlertCount})`}
+          >
+            {`DVG ${divergenceAlertCount}`}
           </div>
         </div>
         <div className="space-y-px">
@@ -2713,6 +2769,19 @@ function LeftSidebar({
                   </span>
                   <span className="px-1 py-0.5 rounded border text-cyan-300 border-cyan-500/40 bg-cyan-500/10" title="Screener setup mode">
                     {item.setupTag || 'SET'}
+                  </span>
+                  <span
+                    className={cn(
+                      'px-1 py-0.5 rounded border',
+                      item.divergenceTag === 'ALERT'
+                        ? 'text-rose-300 border-rose-500/40 bg-rose-500/10'
+                        : item.divergenceTag === 'CAUTION'
+                          ? 'text-amber-300 border-amber-500/40 bg-amber-500/10'
+                          : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10',
+                    )}
+                    title="Retail sentiment divergence guard"
+                  >
+                    {`DVG ${item.divergenceTag || 'OK'}`}
                   </span>
                   <span
                     className={cn(
@@ -8685,6 +8754,9 @@ export default function Home() {
           coolingOffActive={coolingOff.active}
           marketRegimeLabel={marketRegime.label}
           minUpsForLong={minUpsForLong}
+          retailDivergenceWarning={newsImpact.divergenceWarning}
+          retailSentimentScore={newsImpact.retailSentimentScore}
+          whaleFlowBias={newsImpact.whaleFlowBias}
           onWatchlistUpdate={setWatchlist}
         />
         <CenterPanel
