@@ -464,6 +464,16 @@ interface VolumeProfileDivergenceState {
   upperRangePositionPct: number;
 }
 
+interface VolumeFingerprintState {
+  warning: boolean;
+  hardReset: boolean;
+  deviationPct: number;
+  observedVolume: number;
+  referenceVolume: number;
+  reason: string | null;
+  checkedAt: string | null;
+}
+
 interface RocKillSwitchState {
   active: boolean;
   reason: string | null;
@@ -650,6 +660,9 @@ const INCOMPLETE_DATA_MIN_GAPS = Math.max(1, Math.floor(envNumber('NEXT_PUBLIC_I
 const PRICE_CROSS_CHECK_THRESHOLD_PCT = envNumber('NEXT_PUBLIC_PRICE_CROSS_CHECK_THRESHOLD_PCT', 2);
 const DATA_SANITY_LOOKBACK_MINUTES = Math.max(5, Math.floor(envNumber('NEXT_PUBLIC_DATA_SANITY_LOOKBACK_MINUTES', 30)));
 const DATA_SANITY_MAX_JUMP_PCT = envNumber('NEXT_PUBLIC_DATA_SANITY_MAX_JUMP_PCT', 25);
+const VOLUME_FINGERPRINT_WARN_DEVIATION_PCT = envNumber('NEXT_PUBLIC_VOLUME_FINGERPRINT_WARN_DEVIATION_PCT', 35);
+const VOLUME_FINGERPRINT_HARD_RESET_PCT = envNumber('NEXT_PUBLIC_VOLUME_FINGERPRINT_HARD_RESET_PCT', 60);
+const VOLUME_FINGERPRINT_MIN_REFERENCE_LOTS = Math.max(1000, envNumber('NEXT_PUBLIC_VOLUME_FINGERPRINT_MIN_REFERENCE_LOTS', 5000));
 const CHAMPION_CHALLENGER_DAYS = Math.max(14, Math.floor(envNumber('NEXT_PUBLIC_CHAMPION_CHALLENGER_DAYS', 30)));
 const CHAMPION_CHALLENGER_HORIZON_DAYS = Math.max(1, Math.floor(envNumber('NEXT_PUBLIC_CHAMPION_CHALLENGER_HORIZON_DAYS', 1)));
 const CHAMPION_CHALLENGER_ALERT_GAP_PCT = envNumber('NEXT_PUBLIC_CHAMPION_CHALLENGER_ALERT_GAP_PCT', 5);
@@ -1315,6 +1328,7 @@ function TopNavigation({
   systemicRisk,
   portfolioBetaRisk,
   liquidityGuard,
+  volumeFingerprint,
   volumeProfileDivergence,
   brokerCharacter,
   artificialLiquidity,
@@ -1373,6 +1387,7 @@ function TopNavigation({
   systemicRisk: SystemicRisk;
   portfolioBetaRisk: PortfolioBetaRisk;
   liquidityGuard: LiquidityGuard;
+  volumeFingerprint: VolumeFingerprintState;
   volumeProfileDivergence: VolumeProfileDivergenceState;
   brokerCharacter: BrokerCharacterState;
   artificialLiquidity: ArtificialLiquidityState;
@@ -1549,6 +1564,16 @@ function TopNavigation({
         ? 'text-amber-300 border-amber-500/40 bg-amber-500/10'
         : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10';
   const reconStatusTitle = `Nightly reconciliation visibility | age ${reconAgeMinutes === null ? 'N/A' : `${reconAgeMinutes}m`} | stale limit ${reconStaleLimitMinutes}m | mismatch ${reconMismatchCount} | Golden ${goldenRecord.safe ? 'OK' : 'FAIL'} | XCheck ${priceCrossCheck.warning ? 'LOCK' : 'OK'} | Sanity ${dataSanity.lockActive ? 'LOCK' : dataSanity.warning ? 'WARN' : 'OK'}`;
+  const volumeFingerprintLabel = volumeFingerprint.hardReset ? 'FAIL' : volumeFingerprint.warning ? 'WARN' : 'OK';
+  const volumeFingerprintTone =
+    volumeFingerprintLabel === 'FAIL'
+      ? 'text-rose-300 border-rose-500/40 bg-rose-500/10'
+      : volumeFingerprintLabel === 'WARN'
+        ? 'text-amber-300 border-amber-500/40 bg-amber-500/10'
+        : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10';
+  const volumeFingerprintTitle =
+    volumeFingerprint.reason ||
+    `Statistical fingerprint OK | observed ${Math.round(volumeFingerprint.observedVolume).toLocaleString('id-ID')} | reference ${Math.round(volumeFingerprint.referenceVolume).toLocaleString('id-ID')} | deviation ${volumeFingerprint.deviationPct.toFixed(1)}%`;
   const feedDelayed = fallbackEmergencyActive || fallbackEndpointCount > 0 || marketIntelAdapter.degraded;
   const feedBadgeTone = feedDelayed
     ? fallbackEmergencyActive
@@ -1866,6 +1891,9 @@ function TopNavigation({
         </div>
         <div className={cn('text-[10px] font-mono border rounded px-2 py-1', reconStatusTone)} title={reconStatusTitle}>
           {`RECON ${reconStatusLabel}${reconAgeMinutes !== null ? ` ${reconAgeMinutes}m` : ''}`}
+        </div>
+        <div className={cn('text-[10px] font-mono border rounded px-2 py-1', volumeFingerprintTone)} title={volumeFingerprintTitle}>
+          {`FPRINT ${volumeFingerprintLabel}${volumeFingerprint.deviationPct > 0 ? ` ${volumeFingerprint.deviationPct.toFixed(0)}%` : ''}`}
         </div>
         <div
           className={cn(
@@ -2839,6 +2867,7 @@ function RightSidebar({
   marketIntelAdapter,
   sourceHealth,
   negotiatedFeed,
+  volumeFingerprint,
 }: {
   brokers: BrokerRow[];
   zData: ZScorePoint[];
@@ -2864,6 +2893,7 @@ function RightSidebar({
   marketIntelAdapter: AdapterHealthState;
   sourceHealth: EndpointSourceHealthState[];
   negotiatedFeed: Array<{ symbol: string; trade_type: string; volume: number; notional: number }>;
+  volumeFingerprint: VolumeFingerprintState;
 }) {
   const canRenderChart = typeof window !== 'undefined';
   const hasAlert = zData.some((item) => item.score > 2 || item.score < -2);
@@ -3130,6 +3160,29 @@ function RightSidebar({
                 />
               </div>
             </div>
+          </div>
+          <div
+            className={cn(
+              'text-[9px] font-mono border rounded px-2 py-1',
+              volumeFingerprint.hardReset
+                ? 'text-rose-300 border-rose-500/40 bg-rose-500/10'
+                : volumeFingerprint.warning
+                  ? 'text-amber-300 border-amber-500/40 bg-amber-500/10'
+                  : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10',
+            )}
+            title={
+              volumeFingerprint.reason ||
+              `Observed ${Math.round(volumeFingerprint.observedVolume).toLocaleString('id-ID')} | Reference ${Math.round(volumeFingerprint.referenceVolume).toLocaleString('id-ID')} | Dev ${volumeFingerprint.deviationPct.toFixed(1)}%`
+            }
+          >
+            {volumeFingerprint.hardReset
+              ? 'Statistical Fingerprint FAIL (Hard Reset Suggested)'
+              : volumeFingerprint.warning
+                ? 'Statistical Fingerprint WARN (Volume Deviates)'
+                : 'Statistical Fingerprint OK'}
+          </div>
+          <div className="text-[9px] text-slate-500 font-mono mt-1">
+            {`Obs ${Math.round(volumeFingerprint.observedVolume).toLocaleString('id-ID')} | Ref ${Math.round(volumeFingerprint.referenceVolume).toLocaleString('id-ID')} | Dev ${volumeFingerprint.deviationPct.toFixed(1)}%`}
           </div>
           <div
             className={cn(
@@ -4569,6 +4622,15 @@ export default function Home() {
     highBandVolumeSharePct: 0,
     upperRangePositionPct: 0,
   });
+  const [volumeFingerprint, setVolumeFingerprint] = useState<VolumeFingerprintState>({
+    warning: false,
+    hardReset: false,
+    deviationPct: 0,
+    observedVolume: 0,
+    referenceVolume: 0,
+    reason: null,
+    checkedAt: null,
+  });
   const [rocKillSwitch, setRocKillSwitch] = useState<RocKillSwitchState>({
     active: false,
     reason: null,
@@ -5439,6 +5501,32 @@ export default function Home() {
     const upperBandVolume = profileData.filter((row) => row.price >= upperBandThreshold).reduce((sum, row) => sum + row.volume, 0);
     const upperBandSharePct = totalProfileVolume > 0 ? (upperBandVolume / totalProfileVolume) * 100 : 0;
     const upperRangePositionPct = ((lastPrice - priceMin) / priceRange) * 100;
+
+    const observedVolumeFingerprint = Math.max(0, nextTotalVolume > 0 ? nextTotalVolume : totalProfileVolume);
+    const referenceVolumeFingerprint = Math.max(0, totalProfileVolume);
+    const hasComparableVolume =
+      observedVolumeFingerprint >= VOLUME_FINGERPRINT_MIN_REFERENCE_LOTS && referenceVolumeFingerprint >= VOLUME_FINGERPRINT_MIN_REFERENCE_LOTS;
+    const volumeDeviationPct =
+      hasComparableVolume && referenceVolumeFingerprint > 0
+        ? Math.abs((observedVolumeFingerprint - referenceVolumeFingerprint) / referenceVolumeFingerprint) * 100
+        : 0;
+    const volumeFingerprintHardReset = hasComparableVolume && volumeDeviationPct >= VOLUME_FINGERPRINT_HARD_RESET_PCT;
+    const volumeFingerprintWarning = hasComparableVolume && volumeDeviationPct >= VOLUME_FINGERPRINT_WARN_DEVIATION_PCT;
+    setVolumeFingerprint({
+      warning: volumeFingerprintWarning,
+      hardReset: volumeFingerprintHardReset,
+      deviationPct: volumeDeviationPct,
+      observedVolume: observedVolumeFingerprint,
+      referenceVolume: referenceVolumeFingerprint,
+      reason: volumeFingerprintHardReset
+        ? `Statistical fingerprint fail: deviation ${volumeDeviationPct.toFixed(1)}% >= ${VOLUME_FINGERPRINT_HARD_RESET_PCT.toFixed(1)}%; hard reset/token refresh required.`
+        : volumeFingerprintWarning
+          ? `Statistical fingerprint warning: deviation ${volumeDeviationPct.toFixed(1)}% >= ${VOLUME_FINGERPRINT_WARN_DEVIATION_PCT.toFixed(1)}%.`
+          : hasComparableVolume
+            ? null
+            : `Statistical fingerprint standby: waiting comparable volume >= ${VOLUME_FINGERPRINT_MIN_REFERENCE_LOTS.toLocaleString('id-ID')} lots.`,
+      checkedAt: new Date().toISOString(),
+    });
 
     const bidWallVolumes = normalizedHeatmap.filter((row) => row.type === 'Bid').map((row) => row.volume).sort((a, b) => a - b);
     const bidWallThreshold = Math.max(
@@ -7108,6 +7196,7 @@ export default function Home() {
         systemicRisk={systemicRisk}
         portfolioBetaRisk={portfolioBetaRisk}
         liquidityGuard={liquidityGuard}
+        volumeFingerprint={volumeFingerprint}
         volumeProfileDivergence={volumeProfileDivergence}
         brokerCharacter={brokerCharacter}
         artificialLiquidity={artificialLiquidity}
@@ -7209,6 +7298,7 @@ export default function Home() {
           marketIntelAdapter={marketIntelAdapter}
           sourceHealth={sourceHealth}
           negotiatedFeed={negotiatedFeed}
+          volumeFingerprint={volumeFingerprint}
         />
       </div>
       {!combatMode.active ? (
