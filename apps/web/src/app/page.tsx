@@ -301,6 +301,7 @@ interface RecoveryPulseState {
   attempts: number;
   failures: number;
   failRatePct: number;
+  failRateDeltaPct: number;
   failStreak: number;
   lockStreak: number;
   lastStatus: 'IDLE' | 'SUCCESS' | 'FAILED' | 'LOCKED';
@@ -1379,6 +1380,7 @@ function TopNavigation({
   degradedSources,
   tokenTelemetry,
   recoveryPulse,
+  onRecoveryPulseClick,
   deadmanResetCooldown,
   killSwitchActive,
   ihsgChangePct,
@@ -1439,6 +1441,7 @@ function TopNavigation({
   degradedSources: string[];
   tokenTelemetry: TokenTelemetry;
   recoveryPulse: RecoveryPulseState;
+  onRecoveryPulseClick: (source: RecoveryTelemetrySource | null) => void;
   deadmanResetCooldown: number;
   killSwitchActive: boolean;
   ihsgChangePct: number;
@@ -1496,7 +1499,9 @@ function TopNavigation({
   const recoveryPulseTitle =
     recoveryPulse.attempts <= 0
       ? 'Recovery telemetry idle (no reset attempts logged yet)'
-      : `Attempts ${recoveryPulse.attempts} | Fail ${recoveryPulse.failures} (${recoveryPulse.failRatePct.toFixed(1)}%) | Streak fail ${recoveryPulse.failStreak} lock ${recoveryPulse.lockStreak} | Last ${recoveryPulse.lastStatus}${recoveryPulse.lastSource ? ` @ ${recoveryPulse.lastSource}` : ''}${recoveryPulse.lastAttemptAt ? ` ${new Date(recoveryPulse.lastAttemptAt).toLocaleTimeString('id-ID')}` : ''}`;
+      : `Attempts ${recoveryPulse.attempts} | Fail ${recoveryPulse.failures} (${recoveryPulse.failRatePct.toFixed(1)}%) | Δ ${recoveryPulse.failRateDeltaPct >= 0 ? '+' : ''}${recoveryPulse.failRateDeltaPct.toFixed(1)}pp | Streak fail ${recoveryPulse.failStreak} lock ${recoveryPulse.lockStreak} | Last ${recoveryPulse.lastStatus}${recoveryPulse.lastSource ? ` @ ${recoveryPulse.lastSource}` : ''}${recoveryPulse.lastAttemptAt ? ` ${new Date(recoveryPulse.lastAttemptAt).toLocaleTimeString('id-ID')}` : ''}`;
+  const recoveryPulseDeltaLabel =
+    recoveryPulse.attempts <= 0 ? '' : ` ${recoveryPulse.failRateDeltaPct > 0 ? '+' : recoveryPulse.failRateDeltaPct < 0 ? '-' : '±'}${Math.abs(recoveryPulse.failRateDeltaPct).toFixed(0)}pp`;
   const highChurnLowAccumulation = washSaleRisk.warning && artificialLiquidity.warning;
   const negotiatedNotionalTotal = negotiatedFeed.reduce((total, item) => total + Math.max(0, Number(item.notional) || 0), 0);
   const negotiatedSymbolBreadth = new Set(negotiatedFeed.map((item) => String(item.symbol || '').toUpperCase()).filter(Boolean)).size;
@@ -2216,9 +2221,13 @@ function TopNavigation({
         >
           {`RLIMIT ${deadmanResetCooldown > 0 ? `${deadmanResetCooldown}s` : 'OK'}`}
         </div>
-        <div className={cn('text-[10px] font-mono border rounded px-2 py-1', recoveryPulseTone)} title={recoveryPulseTitle}>
-          {`RECOV ${recoveryPulseLabel}${recoveryPulse.attempts > 0 ? ` ${Math.round(recoveryPulse.failRatePct)}%` : ''}`}
-        </div>
+        <button
+          onClick={() => onRecoveryPulseClick(recoveryPulse.lastSource)}
+          className={cn('text-[10px] font-mono border rounded px-2 py-1 hover:brightness-110 transition cursor-pointer', recoveryPulseTone)}
+          title={`${recoveryPulseTitle} | Click to focus Recovery Telemetry`}
+        >
+          {`RECOV ${recoveryPulseLabel}${recoveryPulse.attempts > 0 ? ` ${Math.round(recoveryPulse.failRatePct)}%` : ''}${recoveryPulseDeltaLabel}`}
+        </button>
         <div
           className={cn(
             'text-[10px] font-mono border rounded px-2 py-1',
@@ -4355,7 +4364,7 @@ function BottomPanel({
               <div className="text-rose-200">{volumeFingerprint.reason || 'Statistical fingerprint mismatch; execute hard reset and token refresh flow.'}</div>
             </div>
           ) : null}
-          <div className="border border-slate-800 rounded px-2 py-1 bg-slate-900/40 text-[9px] font-mono text-slate-400 space-y-1">
+          <div id="action-dock-recovery-telemetry" className="border border-slate-800 rounded px-2 py-1 bg-slate-900/40 text-[9px] font-mono text-slate-400 space-y-1">
             <div className="flex items-center justify-between gap-2">
               <div className="text-slate-500 uppercase tracking-wider">{`Recovery Telemetry (${recoveryTelemetrySource.toUpperCase()})`}</div>
               <select
@@ -4703,6 +4712,7 @@ export default function Home() {
     attempts: 0,
     failures: 0,
     failRatePct: 0,
+    failRateDeltaPct: 0,
     failStreak: 0,
     lockStreak: 0,
     lastStatus: 'IDLE',
@@ -4861,16 +4871,17 @@ export default function Home() {
           lockStreak += 1;
         }
 
-        setRecoveryPulse({
+        setRecoveryPulse((prev) => ({
           attempts,
           failures,
           failRatePct,
+          failRateDeltaPct: failRatePct - prev.failRatePct,
           failStreak,
           lockStreak,
           lastStatus: latest?.lastStatus || 'IDLE',
           lastAttemptAt: latest?.lastAttemptAt || null,
           lastSource: latest?.source || null,
-        });
+        }));
       } catch {
         return;
       }
@@ -7595,6 +7606,14 @@ export default function Home() {
     combatCriticalLocks.length > 0
       ? `Active lock guards (${combatCriticalLocks.length}): ${combatCriticalLocks.join(' | ')} | ${PERSONAL_RESEARCH_ONLY_DISCLAIMER}`
       : `No active lock guard | ${PERSONAL_RESEARCH_ONLY_DISCLAIMER}`;
+  const focusRecoveryTelemetry = useCallback((source: RecoveryTelemetrySource | null) => {
+    setRecoveryTelemetrySource(source || 'deadman');
+    if (typeof document !== 'undefined') {
+      window.setTimeout(() => {
+        document.getElementById('action-dock-recovery-telemetry')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }, 80);
+    }
+  }, []);
 
   return (
     <div className="h-screen w-screen bg-black text-slate-200 selection:bg-cyan-500/30 overflow-hidden flex flex-col">
@@ -7651,6 +7670,7 @@ export default function Home() {
         degradedSources={degradedSources}
         tokenTelemetry={tokenTelemetry}
         recoveryPulse={recoveryPulse}
+        onRecoveryPulseClick={focusRecoveryTelemetry}
         deadmanResetCooldown={deadmanResetCooldown}
         killSwitchActive={killSwitchActive}
         ihsgChangePct={ihsgChangePct}
