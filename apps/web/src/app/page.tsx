@@ -3833,6 +3833,14 @@ function BottomPanel({
   const recoveryEscalationInvestigateEvent = recoveryEscalationInvestigateSignatureActive
     ? filteredRecoveryEscalationEvents.find((item) => item.signature === recoveryEscalationInvestigateSignatureActive) || null
     : null;
+  const investigateTrailEvents = filteredRecoveryEscalationEvents.slice(0, 3);
+  const recoveryEscalationInvestigateIndex =
+    recoveryEscalationInvestigateSignatureActive && investigateTrailEvents.length > 0
+      ? investigateTrailEvents.findIndex((item) => item.signature === recoveryEscalationInvestigateSignatureActive)
+      : -1;
+  const canInvestigatePrev = recoveryEscalationInvestigateIndex > 0;
+  const canInvestigateNext =
+    recoveryEscalationInvestigateIndex >= 0 && recoveryEscalationInvestigateIndex < investigateTrailEvents.length - 1;
   const recoveryEscalationSelectedSource = recoveryEscalationSourceStats.find((item) => item.source === recoveryTelemetrySource) || null;
   const bearishRiskBullets = extractBearishRiskBullets(adversarialNarrative.bearish);
   const adversarialChecklist = buildAdversarialChecklist({
@@ -4474,13 +4482,43 @@ function BottomPanel({
                   <div className="space-y-1 border border-cyan-500/30 bg-cyan-500/10 rounded px-1.5 py-1">
                     <div className="flex items-center justify-between gap-2 text-[9px] text-cyan-300">
                       <span className="truncate" title={recoveryEscalationInvestigateSignatureActive}>{`Investigate ${recoveryEscalationInvestigateSignatureActive}`}</span>
-                      <button
-                        onClick={() => setRecoveryEscalationInvestigateSignature(null)}
-                        className="text-slate-400 hover:text-slate-200"
-                        title="Clear investigate signature"
-                      >
-                        Clear
-                      </button>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => {
+                            if (!canInvestigatePrev) {
+                              return;
+                            }
+                            const prevItem = investigateTrailEvents[recoveryEscalationInvestigateIndex - 1];
+                            setRecoveryEscalationInvestigateSignature(prevItem?.signature || null);
+                          }}
+                          disabled={!canInvestigatePrev}
+                          className="text-slate-400 hover:text-slate-200 disabled:opacity-40"
+                          title="Investigate previous event"
+                        >
+                          Prev
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (!canInvestigateNext) {
+                              return;
+                            }
+                            const nextItem = investigateTrailEvents[recoveryEscalationInvestigateIndex + 1];
+                            setRecoveryEscalationInvestigateSignature(nextItem?.signature || null);
+                          }}
+                          disabled={!canInvestigateNext}
+                          className="text-slate-400 hover:text-slate-200 disabled:opacity-40"
+                          title="Investigate next event"
+                        >
+                          Next
+                        </button>
+                        <button
+                          onClick={() => setRecoveryEscalationInvestigateSignature(null)}
+                          className="text-slate-400 hover:text-slate-200"
+                          title="Clear investigate signature"
+                        >
+                          Clear
+                        </button>
+                      </div>
                     </div>
                     {recoveryEscalationInvestigateEvent ? (
                       <div className="text-[9px] text-slate-300 flex items-center justify-between gap-2">
@@ -4498,7 +4536,7 @@ function BottomPanel({
                     ) : null}
                   </div>
                 ) : null}
-                {filteredRecoveryEscalationEvents.slice(0, 3).map((item) => (
+                {investigateTrailEvents.map((item) => (
                   <button
                     key={item.id}
                     onClick={() => {
