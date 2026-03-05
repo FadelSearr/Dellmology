@@ -703,6 +703,7 @@ const CHAMPION_CHALLENGER_ALERT_GAP_PCT = envNumber('NEXT_PUBLIC_CHAMPION_CHALLE
 const WASH_SALE_SCORE_ALERT = envNumber('NEXT_PUBLIC_WASH_SALE_SCORE_ALERT', 60);
 const MODEL_CONFIDENCE_TRACK_WINDOW = Math.max(5, Math.floor(envNumber('NEXT_PUBLIC_MODEL_CONFIDENCE_TRACK_WINDOW', 10)));
 const MODEL_CONFIDENCE_TRACK_MAX_MISS = Math.max(1, Math.floor(envNumber('NEXT_PUBLIC_MODEL_CONFIDENCE_TRACK_MAX_MISS', 7)));
+const RECOVERY_ESCALATION_ACK_COOLDOWN_MS = 10 * 60 * 1000;
 const PERSONAL_RESEARCH_ONLY_DISCLAIMER = 'Analisis ini adalah pengolahan data statistik murni, bukan ajakan beli/jual.';
 
 const ROADMAP_DEFAULTS = {
@@ -4733,6 +4734,10 @@ export default function Home() {
     lastStatus: 'IDLE',
     recentLogs: [],
   });
+  const [recoveryEscalationAck, setRecoveryEscalationAck] = useState<{ signature: string | null; silencedUntil: string | null }>({
+    signature: null,
+    silencedUntil: null,
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -7579,7 +7584,16 @@ export default function Home() {
         : recoveryPulse.attempts >= 3 && (recoveryPulse.failRatePct >= 40 || recoveryPulse.lastStatus === 'FAILED')
           ? 'WARN'
           : 'OK';
-  const recoveryEscalationActive = recoveryEscalationLevel !== 'OK';
+  const recoveryEscalationSignature = `${recoveryEscalationLevel}|${recoveryPulse.lastStatus}|${recoveryPulse.lastSource || 'none'}|${recoveryPulse.lastAttemptAt || 'none'}`;
+  const recoveryEscalationDetected = recoveryEscalationLevel !== 'OK';
+  const recoveryEscalationSilencedUntilMs =
+    recoveryEscalationAck.signature === recoveryEscalationSignature && recoveryEscalationAck.silencedUntil
+      ? new Date(recoveryEscalationAck.silencedUntil).getTime()
+      : null;
+  const recoveryEscalationSilencedRemainingMs =
+    recoveryEscalationSilencedUntilMs !== null ? Math.max(0, recoveryEscalationSilencedUntilMs - Date.now()) : 0;
+  const recoveryEscalationSilenced = recoveryEscalationDetected && recoveryEscalationSilencedRemainingMs > 0;
+  const recoveryEscalationActive = recoveryEscalationDetected && !recoveryEscalationSilenced;
   const recoveryEscalationTone =
     recoveryEscalationLevel === 'CRITICAL'
       ? 'border-rose-500/50 bg-rose-500/20 text-rose-100'
@@ -7596,6 +7610,12 @@ export default function Home() {
           .map((item) => `${item.status}@${item.source} ${new Date(item.at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}`)
           .join('  •  ')
       : 'No recent recovery events';
+  const acknowledgeRecoveryEscalation = useCallback(() => {
+    setRecoveryEscalationAck({
+      signature: recoveryEscalationSignature,
+      silencedUntil: new Date(Date.now() + RECOVERY_ESCALATION_ACK_COOLDOWN_MS).toISOString(),
+    });
+  }, [recoveryEscalationSignature]);
   const combatCriticalLocks = buildActiveLockGuards({
     coolingOffActive: coolingOff.active,
     coolingRemainingLabel,
@@ -7703,21 +7723,42 @@ export default function Home() {
             <div className="text-[10px] font-mono">{recoveryEscalationMessage}</div>
             <div className="text-[9px] font-mono text-slate-200/80 truncate" title={recoveryEscalationTrail}>{`Trail: ${recoveryEscalationTrail}`}</div>
           </div>
+          <div className="shrink-0 flex items-center gap-2">
+            <button
+              onClick={acknowledgeRecoveryEscalation}
+              className="text-[10px] font-bold px-2.5 py-1 rounded border border-slate-200/20 bg-slate-900/30 text-slate-100 hover:bg-slate-900/45"
+              title="Silence this exact escalation signature for 10 minutes"
+            >
+              Ack 10m
+            </button>
+            <button
+              onClick={resetDeadman}
+              disabled={actionState.busy || deadmanResetCooldown > 0 || riskConfigLocked}
+              className="text-[10px] font-bold px-3 py-1 rounded border border-slate-200/20 bg-slate-900/30 text-slate-100 hover:bg-slate-900/45 disabled:opacity-50"
+              title={
+                actionState.busy
+                  ? 'Recovery blocked: action in progress'
+                  : deadmanResetCooldown > 0
+                    ? `Recovery blocked: rate-limit cooldown ${deadmanResetCooldown}s`
+                    : riskConfigLocked
+                      ? 'Recovery blocked: runtime risk config locked'
+                      : 'Execute deadman recovery reset now'
+              }
+            >
+              {deadmanResetCooldown > 0 ? `Reset Deadman (${deadmanResetCooldown}s)` : 'Reset Deadman'}
+            </button>
+          </div>
+        </div>
+      ) : null}
+      {recoveryEscalationDetected && recoveryEscalationSilenced ? (
+        <div className="border-b border-slate-800 bg-slate-900/60 px-4 py-1 text-[10px] font-mono text-slate-400 flex items-center justify-between gap-3">
+          <div>{`RECOVERY ESCALATION ACKNOWLEDGED | resume in ${Math.ceil(recoveryEscalationSilencedRemainingMs / 1000)}s | level ${recoveryEscalationLevel}`}</div>
           <button
-            onClick={resetDeadman}
-            disabled={actionState.busy || deadmanResetCooldown > 0 || riskConfigLocked}
-            className="shrink-0 text-[10px] font-bold px-3 py-1 rounded border border-slate-200/20 bg-slate-900/30 text-slate-100 hover:bg-slate-900/45 disabled:opacity-50"
-            title={
-              actionState.busy
-                ? 'Recovery blocked: action in progress'
-                : deadmanResetCooldown > 0
-                  ? `Recovery blocked: rate-limit cooldown ${deadmanResetCooldown}s`
-                  : riskConfigLocked
-                    ? 'Recovery blocked: runtime risk config locked'
-                    : 'Execute deadman recovery reset now'
-            }
+            onClick={() => setRecoveryEscalationAck({ signature: null, silencedUntil: null })}
+            className="text-[10px] font-bold px-2 py-0.5 rounded border border-slate-700 bg-slate-900 text-slate-300 hover:bg-slate-800"
+            title="Show escalation banner immediately"
           >
-            {deadmanResetCooldown > 0 ? `Reset Deadman (${deadmanResetCooldown}s)` : 'Reset Deadman'}
+            Show Now
           </button>
         </div>
       ) : null}
