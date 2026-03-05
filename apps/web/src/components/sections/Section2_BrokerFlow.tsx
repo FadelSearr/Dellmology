@@ -6,6 +6,7 @@ import { Card } from '@/components/common/Card';
 import { StatusBadge } from '@/components/common/StatusBadge';
 import { BrokerFlowTable } from '@/components/tables/BrokerFlowTable';
 import { FlowEngine } from '@/components/dashboard/FlowEngine';
+import { NegotiatedMarketMonitor } from '@/components/monitoring/NegotiatedMarketMonitor';
 
 interface Section2Props {
   symbol: string;
@@ -190,6 +191,10 @@ export const Section2_BrokerFlow: React.FC<Section2Props> = ({
             })()}
           </div>
         </Card>
+      </div>
+      {/* Negotiated Market Monitor Feed */}
+      <div className="mt-4">
+        <NegotiatedMarketMonitor />
       </div>
     </div>
   );
