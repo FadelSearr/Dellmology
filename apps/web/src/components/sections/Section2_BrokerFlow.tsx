@@ -194,10 +194,42 @@ export const Section2_BrokerFlow: React.FC<Section2Props> = ({
         </Card>
       </div>
       {/* Negotiated Market Monitor Feed */}
+      {/* Market-Wide Net Summary & Artificial Liquidity Warning */}
       <div className="mt-4">
-        <NegotiatedMarketMonitor />
+        <Card title="🌐 Market-Wide Net Summary" subtitle="Concentration & liquidity health">
+          {(() => {
+            // Example logic, replace with real data
+            const totalNetBuy = brokerData.reduce((sum, b) => sum + (Number(b?.net_value) || 0), 0);
+            const topBrokerNet = brokerData.length > 0 ? Number(brokerData[0]?.net_value || 0) : 0;
+            const concentrationRatio = brokerData.length > 1 ? topBrokerNet / Math.abs(totalNetBuy || 1) : 0;
+            const isArtificialLiquidity = concentrationRatio > 0.7 && brokerData.length > 3;
+
+            return (
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Total Net Buy:</span>
+                  <span className={totalNetBuy > 0 ? "text-green-400 font-bold" : "text-orange-400 font-bold"}>{totalNetBuy.toLocaleString('id-ID')}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Concentration Ratio:</span>
+                  <span className={isArtificialLiquidity ? "text-red-400 font-bold" : "text-cyan-400 font-mono"}>{(concentrationRatio * 100).toFixed(1)}%</span>
+                </div>
+                {isArtificialLiquidity && (
+                  <div className="bg-red-900/60 border border-red-600 rounded-lg p-2 text-xs text-red-300 font-semibold flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4" />
+                    Artificial Liquidity Warning: Accumulation dominated by one broker, low healthy participation.
+                  </div>
+                )}
+                <p className="text-xs text-gray-400">Healthy accumulation should involve 2-3 major brokers. High concentration may indicate artificial liquidity.</p>
+              </div>
+            );
+          })()}
+        </Card>
         <div className="mt-4">
-          <WhaleIdentityClustering symbol={symbol} />
+          <NegotiatedMarketMonitor />
+          <div className="mt-4">
+            <WhaleIdentityClustering symbol={symbol} />
+          </div>
         </div>
       </div>
     </div>
