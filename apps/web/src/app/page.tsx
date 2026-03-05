@@ -301,6 +301,8 @@ interface RecoveryPulseState {
   attempts: number;
   failures: number;
   failRatePct: number;
+  failStreak: number;
+  lockStreak: number;
   lastStatus: 'IDLE' | 'SUCCESS' | 'FAILED' | 'LOCKED';
   lastAttemptAt: string | null;
   lastSource: RecoveryTelemetrySource | null;
@@ -1494,7 +1496,7 @@ function TopNavigation({
   const recoveryPulseTitle =
     recoveryPulse.attempts <= 0
       ? 'Recovery telemetry idle (no reset attempts logged yet)'
-      : `Attempts ${recoveryPulse.attempts} | Fail ${recoveryPulse.failures} (${recoveryPulse.failRatePct.toFixed(1)}%) | Last ${recoveryPulse.lastStatus}${recoveryPulse.lastSource ? ` @ ${recoveryPulse.lastSource}` : ''}${recoveryPulse.lastAttemptAt ? ` ${new Date(recoveryPulse.lastAttemptAt).toLocaleTimeString('id-ID')}` : ''}`;
+      : `Attempts ${recoveryPulse.attempts} | Fail ${recoveryPulse.failures} (${recoveryPulse.failRatePct.toFixed(1)}%) | Streak fail ${recoveryPulse.failStreak} lock ${recoveryPulse.lockStreak} | Last ${recoveryPulse.lastStatus}${recoveryPulse.lastSource ? ` @ ${recoveryPulse.lastSource}` : ''}${recoveryPulse.lastAttemptAt ? ` ${new Date(recoveryPulse.lastAttemptAt).toLocaleTimeString('id-ID')}` : ''}`;
   const highChurnLowAccumulation = washSaleRisk.warning && artificialLiquidity.warning;
   const negotiatedNotionalTotal = negotiatedFeed.reduce((total, item) => total + Math.max(0, Number(item.notional) || 0), 0);
   const negotiatedSymbolBreadth = new Set(negotiatedFeed.map((item) => String(item.symbol || '').toUpperCase()).filter(Boolean)).size;
@@ -4701,6 +4703,8 @@ export default function Home() {
     attempts: 0,
     failures: 0,
     failRatePct: 0,
+    failStreak: 0,
+    lockStreak: 0,
     lastStatus: 'IDLE',
     lastAttemptAt: null,
     lastSource: null,
@@ -4786,7 +4790,7 @@ export default function Home() {
       try {
         const responses = await Promise.all(
           sources.map(async (source) => {
-            const response = await fetch(`/api/system-control/recovery-telemetry?source=${encodeURIComponent(source)}&limit=1`);
+            const response = await fetch(`/api/system-control/recovery-telemetry?source=${encodeURIComponent(source)}&limit=3`);
             if (!response.ok) {
               return null;
             }
@@ -4799,6 +4803,10 @@ export default function Home() {
                 last_attempt_at?: string | null;
                 last_status?: 'IDLE' | 'SUCCESS' | 'FAILED' | 'LOCKED';
               };
+              logs?: Array<{
+                status?: 'SUCCESS' | 'FAILED' | 'LOCKED';
+                created_at?: string;
+              }>;
             };
 
             if (!body.success) {
@@ -4811,6 +4819,7 @@ export default function Home() {
               failures: Number(body.summary?.failures || 0),
               lastAttemptAt: body.summary?.last_attempt_at || null,
               lastStatus: body.summary?.last_status || 'IDLE',
+              logs: Array.isArray(body.logs) ? body.logs : [],
             };
           }),
         );
@@ -4826,11 +4835,38 @@ export default function Home() {
         const latest = valid
           .filter((item) => item.lastAttemptAt)
           .sort((a, b) => new Date(b.lastAttemptAt || 0).getTime() - new Date(a.lastAttemptAt || 0).getTime())[0];
+        const recentEvents = valid
+          .flatMap((item) =>
+            item.logs
+              .filter((log) => log.created_at && log.status)
+              .map((log) => ({
+                source: item.source,
+                status: log.status as 'SUCCESS' | 'FAILED' | 'LOCKED',
+                at: String(log.created_at),
+              })),
+          )
+          .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
+        let failStreak = 0;
+        for (const event of recentEvents) {
+          if (event.status === 'SUCCESS') {
+            break;
+          }
+          failStreak += 1;
+        }
+        let lockStreak = 0;
+        for (const event of recentEvents) {
+          if (event.status !== 'LOCKED') {
+            break;
+          }
+          lockStreak += 1;
+        }
 
         setRecoveryPulse({
           attempts,
           failures,
           failRatePct,
+          failStreak,
+          lockStreak,
           lastStatus: latest?.lastStatus || 'IDLE',
           lastAttemptAt: latest?.lastAttemptAt || null,
           lastSource: latest?.source || null,
@@ -7517,6 +7553,25 @@ export default function Home() {
   const coolingTriggerReason = coolingTriggerExplain(coolingTriggerLabel);
   const coolingRemainingLabel = formatCoolingRemaining(coolingOff.remainingSeconds);
   const coolingLastBreachLabel = coolingOff.lastBreachAt ? new Date(coolingOff.lastBreachAt).toLocaleString('id-ID') : '-';
+  const recoveryEscalationLevel =
+    recoveryPulse.lockStreak >= 2 || recoveryPulse.lastStatus === 'LOCKED'
+      ? 'CRITICAL'
+      : recoveryPulse.failStreak >= 3 || (recoveryPulse.attempts >= 6 && recoveryPulse.failRatePct >= 60)
+        ? 'HIGH'
+        : recoveryPulse.attempts >= 3 && (recoveryPulse.failRatePct >= 40 || recoveryPulse.lastStatus === 'FAILED')
+          ? 'WARN'
+          : 'OK';
+  const recoveryEscalationActive = recoveryEscalationLevel !== 'OK';
+  const recoveryEscalationTone =
+    recoveryEscalationLevel === 'CRITICAL'
+      ? 'border-rose-500/50 bg-rose-500/20 text-rose-100'
+      : recoveryEscalationLevel === 'HIGH'
+        ? 'border-rose-500/40 bg-rose-500/15 text-rose-200'
+        : 'border-amber-500/40 bg-amber-500/10 text-amber-200';
+  const recoveryEscalationMessage =
+    recoveryEscalationLevel === 'CRITICAL'
+      ? `RECOVERY ESCALATION ${recoveryEscalationLevel} | lock streak ${recoveryPulse.lockStreak} | fail ${recoveryPulse.failures}/${Math.max(1, recoveryPulse.attempts)} (${recoveryPulse.failRatePct.toFixed(1)}%) | latest ${recoveryPulse.lastStatus}${recoveryPulse.lastSource ? ` @ ${recoveryPulse.lastSource}` : ''} | manual recovery required`
+      : `RECOVERY ESCALATION ${recoveryEscalationLevel} | fail streak ${recoveryPulse.failStreak} | fail ${recoveryPulse.failures}/${Math.max(1, recoveryPulse.attempts)} (${recoveryPulse.failRatePct.toFixed(1)}%) | latest ${recoveryPulse.lastStatus}${recoveryPulse.lastSource ? ` @ ${recoveryPulse.lastSource}` : ''} | monitor reset path`;
   const combatCriticalLocks = buildActiveLockGuards({
     coolingOffActive: coolingOff.active,
     coolingRemainingLabel,
@@ -7607,6 +7662,27 @@ export default function Home() {
       {degradedSources.length > 0 ? (
         <div className="border-b border-amber-500/30 bg-amber-500/10 px-4 py-1.5 text-[10px] font-mono text-amber-300">
           {`DEGRADED SOURCES: ${degradedSources.join(' | ')}`}
+        </div>
+      ) : null}
+      {recoveryEscalationActive ? (
+        <div className={cn('border-b px-4 py-2 flex items-center justify-between gap-3', recoveryEscalationTone)}>
+          <div className="text-[10px] font-mono">{recoveryEscalationMessage}</div>
+          <button
+            onClick={resetDeadman}
+            disabled={actionState.busy || deadmanResetCooldown > 0 || riskConfigLocked}
+            className="shrink-0 text-[10px] font-bold px-3 py-1 rounded border border-slate-200/20 bg-slate-900/30 text-slate-100 hover:bg-slate-900/45 disabled:opacity-50"
+            title={
+              actionState.busy
+                ? 'Recovery blocked: action in progress'
+                : deadmanResetCooldown > 0
+                  ? `Recovery blocked: rate-limit cooldown ${deadmanResetCooldown}s`
+                  : riskConfigLocked
+                    ? 'Recovery blocked: runtime risk config locked'
+                    : 'Execute deadman recovery reset now'
+            }
+          >
+            {deadmanResetCooldown > 0 ? `Reset Deadman (${deadmanResetCooldown}s)` : 'Reset Deadman'}
+          </button>
         </div>
       ) : null}
       {engineHeartbeat.checkedAt !== null && !engineHeartbeat.online ? (
