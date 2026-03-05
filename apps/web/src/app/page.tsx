@@ -704,6 +704,7 @@ const WASH_SALE_SCORE_ALERT = envNumber('NEXT_PUBLIC_WASH_SALE_SCORE_ALERT', 60)
 const MODEL_CONFIDENCE_TRACK_WINDOW = Math.max(5, Math.floor(envNumber('NEXT_PUBLIC_MODEL_CONFIDENCE_TRACK_WINDOW', 10)));
 const MODEL_CONFIDENCE_TRACK_MAX_MISS = Math.max(1, Math.floor(envNumber('NEXT_PUBLIC_MODEL_CONFIDENCE_TRACK_MAX_MISS', 7)));
 const RECOVERY_ESCALATION_ACK_COOLDOWN_MS = 10 * 60 * 1000;
+const RECOVERY_ESCALATION_ACK_STORAGE_KEY = 'dellmology.recoveryEscalationAck.v1';
 const PERSONAL_RESEARCH_ONLY_DISCLAIMER = 'Analisis ini adalah pengolahan data statistik murni, bukan ajakan beli/jual.';
 
 const ROADMAP_DEFAULTS = {
@@ -4738,6 +4739,54 @@ export default function Home() {
     signature: null,
     silencedUntil: null,
   });
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(RECOVERY_ESCALATION_ACK_STORAGE_KEY);
+      if (!raw) {
+        return;
+      }
+
+      const parsed = JSON.parse(raw) as {
+        signature?: unknown;
+        silencedUntil?: unknown;
+      };
+      const signature = typeof parsed.signature === 'string' ? parsed.signature : null;
+      const silencedUntil = typeof parsed.silencedUntil === 'string' ? parsed.silencedUntil : null;
+      const validSilencedUntil = silencedUntil && Number.isFinite(new Date(silencedUntil).getTime()) ? silencedUntil : null;
+
+      if (!signature || !validSilencedUntil || new Date(validSilencedUntil).getTime() <= Date.now()) {
+        window.localStorage.removeItem(RECOVERY_ESCALATION_ACK_STORAGE_KEY);
+        return;
+      }
+
+      setRecoveryEscalationAck({ signature, silencedUntil: validSilencedUntil });
+    } catch {
+      window.localStorage.removeItem(RECOVERY_ESCALATION_ACK_STORAGE_KEY);
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      if (!recoveryEscalationAck.signature || !recoveryEscalationAck.silencedUntil) {
+        window.localStorage.removeItem(RECOVERY_ESCALATION_ACK_STORAGE_KEY);
+        return;
+      }
+
+      const expiryMs = new Date(recoveryEscalationAck.silencedUntil).getTime();
+      if (!Number.isFinite(expiryMs) || expiryMs <= Date.now()) {
+        window.localStorage.removeItem(RECOVERY_ESCALATION_ACK_STORAGE_KEY);
+        if (recoveryEscalationAck.signature || recoveryEscalationAck.silencedUntil) {
+          setRecoveryEscalationAck({ signature: null, silencedUntil: null });
+        }
+        return;
+      }
+
+      window.localStorage.setItem(RECOVERY_ESCALATION_ACK_STORAGE_KEY, JSON.stringify(recoveryEscalationAck));
+    } catch {
+      return;
+    }
+  }, [recoveryEscalationAck]);
 
   useEffect(() => {
     let cancelled = false;
