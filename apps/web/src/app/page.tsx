@@ -1525,6 +1525,30 @@ function TopNavigation({
           ? 'text-yellow-300 border-yellow-500/40 bg-yellow-500/10'
           : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10';
   const anchorEscalationTitle = `Poisoning guardrail escalation | Golden ${goldenRecord.safe ? 'OK' : 'FAIL'}${goldenRecord.triggerKillSwitch ? ' KILL' : ''} | XCheck ${priceCrossCheck.warning ? 'LOCK' : 'OK'} | Sanity ${dataSanity.lockActive ? 'LOCK' : dataSanity.warning ? 'WARN' : 'OK'} | Stream ${incompleteData.warning ? 'INCOMPLETE' : 'OK'}`;
+  const reconReferenceEpoch = engineHeartbeat.checkedAt ? new Date(engineHeartbeat.checkedAt).getTime() : marketIntelAdapter.checkedAt ? new Date(marketIntelAdapter.checkedAt).getTime() : null;
+  const reconCheckpointEpochs = [dataSanity.checkedAt, priceCrossCheck.checkedAt, goldenRecord.checkedAt]
+    .map((value) => (value ? new Date(value).getTime() : null))
+    .filter((value): value is number => value !== null && Number.isFinite(value));
+  const reconLatestEpoch = reconCheckpointEpochs.length > 0 ? Math.max(...reconCheckpointEpochs) : null;
+  const reconAgeMinutes =
+    reconReferenceEpoch !== null && reconLatestEpoch !== null
+      ? Math.max(0, Math.round((reconReferenceEpoch - reconLatestEpoch) / 60000))
+      : null;
+  const reconStaleLimitMinutes = Math.max(60, Math.round(runtimeRiskAuditStaleHours * 60));
+  const reconMismatchCount = Number(dataSanity.warning || dataSanity.lockActive) + Number(priceCrossCheck.warning) + Number(!goldenRecord.safe);
+  const reconStatusLabel =
+    reconMismatchCount >= 2 || goldenRecord.triggerKillSwitch
+      ? 'FAIL'
+      : reconMismatchCount >= 1 || reconAgeMinutes === null || reconAgeMinutes > reconStaleLimitMinutes
+        ? 'WARN'
+        : 'PASS';
+  const reconStatusTone =
+    reconStatusLabel === 'FAIL'
+      ? 'text-rose-300 border-rose-500/40 bg-rose-500/10'
+      : reconStatusLabel === 'WARN'
+        ? 'text-amber-300 border-amber-500/40 bg-amber-500/10'
+        : 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10';
+  const reconStatusTitle = `Nightly reconciliation visibility | age ${reconAgeMinutes === null ? 'N/A' : `${reconAgeMinutes}m`} | stale limit ${reconStaleLimitMinutes}m | mismatch ${reconMismatchCount} | Golden ${goldenRecord.safe ? 'OK' : 'FAIL'} | XCheck ${priceCrossCheck.warning ? 'LOCK' : 'OK'} | Sanity ${dataSanity.lockActive ? 'LOCK' : dataSanity.warning ? 'WARN' : 'OK'}`;
   const feedDelayed = fallbackEmergencyActive || fallbackEndpointCount > 0 || marketIntelAdapter.degraded;
   const feedBadgeTone = feedDelayed
     ? fallbackEmergencyActive
@@ -1839,6 +1863,9 @@ function TopNavigation({
           }
         >
           {`AUDIT ${staleAudit ? 'STALE' : 'FRESH'}`}
+        </div>
+        <div className={cn('text-[10px] font-mono border rounded px-2 py-1', reconStatusTone)} title={reconStatusTitle}>
+          {`RECON ${reconStatusLabel}${reconAgeMinutes !== null ? ` ${reconAgeMinutes}m` : ''}`}
         </div>
         <div
           className={cn(
