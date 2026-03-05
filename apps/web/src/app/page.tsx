@@ -4650,6 +4650,69 @@ export default function Home() {
     lastStatus: 'IDLE',
     recentLogs: [],
   });
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const hydrateRecoveryTelemetry = async () => {
+      try {
+        const response = await fetch('/api/system-control/recovery-telemetry?source=deadman&limit=5');
+        if (!response.ok) {
+          return;
+        }
+
+        const body = (await response.json()) as {
+          success?: boolean;
+          summary?: {
+            attempts?: number;
+            successes?: number;
+            failures?: number;
+            last_attempt_at?: string | null;
+            last_status?: 'IDLE' | 'SUCCESS' | 'FAILED' | 'LOCKED';
+          };
+          logs?: Array<{
+            id?: number;
+            status?: 'SUCCESS' | 'FAILED' | 'LOCKED';
+            message?: string;
+            cooldown_seconds?: number | null;
+            created_at?: string;
+          }>;
+        };
+
+        if (!body.success || cancelled) {
+          return;
+        }
+
+        const summary = body.summary;
+        const logs = Array.isArray(body.logs) ? body.logs : [];
+
+        setRecoveryTelemetry({
+          attempts: Number(summary?.attempts || 0),
+          successes: Number(summary?.successes || 0),
+          failures: Number(summary?.failures || 0),
+          lastAttemptAt: summary?.last_attempt_at || null,
+          lastStatus: summary?.last_status || 'IDLE',
+          recentLogs: logs
+            .filter((item) => item.created_at && item.status && item.message)
+            .map((item, index) => ({
+              id: String(item.id || `${item.created_at}-${index}`),
+              at: String(item.created_at),
+              status: item.status as 'SUCCESS' | 'FAILED' | 'LOCKED',
+              message: String(item.message),
+              cooldownSeconds: typeof item.cooldown_seconds === 'number' ? item.cooldown_seconds : null,
+            })),
+        });
+      } catch {
+        return;
+      }
+    };
+
+    void hydrateRecoveryTelemetry();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const [coolingOff, setCoolingOff] = useState<CoolingOffState>({
     active: false,
     activeUntil: null,
@@ -7107,6 +7170,13 @@ export default function Home() {
       cooldownSeconds: number | null,
     ) => {
       const attemptAt = new Date().toISOString();
+      const eventPayload = {
+        source: 'deadman',
+        status,
+        message,
+        cooldown_seconds: cooldownSeconds,
+        symbol: activeSymbol,
+      };
       setRecoveryTelemetry((prev) => ({
         ...prev,
         successes: prev.successes + (status === 'SUCCESS' ? 1 : 0),
@@ -7124,6 +7194,12 @@ export default function Home() {
           ...prev.recentLogs,
         ].slice(0, 5),
       }));
+
+      void fetch('/api/system-control/recovery-telemetry', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(eventPayload),
+      }).catch(() => undefined);
     };
 
     let attemptLogged = false;
@@ -7167,7 +7243,7 @@ export default function Home() {
       }
       setActionState({ busy: false, message: `Deadman reset failed: ${message}` });
     }
-  }, [deadmanResetCooldown, fetchDashboard]);
+  }, [activeSymbol, deadmanResetCooldown, fetchDashboard]);
 
   const resetCoolingOff = useCallback(async () => {
     if (!coolingOff.active) {
