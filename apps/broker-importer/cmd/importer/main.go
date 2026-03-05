@@ -23,15 +23,15 @@ func main() {
 	}
 	defer db.Close()
 
-	// Fetch latest token
-	token, err := importer.FetchLatestToken(db.db)
+		// Fetch latest token
+		token, err := importer.FetchLatestToken(db.RawDB())
 	if err != nil || token == "" {
 		log.Fatalf("No valid Stockbit token found. Please sync token from extension.")
 	}
 
 	// Start real-time streamer
 	wsURL := "wss://stream.stockbit.com" // Replace with actual Stockbit WebSocket URL
-	importer.StreamStockbitTrades(db.db, token, wsURL)
+	importer.StreamStockbitTrades(db.RawDB(), token, wsURL)
 
 	log.Println("✅ Broker Importer initialized successfully")
 	log.Println("Ready to import broker data...")

@@ -42,3 +42,9 @@ func (s *StorageDB) StoreBrokerSummary(symbol, brokerCode string, buyValue, sell
 func (s *StorageDB) Close() error {
 	return s.db.Close()
 }
+
+// RawDB exposes the underlying *sql.DB for callers that need direct access.
+// Prefer using StorageDB methods when possible to encapsulate DB operations.
+func (s *StorageDB) RawDB() *sql.DB {
+	return s.db
+}
