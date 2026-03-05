@@ -332,6 +332,14 @@ interface RecoveryEscalationAuditEvent {
   createdAt: string;
 }
 
+interface RecoveryEscalationSourceStat {
+  source: string;
+  detectedCount: number;
+  suppressedCount: number;
+  suppressionRatioPct: number;
+  lastEventAt: string | null;
+}
+
 type RecoveryEscalationAuditEventType = 'DETECTED' | 'SUPPRESSED' | 'ACKNOWLEDGED';
 type RecoveryEscalationLevel = 'WARN' | 'HIGH' | 'CRITICAL';
 
@@ -3707,6 +3715,7 @@ function BottomPanel({
   recoveryTelemetry,
   recoveryEscalationAudit,
   recoveryEscalationRecentEvents,
+  recoveryEscalationSourceStats,
   recoveryTelemetrySource,
   onRecoveryTelemetrySourceChange,
 }: {
@@ -3774,6 +3783,7 @@ function BottomPanel({
   recoveryTelemetry: RecoveryAttemptTelemetry;
   recoveryEscalationAudit: RecoveryEscalationAuditState;
   recoveryEscalationRecentEvents: RecoveryEscalationAuditEvent[];
+  recoveryEscalationSourceStats: RecoveryEscalationSourceStat[];
   recoveryTelemetrySource: RecoveryTelemetrySource;
   onRecoveryTelemetrySourceChange: (source: RecoveryTelemetrySource) => void;
 }) {
@@ -3811,6 +3821,10 @@ function BottomPanel({
       : null;
   const postmortemAccuracySpread =
     postmortemBestRule && postmortemWorstRule ? Math.max(0, postmortemBestRule.accuracy_pct - postmortemWorstRule.accuracy_pct) : 0;
+  const filteredRecoveryEscalationEvents = recoveryEscalationRecentEvents.filter(
+    (item) => !item.source || item.source === recoveryTelemetrySource,
+  );
+  const recoveryEscalationSelectedSource = recoveryEscalationSourceStats.find((item) => item.source === recoveryTelemetrySource) || null;
   const bearishRiskBullets = extractBearishRiskBullets(adversarialNarrative.bearish);
   const adversarialChecklist = buildAdversarialChecklist({
     killSwitchActive,
@@ -4427,9 +4441,27 @@ function BottomPanel({
             {recoveryEscalationAudit.lastAcknowledgedAt ? (
               <div className="text-slate-600">{`Last Ack ${new Date(recoveryEscalationAudit.lastAcknowledgedAt).toLocaleTimeString('id-ID')}`}</div>
             ) : null}
-            {recoveryEscalationRecentEvents.length > 0 ? (
+            {recoveryEscalationSourceStats.length > 0 ? (
               <div className="space-y-1 border-t border-slate-800 pt-1">
-                {recoveryEscalationRecentEvents.slice(0, 3).map((item) => (
+                {recoveryEscalationSourceStats.slice(0, 3).map((item) => (
+                  <div key={item.source} className="flex items-center justify-between gap-1">
+                    <span className={cn(item.source === recoveryTelemetrySource ? 'text-cyan-300' : 'text-slate-500')}>{item.source}</span>
+                    <span className="text-slate-500">{`${item.suppressedCount}/${item.detectedCount}`}</span>
+                    <span className={cn(item.suppressionRatioPct >= 60 ? 'text-amber-300' : 'text-slate-500')}>{`${item.suppressionRatioPct.toFixed(0)}%`}</span>
+                  </div>
+                ))}
+                {recoveryEscalationSelectedSource ? (
+                  <div className="text-slate-600">
+                    {`Scoped ${recoveryTelemetrySource}: ${recoveryEscalationSelectedSource.suppressedCount}/${recoveryEscalationSelectedSource.detectedCount} (${recoveryEscalationSelectedSource.suppressionRatioPct.toFixed(0)}%)`}
+                  </div>
+                ) : (
+                  <div className="text-slate-600">{`Scoped ${recoveryTelemetrySource}: no escalation history`}</div>
+                )}
+              </div>
+            ) : null}
+            {filteredRecoveryEscalationEvents.length > 0 ? (
+              <div className="space-y-1 border-t border-slate-800 pt-1">
+                {filteredRecoveryEscalationEvents.slice(0, 3).map((item) => (
                   <div key={item.id} className="flex items-center justify-between gap-1">
                     <span
                       className={cn(
@@ -4452,7 +4484,9 @@ function BottomPanel({
                   </div>
                 ))}
               </div>
-            ) : null}
+            ) : (
+              <div className="text-slate-600 border-t border-slate-800 pt-1">No scoped escalation events</div>
+            )}
             <div
               className={cn(
                 recoveryTelemetry.lastStatus === 'SUCCESS'
@@ -4820,6 +4854,7 @@ export default function Home() {
     lastAcknowledgedAt: null,
   });
   const [recoveryEscalationRecentEvents, setRecoveryEscalationRecentEvents] = useState<RecoveryEscalationAuditEvent[]>([]);
+  const [recoveryEscalationSourceStats, setRecoveryEscalationSourceStats] = useState<RecoveryEscalationSourceStat[]>([]);
   const recoveryEscalationLastCountedRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -4827,7 +4862,7 @@ export default function Home() {
 
     const hydrateRecoveryEscalationAudit = async () => {
       try {
-        const response = await fetch('/api/system-control/recovery-escalation-audit?limit=3');
+        const response = await fetch('/api/system-control/recovery-escalation-audit?limit=30');
         if (!response.ok) {
           return;
         }
@@ -4850,6 +4885,13 @@ export default function Home() {
             symbol?: string | null;
             created_at?: string;
           }>;
+          source_summary?: Array<{
+            source?: string | null;
+            detected_count?: number;
+            suppressed_count?: number;
+            suppression_ratio_pct?: number;
+            last_event_at?: string | null;
+          }>;
         };
 
         if (!body.success || cancelled) {
@@ -4866,16 +4908,27 @@ export default function Home() {
         });
         setRecoveryEscalationRecentEvents(
           (body.logs || [])
-            .filter((item) => item.event_type && item.level && item.created_at)
+            .filter((item) => item.event_type && item.created_at)
             .map((item) => ({
               id: String(item.id || item.created_at),
               eventType: item.event_type as RecoveryEscalationAuditEventType,
-              level: item.level as RecoveryEscalationLevel,
+              level: (item.level || 'WARN') as RecoveryEscalationLevel,
               signature: item.signature || null,
               source: item.source || null,
               symbol: item.symbol || null,
               createdAt: item.created_at as string,
             })),
+        );
+        setRecoveryEscalationSourceStats(
+          (body.source_summary || [])
+            .map((item) => ({
+              source: String(item.source || 'unknown'),
+              detectedCount: Number(item.detected_count || 0),
+              suppressedCount: Number(item.suppressed_count || 0),
+              suppressionRatioPct: Number(item.suppression_ratio_pct || 0),
+              lastEventAt: item.last_event_at || null,
+            }))
+            .sort((a, b) => b.suppressionRatioPct - a.suppressionRatioPct),
         );
       } catch {
         return;
@@ -8244,6 +8297,7 @@ export default function Home() {
           recoveryTelemetry={recoveryTelemetry}
           recoveryEscalationAudit={recoveryEscalationAudit}
           recoveryEscalationRecentEvents={recoveryEscalationRecentEvents}
+          recoveryEscalationSourceStats={recoveryEscalationSourceStats}
           recoveryTelemetrySource={recoveryTelemetrySource}
           onRecoveryTelemetrySourceChange={setRecoveryTelemetrySource}
         />
