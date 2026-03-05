@@ -119,6 +119,7 @@ interface WatchlistItem {
   flowQuality?: 'STRONG' | 'WATCH' | 'WEAK';
   setupTag?: 'SCALP' | 'SWING' | 'RANGE';
   divergenceTag?: 'ALERT' | 'CAUTION' | 'OK';
+  negotiatedTag?: 'BUY_DOM' | 'SELL_DOM' | 'BALANCED' | 'IDLE';
 }
 
 interface MarketIntelResponse {
@@ -2394,6 +2395,8 @@ function LeftSidebar({
   retailDivergenceWarning,
   retailSentimentScore,
   whaleFlowBias,
+  negotiatedSellPressureWarning,
+  negotiatedFlowLabel,
   onWatchlistUpdate,
 }: {
   activeSymbol: string;
@@ -2406,6 +2409,8 @@ function LeftSidebar({
   retailDivergenceWarning: boolean;
   retailSentimentScore: number;
   whaleFlowBias: number;
+  negotiatedSellPressureWarning: boolean;
+  negotiatedFlowLabel: 'BUY_DOM' | 'SELL_DOM' | 'BALANCED' | 'IDLE';
   onWatchlistUpdate: (items: WatchlistItem[]) => void;
 }) {
   const [activeTab, setActiveTab] = useState<'day' | 'swing' | 'custom'>('day');
@@ -2507,22 +2512,32 @@ function LeftSidebar({
                   : netAccumulation <= 0
                     ? -6
                     : 0;
-            const scoreBeforeDivergence = baseScore + regimeModifier + flowModifier;
-            const sentimentWhaleGap = retailSentimentScore - whaleFlowBias;
-            const divergencePenalty =
-              retailDivergenceWarning && sentimentWhaleGap >= 8
+          const scoreBeforeDivergence = baseScore + regimeModifier + flowModifier;
+          const sentimentWhaleGap = retailSentimentScore - whaleFlowBias;
+          const divergencePenalty =
+            retailDivergenceWarning && sentimentWhaleGap >= 8
+              ? activeTab === 'day'
+                ? 12
+                : activeTab === 'swing'
+                  ? 8
+                  : 10
+              : retailDivergenceWarning && sentimentWhaleGap >= 3
                 ? activeTab === 'day'
-                  ? 12
-                  : activeTab === 'swing'
-                    ? 8
-                    : 10
-                : retailDivergenceWarning && sentimentWhaleGap >= 3
-                  ? activeTab === 'day'
-                    ? 8
-                    : 5
-                  : 0;
-            const momentumEuphoriaPenalty = retailDivergenceWarning && changePct > 0 && scoreBeforeDivergence >= 65 ? 4 : 0;
-            const score = Math.max(0, Math.min(100, scoreBeforeDivergence - divergencePenalty - momentumEuphoriaPenalty));
+                  ? 8
+                  : 5
+                : 0;
+          const momentumEuphoriaPenalty = retailDivergenceWarning && changePct > 0 && scoreBeforeDivergence >= 65 ? 4 : 0;
+          const negotiatedPenalty =
+            negotiatedSellPressureWarning && changePct > 0
+              ? activeTab === 'day'
+                ? 9
+                : activeTab === 'swing'
+                  ? 6
+                  : 7
+              : negotiatedSellPressureWarning
+                ? 3
+                : 0;
+          const score = Math.max(0, Math.min(100, scoreBeforeDivergence - divergencePenalty - momentumEuphoriaPenalty - negotiatedPenalty));
           const status =
             typeof row.status === 'string' && row.status.trim().length > 0
               ? row.status
@@ -2556,15 +2571,24 @@ function LeftSidebar({
               : retailDivergenceWarning
                 ? 'CAUTION'
                 : 'OK';
+          const negotiatedTag: 'BUY_DOM' | 'SELL_DOM' | 'BALANCED' | 'IDLE' =
+            negotiatedFlowLabel === 'SELL_DOM' && changePct > 0
+              ? 'SELL_DOM'
+              : negotiatedFlowLabel === 'BUY_DOM' && score >= 65
+                ? 'BUY_DOM'
+                : negotiatedFlowLabel === 'IDLE'
+                  ? 'IDLE'
+                  : 'BALANCED';
           return {
             symbol,
             price: Number.isFinite(price) ? Math.round(price) : 0,
             change: `${changePct >= 0 ? '+' : ''}${Number.isFinite(changePct) ? changePct.toFixed(2) : '0.00'}%`,
             score,
-            status: `${status} | Gate ${minUpsForLong} (${marketRegimeLabel})${retailDivergenceWarning ? ' | Diverge Guard' : ''}`,
+            status: `${status} | Gate ${minUpsForLong} (${marketRegimeLabel})${retailDivergenceWarning ? ' | Diverge Guard' : ''}${negotiatedSellPressureWarning ? ' | Nego Sell Guard' : ''}`,
             flowQuality,
             setupTag,
             divergenceTag,
+            negotiatedTag,
           };
         });
 
@@ -2598,6 +2622,8 @@ function LeftSidebar({
     retailDivergenceWarning,
     retailSentimentScore,
     whaleFlowBias,
+    negotiatedSellPressureWarning,
+    negotiatedFlowLabel,
   ]);
 
   useEffect(() => {
@@ -2782,6 +2808,21 @@ function LeftSidebar({
                     title="Retail sentiment divergence guard"
                   >
                     {`DVG ${item.divergenceTag || 'OK'}`}
+                  </span>
+                  <span
+                    className={cn(
+                      'px-1 py-0.5 rounded border',
+                      item.negotiatedTag === 'SELL_DOM'
+                        ? 'text-rose-300 border-rose-500/40 bg-rose-500/10'
+                        : item.negotiatedTag === 'BUY_DOM'
+                          ? 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10'
+                          : item.negotiatedTag === 'IDLE'
+                            ? 'text-slate-400 border-slate-700 bg-slate-900/50'
+                            : 'text-amber-300 border-amber-500/40 bg-amber-500/10',
+                    )}
+                    title="Negotiated market cross-monitor impact"
+                  >
+                    {`NGM ${item.negotiatedTag || 'BALANCED'}`}
                   </span>
                   <span
                     className={cn(
@@ -7390,6 +7431,18 @@ export default function Home() {
   }, [fetchDashboard, riskDraft]);
 
   const sendTelegramAlert = useCallback(async () => {
+    const negotiatedBuyNotional = negotiatedFeed.reduce((sum, item) => {
+      const tradeType = String(item.trade_type || '').toUpperCase();
+      return tradeType.includes('BUY') ? sum + Math.max(0, Number(item.notional) || 0) : sum;
+    }, 0);
+    const negotiatedSellNotional = negotiatedFeed.reduce((sum, item) => {
+      const tradeType = String(item.trade_type || '').toUpperCase();
+      return tradeType.includes('SELL') ? sum + Math.max(0, Number(item.notional) || 0) : sum;
+    }, 0);
+    const negotiatedDirectionalNotional = negotiatedBuyNotional + negotiatedSellNotional;
+    const negotiatedBuySharePct = negotiatedDirectionalNotional > 0 ? (negotiatedBuyNotional / negotiatedDirectionalNotional) * 100 : 50;
+    const negotiatedSellPressureHigh = negotiatedDirectionalNotional >= 20_000_000_000 && negotiatedBuySharePct <= 35;
+
     if (engineHeartbeat.checkedAt !== null && !engineHeartbeat.online) {
       setActionState({
         busy: false,
@@ -7524,6 +7577,14 @@ export default function Home() {
       setActionState({
         busy: false,
         message: `Alert blocked: retail divergence (Retail ${newsImpact.retailSentimentScore.toFixed(1)} vs Whale ${newsImpact.whaleFlowBias.toFixed(1)})`,
+      });
+      return;
+    }
+
+    if (negotiatedSellPressureHigh && modelConsensus.status === 'CONSENSUS_BULL') {
+      setActionState({
+        busy: false,
+        message: `Alert blocked: negotiated sell dominance (Buy ${negotiatedBuySharePct.toFixed(1)}% | Notional ${Math.round(negotiatedDirectionalNotional / 1_000_000)}M)`,
       });
       return;
     }
@@ -7767,6 +7828,13 @@ export default function Home() {
         high_vote: mtfValidation.highVote,
         checked_at: mtfValidation.checkedAt,
       },
+      negotiated_market: {
+        buy_notional: negotiatedBuyNotional,
+        sell_notional: negotiatedSellNotional,
+        directional_notional: negotiatedDirectionalNotional,
+        buy_share_pct: negotiatedBuySharePct,
+        sell_pressure_high: negotiatedSellPressureHigh,
+      },
     };
 
     try {
@@ -7978,8 +8046,13 @@ export default function Home() {
     newsImpact.riskLabel,
     newsImpact.stressScore,
     newsImpact.penaltyUps,
+    newsImpact.retailSentimentScore,
+    newsImpact.whaleFlowBias,
+    newsImpact.divergenceWarning,
+    newsImpact.divergenceReason,
     newsImpact.redFlags,
     newsImpact.checkedAt,
+    negotiatedFeed,
     priceCrossCheck.warning,
     priceCrossCheck.reason,
     priceCrossCheck.flaggedSymbols,
@@ -8191,6 +8264,28 @@ export default function Home() {
     runtimeCoolingOffHours,
     runtimeCoolingOffRequiredBreaches,
   ]);
+
+  const negotiatedBuyNotionalForScreener = negotiatedFeed.reduce((sum, item) => {
+    const tradeType = String(item.trade_type || '').toUpperCase();
+    return tradeType.includes('BUY') ? sum + Math.max(0, Number(item.notional) || 0) : sum;
+  }, 0);
+  const negotiatedSellNotionalForScreener = negotiatedFeed.reduce((sum, item) => {
+    const tradeType = String(item.trade_type || '').toUpperCase();
+    return tradeType.includes('SELL') ? sum + Math.max(0, Number(item.notional) || 0) : sum;
+  }, 0);
+  const negotiatedDirectionalNotionalForScreener = negotiatedBuyNotionalForScreener + negotiatedSellNotionalForScreener;
+  const negotiatedBuySharePctForScreener =
+    negotiatedDirectionalNotionalForScreener > 0 ? (negotiatedBuyNotionalForScreener / negotiatedDirectionalNotionalForScreener) * 100 : 50;
+  const negotiatedFlowLabelForScreener: 'BUY_DOM' | 'SELL_DOM' | 'BALANCED' | 'IDLE' =
+    negotiatedDirectionalNotionalForScreener <= 0
+      ? 'IDLE'
+      : negotiatedBuySharePctForScreener >= 60
+        ? 'BUY_DOM'
+        : negotiatedBuySharePctForScreener <= 40
+          ? 'SELL_DOM'
+          : 'BALANCED';
+  const negotiatedSellPressureWarningForScreener =
+    negotiatedDirectionalNotionalForScreener >= 15_000_000_000 && negotiatedBuySharePctForScreener <= 40;
 
   const resetDeadman = useCallback(async () => {
     if (deadmanResetCooldown > 0) {
@@ -8757,6 +8852,8 @@ export default function Home() {
           retailDivergenceWarning={newsImpact.divergenceWarning}
           retailSentimentScore={newsImpact.retailSentimentScore}
           whaleFlowBias={newsImpact.whaleFlowBias}
+          negotiatedSellPressureWarning={negotiatedSellPressureWarningForScreener}
+          negotiatedFlowLabel={negotiatedFlowLabelForScreener}
           onWatchlistUpdate={setWatchlist}
         />
         <CenterPanel
