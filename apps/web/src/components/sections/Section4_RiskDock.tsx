@@ -33,6 +33,11 @@ export const Section4_RiskDock: React.FC<Section4Props> = ({
   const atrValue = 145.5;
   const accountRisk = 5000000; // 5M IDR
 
+  // Example beta value, in real use this should come from props or context
+  const portfolioBeta = 1.62;
+  const betaThreshold = 1.5;
+  const isHighBeta = portfolioBeta > betaThreshold;
+
   return (
     <div className="space-y-4">
       {/* Header */}
@@ -92,6 +97,23 @@ export const Section4_RiskDock: React.FC<Section4Props> = ({
               <span className="text-gray-400">Max Drawdown:</span>
               <span className="text-orange-400 font-mono">-8.5%</span>
             </div>
+          </div>
+        </Card>
+
+        {/* Beta-Weighting Analysis */}
+        <Card title="🧮 Beta-Weighting Analysis" subtitle="Systemic risk indicator">
+          <div className="space-y-2 text-sm">
+            <div className="flex justify-between">
+              <span className="text-gray-400">Portfolio Beta:</span>
+              <span className={isHighBeta ? "text-red-400 font-bold" : "text-cyan-400 font-mono"}>{portfolioBeta.toFixed(2)}</span>
+            </div>
+            {isHighBeta && (
+              <div className="bg-red-900/60 border border-red-600 rounded-lg p-2 text-xs text-red-300 font-semibold flex items-center gap-2">
+                <Bell className="w-4 h-4" />
+                Systemic Risk High: Portfolio too sensitive to Market Crash.
+              </div>
+            )}
+            <p className="text-xs text-gray-400">If beta &gt; 1.5, reduce position size to mitigate market-wide risk.</p>
           </div>
         </Card>
 
