@@ -3830,6 +3830,9 @@ function BottomPanel({
     filteredRecoveryEscalationEvents.some((item) => item.signature === recoveryEscalationInvestigateSignature)
       ? recoveryEscalationInvestigateSignature
       : null;
+  const recoveryEscalationInvestigateEvent = recoveryEscalationInvestigateSignatureActive
+    ? filteredRecoveryEscalationEvents.find((item) => item.signature === recoveryEscalationInvestigateSignatureActive) || null
+    : null;
   const recoveryEscalationSelectedSource = recoveryEscalationSourceStats.find((item) => item.source === recoveryTelemetrySource) || null;
   const bearishRiskBullets = extractBearishRiskBullets(adversarialNarrative.bearish);
   const adversarialChecklist = buildAdversarialChecklist({
@@ -4468,15 +4471,31 @@ function BottomPanel({
             {filteredRecoveryEscalationEvents.length > 0 ? (
               <div className="space-y-1 border-t border-slate-800 pt-1">
                 {recoveryEscalationInvestigateSignatureActive ? (
-                  <div className="flex items-center justify-between gap-2 text-[9px] text-cyan-300">
-                    <span className="truncate" title={recoveryEscalationInvestigateSignatureActive}>{`Investigate ${recoveryEscalationInvestigateSignatureActive}`}</span>
-                    <button
-                      onClick={() => setRecoveryEscalationInvestigateSignature(null)}
-                      className="text-slate-400 hover:text-slate-200"
-                      title="Clear investigate signature"
-                    >
-                      Clear
-                    </button>
+                  <div className="space-y-1 border border-cyan-500/30 bg-cyan-500/10 rounded px-1.5 py-1">
+                    <div className="flex items-center justify-between gap-2 text-[9px] text-cyan-300">
+                      <span className="truncate" title={recoveryEscalationInvestigateSignatureActive}>{`Investigate ${recoveryEscalationInvestigateSignatureActive}`}</span>
+                      <button
+                        onClick={() => setRecoveryEscalationInvestigateSignature(null)}
+                        className="text-slate-400 hover:text-slate-200"
+                        title="Clear investigate signature"
+                      >
+                        Clear
+                      </button>
+                    </div>
+                    {recoveryEscalationInvestigateEvent ? (
+                      <div className="text-[9px] text-slate-300 flex items-center justify-between gap-2">
+                        <span className={cn(recoveryEscalationInvestigateEvent.level === 'CRITICAL' ? 'text-rose-300' : recoveryEscalationInvestigateEvent.level === 'HIGH' ? 'text-amber-300' : 'text-slate-300')}>
+                          {recoveryEscalationInvestigateEvent.level}
+                        </span>
+                        <span className="text-slate-400 truncate" title={recoveryEscalationInvestigateEvent.symbol || activeSymbol}>
+                          {recoveryEscalationInvestigateEvent.symbol || activeSymbol}
+                        </span>
+                        <span className="text-slate-400 truncate" title={recoveryEscalationInvestigateEvent.source || 'unknown source'}>
+                          {recoveryEscalationInvestigateEvent.source || '-'}
+                        </span>
+                        <span className="text-slate-500">{new Date(recoveryEscalationInvestigateEvent.createdAt).toLocaleTimeString('id-ID')}</span>
+                      </div>
+                    ) : null}
                   </div>
                 ) : null}
                 {filteredRecoveryEscalationEvents.slice(0, 3).map((item) => (
