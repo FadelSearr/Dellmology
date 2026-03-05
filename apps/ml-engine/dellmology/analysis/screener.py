@@ -1,3 +1,40 @@
+"""
+Advanced Screener Module
+Stock screening based on multiple criteria
+"""
+
+
+import logging
+import numpy as np
+import pandas as pd
+from typing import Dict, List, Tuple, Optional
+from dataclasses import dataclass, asdict
+from enum import Enum
+import json
+
+logger = logging.getLogger(__name__)
+
+class ScreenerMode(Enum):
+    """Screener execution modes"""
+    DAYTRADE = "DAYTRADE"  # High volatility, scalping, tight stops
+    SWING = "SWING"  # Trend following, broker accumulation, longer holds
+    CUSTOM = "CUSTOM"  # User-defined filters
+
+@dataclass
+class ScreenerConfig:
+    """Configuration for screener"""
+    mode: ScreenerMode = ScreenerMode.DAYTRADE
+    min_technical_score: float = 0.6
+    min_flow_score: float = 0.5
+    min_pressure_score: float = 0.4
+    min_volatility: float = 1.5  # percent
+    max_volatility: float = 15.0  # percent
+    min_volume: int = 100_000
+    price_range_min: float = 100  # IDR
+    price_range_max: float = 10_000  # IDR
+    exclude_anomalies: bool = True  # Exclude stocks with HIGH severity anomalies
+    max_results: int = 20
+
 def calculate_model_confidence(signal_snapshots: List[Dict], actual_outcomes: Dict[str, float], threshold: float = 0.02) -> Dict:
     """
     Calculate model confidence based on historical signal accuracy.
@@ -22,6 +59,7 @@ def calculate_model_confidence(signal_snapshots: List[Dict], actual_outcomes: Di
     confidence = hits / total if total else 0.0
     status = "HIGH" if confidence > 0.7 else ("MEDIUM" if confidence > 0.4 else "LOW")
     return {"confidence": confidence, "status": status, "total": total, "hits": hits}
+
 def run_multi_version_analysis(stocks_data: List[Dict], config_a: ScreenerConfig, config_b: ScreenerConfig) -> Dict:
     """
     Run Champion (A) and Challenger (B) analysis and compare results
@@ -57,27 +95,6 @@ def run_multi_version_analysis(stocks_data: List[Dict], config_a: ScreenerConfig
         'challenger': [asdict(s) for s in scores_b],
         'comparison': comparison
     }
-"""
-Advanced Screener Module
-Stock screening based on multiple criteria
-"""
-
-import logging
-import numpy as np
-import pandas as pd
-from typing import Dict, List, Tuple, Optional
-from dataclasses import dataclass, asdict
-from enum import Enum
-import json
-
-logger = logging.getLogger(__name__)
-
-
-class ScreenerMode(Enum):
-    """Screener execution modes"""
-    DAYTRADE = "DAYTRADE"  # High volatility, scalping, tight stops
-    SWING = "SWING"  # Trend following, broker accumulation, longer holds
-    CUSTOM = "CUSTOM"  # User-defined filters
 
 
 @dataclass
@@ -118,9 +135,10 @@ class StockScore:
 
 
 @dataclass
+@dataclass
 class ScreenerConfig:
     """Configuration for screener"""
-    mode: ScreenerMode = ScreenerMode.DAYTRADE
+    mode: 'ScreenerMode' = ScreenerMode.DAYTRADE
     min_technical_score: float = 0.6
     min_flow_score: float = 0.5
     min_pressure_score: float = 0.4

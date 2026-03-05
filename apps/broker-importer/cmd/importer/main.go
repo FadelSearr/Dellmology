@@ -4,6 +4,8 @@ package main
 import (
 	"log"
 	"os"
+
+	importer "github.com/dellmology/broker-importer/internal"
 )
 
 func main() {

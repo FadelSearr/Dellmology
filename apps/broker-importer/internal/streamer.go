@@ -2,13 +2,10 @@
 package importer
 
 import (
-	"context"
 	"database/sql"
 	"encoding/json"
 	"log"
 	"net/http"
-	"os"
-	"time"
 
 	"github.com/gorilla/websocket"
 )

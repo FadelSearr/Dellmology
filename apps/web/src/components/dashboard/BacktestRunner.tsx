@@ -40,6 +40,14 @@ interface BacktestResult {
   timestamp: string
 }
 
+function isDeadStock(result: BacktestResult | null): boolean {
+  if (!result) return false;
+  // Dead stock: no trades, or all entry/exit price identical, or period > 7 days and total_trades == 0
+  if (result.total_trades === 0) return true;
+  if (result.trades.length > 0 && result.trades.every(t => t.entry_price === t.exit_price)) return true;
+  return false;
+}
+
 export default function BacktestRunner() {
   const [input, setInput] = useState<BacktestInput>({
     symbol: 'BBCA',
@@ -149,6 +157,11 @@ export default function BacktestRunner() {
           <div>Win rate: {result.win_rate.toFixed(1)}%</div>
           <div>Net P/L: {result.total_profit_loss.toFixed(0)}</div>
           <div>Sharpe: {result.sharpe_ratio.toFixed(2)}</div>
+          {isDeadStock(result) && (
+            <div className="bg-yellow-900/30 border border-yellow-700 rounded px-2 py-1 my-2 text-yellow-300 font-bold">
+              ⚠️ Dead Stock: Saham tidak aktif, delisting, atau tidak ada transaksi selama periode backtest.
+            </div>
+          )}
           <div className="mt-2 max-h-32 overflow-y-auto">
             <table className="w-full text-xs">
               <thead>
