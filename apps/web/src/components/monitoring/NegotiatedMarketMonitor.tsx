@@ -6,12 +6,15 @@ import { Card } from '@/components/common/Card';
 import { Loader } from 'lucide-react';
 
 interface NegotiatedTrade {
-  time: string;
+  time?: string;
   symbol: string;
   price: number;
   volume: number;
   buyer: string;
   seller: string;
+  // optional fields provided by API
+  timestamp?: string;
+  tradeType?: string;
 }
 
 export const NegotiatedMarketMonitor: React.FC = () => {

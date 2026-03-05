@@ -25,37 +25,39 @@ interface Section0Props {
  * - API rate limit tracker
  */
 export const Section0_CommandBar: React.FC<Section0Props> = ({
-    // Global commodities marquee
-    const [commodities, setCommodities] = useState({
-      gold: null,
-      coal: null,
-      nickel: null,
-      ihsg: null,
-    });
-
-    useEffect(() => {
-      const fetchCommodities = async () => {
-        try {
-          const resp = await fetch('http://localhost:8080/market/commodities');
-          const json = await resp.json();
-          setCommodities({
-            gold: json.gold,
-            coal: json.coal,
-            nickel: json.nickel,
-            ihsg: json.ihsg,
-          });
-        } catch {}
-      };
-      fetchCommodities();
-      const interval = setInterval(fetchCommodities, 15000);
-      return () => clearInterval(interval);
-    }, []);
   onSymbolChange,
   marketRegime = 'BULLISH',
-  volatility = 'HIGH',
+  volatility: initialVolatility = 'HIGH',
   systemHealth = { sse: true, db: true, shield: true },
   rateLimitUsage = 65,
 }) => {
+  // Global commodities marquee state
+  const [commodities, setCommodities] = useState<{ gold: number | null; coal: number | null; nickel: number | null; ihsg: number | null }>({
+    gold: null,
+    coal: null,
+    nickel: null,
+    ihsg: null,
+  });
+
+  useEffect(() => {
+    const fetchCommodities = async () => {
+      try {
+        const resp = await fetch('http://localhost:8080/market/commodities');
+        const json = await resp.json();
+        setCommodities({
+          gold: json.gold,
+          coal: json.coal,
+          nickel: json.nickel,
+          ihsg: json.ihsg,
+        });
+      } catch (e) {
+        // ignore
+      }
+    };
+    fetchCommodities();
+    const interval = setInterval(fetchCommodities, 15000);
+    return () => clearInterval(interval);
+  }, []);
 
   const [searchInput, setSearchInput] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -196,19 +198,19 @@ export const Section0_CommandBar: React.FC<Section0Props> = ({
             <div className="inline-flex gap-5 animate-scroll whitespace-nowrap text-xs">
               <div className="flex items-center gap-1.5">
                 <span className="text-gray-400">Gold:</span>
-                <span className={commodities.gold >= 0 ? "text-green-400 font-mono" : "text-red-400 font-mono"}>
+                <span className={commodities.gold !== null && commodities.gold >= 0 ? "text-green-400 font-mono" : "text-red-400 font-mono"}>
                   {commodities.gold !== null ? `${commodities.gold > 0 ? '+' : ''}${commodities.gold}%` : '--'}
                 </span>
               </div>
               <div className="flex items-center gap-1.5">
                 <span className="text-gray-400">Coal:</span>
-                <span className={commodities.coal >= 0 ? "text-green-400 font-mono" : "text-red-400 font-mono"}>
+                <span className={commodities.coal !== null && commodities.coal >= 0 ? "text-green-400 font-mono" : "text-red-400 font-mono"}>
                   {commodities.coal !== null ? `${commodities.coal > 0 ? '+' : ''}${commodities.coal}%` : '--'}
                 </span>
               </div>
               <div className="flex items-center gap-1.5">
                 <span className="text-gray-400">Nickel:</span>
-                <span className={commodities.nickel >= 0 ? "text-green-400 font-mono" : "text-red-400 font-mono"}>
+                <span className={commodities.nickel !== null && commodities.nickel >= 0 ? "text-green-400 font-mono" : "text-red-400 font-mono"}>
                   {commodities.nickel !== null ? `${commodities.nickel > 0 ? '+' : ''}${commodities.nickel}%` : '--'}
                 </span>
               </div>
