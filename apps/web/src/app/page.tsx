@@ -3168,6 +3168,7 @@ function RightSidebar({
         )
       : null;
   const dominantBrokerSharePct = dominantBroker && brokerAbsNetTotal > 0 ? (Math.abs(Number(dominantBroker.net) || 0) / brokerAbsNetTotal) * 100 : 0;
+  type BrokerBehaviorCluster = 'ALGO_ACCUM' | 'STEADY_ACCUM' | 'DISTRIBUTOR' | 'MOMENTUM_CHASE' | 'NEUTRAL_FLOW';
   const isLikelyAlgorithmicBuying = (broker: BrokerRow) => {
     const bars = broker.dailyHeatmap.slice(0, 5).map((value) => Math.max(0, Math.min(100, Number(value) || 0)));
     const avg = bars.length > 0 ? bars.reduce((sum, value) => sum + value, 0) / bars.length : 0;
@@ -3182,6 +3183,56 @@ function RightSidebar({
       variance <= 220
     );
   };
+  const classifyBrokerBehavior = (broker: BrokerRow): BrokerBehaviorCluster => {
+    const absZ = Math.abs(Number(broker.z) || 0);
+    if (isLikelyAlgorithmicBuying(broker)) {
+      return 'ALGO_ACCUM';
+    }
+    if (broker.type === 'Whale' && broker.action === 'Buy' && broker.consistency >= 70 && broker.net > 0) {
+      return 'STEADY_ACCUM';
+    }
+    if (broker.type === 'Whale' && broker.action === 'Sell' && broker.consistency >= 60 && broker.net < 0) {
+      return 'DISTRIBUTOR';
+    }
+    if (broker.type === 'Retail' && absZ >= 1.5) {
+      return 'MOMENTUM_CHASE';
+    }
+    return 'NEUTRAL_FLOW';
+  };
+  const brokerClusters = brokers.map((broker) => ({
+    broker: broker.broker,
+    cluster: classifyBrokerBehavior(broker),
+  }));
+  const clusterSummary = brokerClusters.reduce(
+    (acc, item) => {
+      acc[item.cluster] = (acc[item.cluster] || 0) + 1;
+      return acc;
+    },
+    {} as Record<BrokerBehaviorCluster, number>,
+  );
+  const sortedClusterSummary = (Object.entries(clusterSummary) as Array<[BrokerBehaviorCluster, number]>).sort((a, b) => b[1] - a[1]);
+  const dominantCluster = sortedClusterSummary[0]?.[0] || 'NEUTRAL_FLOW';
+  const dominantClusterCount = sortedClusterSummary[0]?.[1] || 0;
+  const dominantClusterTone =
+    dominantCluster === 'ALGO_ACCUM'
+      ? 'text-rose-300 border-rose-500/40 bg-rose-500/10'
+      : dominantCluster === 'STEADY_ACCUM'
+        ? 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10'
+        : dominantCluster === 'DISTRIBUTOR'
+          ? 'text-rose-300 border-rose-500/40 bg-rose-500/10'
+          : dominantCluster === 'MOMENTUM_CHASE'
+            ? 'text-amber-300 border-amber-500/40 bg-amber-500/10'
+            : 'text-slate-300 border-slate-700 bg-slate-900/50';
+  const clusterTag =
+    dominantCluster === 'ALGO_ACCUM'
+      ? 'ALGO'
+      : dominantCluster === 'STEADY_ACCUM'
+        ? 'ACCUM'
+        : dominantCluster === 'DISTRIBUTOR'
+          ? 'DIST'
+          : dominantCluster === 'MOMENTUM_CHASE'
+            ? 'CHASE'
+            : 'NEUTRAL';
   const whaleCamouflageCount = brokers.filter((broker) => isLikelyAlgorithmicBuying(broker)).length;
   const whaleCamouflageTone =
     whaleCamouflageCount >= 3
@@ -3263,7 +3314,35 @@ function RightSidebar({
             >
               {`CAMO ${whaleCamouflageCount}`}
             </span>
+            <span
+              className={cn('px-1.5 py-0.5 rounded border', dominantClusterTone)}
+              title={`Whale Identity Clustering | Dominant cluster ${dominantCluster} (${dominantClusterCount}/${Math.max(1, brokers.length)} brokers)`}
+            >
+              {`CLUST ${clusterTag} ${dominantClusterCount}`}
+            </span>
           </div>
+        </div>
+        <div className="px-3 py-1 border-b border-slate-800 bg-slate-900/40 text-[8px] font-mono text-slate-400 flex items-center gap-1 overflow-x-auto">
+          {(sortedClusterSummary.length > 0 ? sortedClusterSummary : ([['NEUTRAL_FLOW', 0]] as Array<[BrokerBehaviorCluster, number]>)).map(([cluster, count]) => (
+            <span
+              key={cluster}
+              className={cn(
+                'px-1.5 py-0.5 rounded border whitespace-nowrap',
+                cluster === 'ALGO_ACCUM'
+                  ? 'text-rose-300 border-rose-500/40 bg-rose-500/10'
+                  : cluster === 'STEADY_ACCUM'
+                    ? 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10'
+                    : cluster === 'DISTRIBUTOR'
+                      ? 'text-rose-300 border-rose-500/40 bg-rose-500/10'
+                      : cluster === 'MOMENTUM_CHASE'
+                        ? 'text-amber-300 border-amber-500/40 bg-amber-500/10'
+                        : 'text-slate-300 border-slate-700 bg-slate-900/50',
+              )}
+              title="Broker-ID clustering summary"
+            >
+              {`${cluster} ${count}`}
+            </span>
+          ))}
         </div>
         <div className="grid grid-cols-5 gap-1 px-3 py-2 bg-slate-900 text-[10px] text-slate-500 font-bold uppercase tracking-wider border-b border-slate-800">
           <span>Broker</span>
@@ -3275,6 +3354,7 @@ function RightSidebar({
         <div className="overflow-y-auto custom-scrollbar flex-1">
           {brokers.map((broker, index) => {
             const algorithmicBuyLikely = isLikelyAlgorithmicBuying(broker);
+            const behaviorCluster = classifyBrokerBehavior(broker);
 
             return (
             <div key={index} className="grid grid-cols-5 gap-1 px-3 py-2 border-b border-slate-800/50 hover:bg-slate-800/30 transition-colors items-center">
@@ -3315,6 +3395,31 @@ function RightSidebar({
                         ALG BUY
                       </span>
                     ) : null}
+                    <span
+                      className={cn(
+                        'px-1 py-0.5 rounded border text-[8px]',
+                        behaviorCluster === 'STEADY_ACCUM'
+                          ? 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10'
+                          : behaviorCluster === 'DISTRIBUTOR'
+                            ? 'text-rose-300 border-rose-500/40 bg-rose-500/10'
+                            : behaviorCluster === 'MOMENTUM_CHASE'
+                              ? 'text-amber-300 border-amber-500/40 bg-amber-500/10'
+                              : behaviorCluster === 'ALGO_ACCUM'
+                                ? 'text-rose-300 border-rose-500/40 bg-rose-500/10'
+                                : 'text-slate-400 border-slate-700 bg-slate-800/60',
+                      )}
+                      title="Broker identity behavior cluster"
+                    >
+                      {behaviorCluster === 'STEADY_ACCUM'
+                        ? 'ID ACCUM'
+                        : behaviorCluster === 'DISTRIBUTOR'
+                          ? 'ID DIST'
+                          : behaviorCluster === 'MOMENTUM_CHASE'
+                            ? 'ID CHASE'
+                            : behaviorCluster === 'ALGO_ACCUM'
+                              ? 'ID ALGO'
+                              : 'ID NTRL'}
+                    </span>
                   </div>
                 </div>
               </div>
