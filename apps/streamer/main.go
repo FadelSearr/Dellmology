@@ -801,6 +801,16 @@ func processMessage(rawMsg []byte) {
 		log.Printf("WARN: Failed to parse generic websocket message: %v", err)
 		return
 	}
+	// Basic data integrity guard: drop obviously invalid frames early
+	if msg.Type == "trade" || strings.Contains(strings.ToLower(msg.Type), "trade") {
+		var td TradeData
+		if err := json.Unmarshal(msg.Data, &td); err == nil {
+			if !validateTrade(td) {
+				log.Printf("WARN: Dropped invalid trade frame: %v", td)
+				return
+			}
+		}
+	}
 
 	switch msg.Type {
 	case "trade", "trade_nego", "trade_cross", "nego", "cross":
@@ -882,6 +892,23 @@ func processMessage(rawMsg []byte) {
 	}
 }
 
+// validateTrade performs lightweight sanity checks to avoid poisoned data
+func validateTrade(t TradeData) bool {
+	// price and volume must be positive
+	if t.Price <= 0 || t.Volume <= 0 {
+		return false
+	}
+	// unrealistic price cap (defensive)
+	if t.Price > 10000000000 { // > 10 billion
+		return false
+	}
+	// timestamp should be a reasonable unix timestamp (after 2000)
+	if t.Timestamp <= 946684800 { // 2000-01-01
+		return false
+	}
+	return true
+}
+
 
 // --- Risk Mitigation Functions ---
 
@@ -945,22 +972,24 @@ func insertTrade(t ProcessedTrade) error {
 }
 
 func startHTTPServer() {
-		// Endpoint: /market/commodities
-		mux.HandleFunc("/market/commodities", func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Access-Control-Allow-Origin", "*"); w.Header().Set("Content-Type", "application/json");
-			// Dummy data, replace with real API integration (e.g. yfinance, RSS, etc)
-			resp := map[string]interface{}{
-				"gold": 0.5,    // % change
-				"coal": -1.2,
-				"nickel": 2.1,
-				"ihsg": 7200,
-				"updated_at": time.Now().UTC(),
-			}
-			if err := json.NewEncoder(w).Encode(resp); err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-			}
-		})
+	// Initialize router
 	mux := http.NewServeMux()
+
+	// Endpoint: /market/commodities
+	mux.HandleFunc("/market/commodities", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*"); w.Header().Set("Content-Type", "application/json");
+		// Dummy data, replace with real API integration (e.g. yfinance, RSS, etc)
+		resp := map[string]interface{}{
+			"gold": 0.5,    // % change
+			"coal": -1.2,
+			"nickel": 2.1,
+			"ihsg": 7200,
+			"updated_at": time.Now().UTC(),
+		}
+		if err := json.NewEncoder(w).Encode(resp); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	})
 	mux.Handle("/stream", sseBroker)
 	mux.HandleFunc("/broker/whale-clusters", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
