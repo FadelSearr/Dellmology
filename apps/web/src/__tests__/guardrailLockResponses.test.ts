@@ -45,7 +45,7 @@ describe('Guardrail lock response consistency', () => {
 
     const req = {
       json: async () => ({}),
-    } as Request;
+    } as never;
 
     const response = await backtestPost(req);
     const body = await response.json();
