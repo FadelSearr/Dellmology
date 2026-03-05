@@ -314,6 +314,14 @@ interface RecoveryPulseState {
   lastSource: RecoveryTelemetrySource | null;
 }
 
+interface RecoveryEscalationAuditState {
+  detectedCount: number;
+  suppressedCount: number;
+  acknowledgedCount: number;
+  suppressionRatioPct: number;
+  lastAcknowledgedAt: string | null;
+}
+
 interface TokenTelemetry {
   status: 'fresh' | 'expiring' | 'expired' | 'missing';
   syncReason: string | null;
@@ -3684,6 +3692,7 @@ function BottomPanel({
   backtestSummary,
   signalAudit,
   recoveryTelemetry,
+  recoveryEscalationAudit,
   recoveryTelemetrySource,
   onRecoveryTelemetrySourceChange,
 }: {
@@ -3749,6 +3758,7 @@ function BottomPanel({
   backtestSummary: BacktestSummaryState | null;
   signalAudit: SignalAuditState;
   recoveryTelemetry: RecoveryAttemptTelemetry;
+  recoveryEscalationAudit: RecoveryEscalationAuditState;
   recoveryTelemetrySource: RecoveryTelemetrySource;
   onRecoveryTelemetrySourceChange: (source: RecoveryTelemetrySource) => void;
 }) {
@@ -4396,6 +4406,12 @@ function BottomPanel({
               </select>
             </div>
             <div>{`Attempt ${recoveryTelemetry.attempts} | OK ${recoveryTelemetry.successes} | FAIL ${recoveryTelemetry.failures}`}</div>
+            <div className="text-slate-500">
+              {`Ack ${recoveryEscalationAudit.acknowledgedCount} | Suppress ${recoveryEscalationAudit.suppressedCount}/${recoveryEscalationAudit.detectedCount} (${recoveryEscalationAudit.suppressionRatioPct.toFixed(0)}%)`}
+            </div>
+            {recoveryEscalationAudit.lastAcknowledgedAt ? (
+              <div className="text-slate-600">{`Last Ack ${new Date(recoveryEscalationAudit.lastAcknowledgedAt).toLocaleTimeString('id-ID')}`}</div>
+            ) : null}
             <div
               className={cn(
                 recoveryTelemetry.lastStatus === 'SUCCESS'
@@ -4755,6 +4771,14 @@ export default function Home() {
     silencedUntil: null,
     ackedAt: null,
   });
+  const [recoveryEscalationAudit, setRecoveryEscalationAudit] = useState<RecoveryEscalationAuditState>({
+    detectedCount: 0,
+    suppressedCount: 0,
+    acknowledgedCount: 0,
+    suppressionRatioPct: 0,
+    lastAcknowledgedAt: null,
+  });
+  const recoveryEscalationLastCountedRef = useRef<string | null>(null);
 
   useEffect(() => {
     try {
@@ -7682,6 +7706,28 @@ export default function Home() {
     recoveryEscalationSilencedUntilMs !== null ? Math.max(0, recoveryEscalationSilencedUntilMs - Date.now()) : 0;
   const recoveryEscalationSilenced = recoveryEscalationDetected && recoveryEscalationSilencedRemainingMs > 0;
   const recoveryEscalationActive = recoveryEscalationDetected && !recoveryEscalationSilenced;
+  useEffect(() => {
+    if (!recoveryEscalationDetected) {
+      recoveryEscalationLastCountedRef.current = null;
+      return;
+    }
+
+    if (recoveryEscalationLastCountedRef.current === recoveryEscalationSignature) {
+      return;
+    }
+
+    recoveryEscalationLastCountedRef.current = recoveryEscalationSignature;
+    setRecoveryEscalationAudit((prev) => {
+      const nextDetected = prev.detectedCount + 1;
+      const nextSuppressed = prev.suppressedCount + (recoveryEscalationSilenced ? 1 : 0);
+      return {
+        ...prev,
+        detectedCount: nextDetected,
+        suppressedCount: nextSuppressed,
+        suppressionRatioPct: nextDetected > 0 ? (nextSuppressed / nextDetected) * 100 : 0,
+      };
+    });
+  }, [recoveryEscalationDetected, recoveryEscalationSilenced, recoveryEscalationSignature]);
   const recoveryEscalationTone =
     recoveryEscalationLevel === 'CRITICAL'
       ? 'border-rose-500/50 bg-rose-500/20 text-rose-100'
@@ -7727,6 +7773,11 @@ export default function Home() {
       silencedUntil: new Date(Date.now() + ackMinutes * 60 * 1000).toISOString(),
       ackedAt,
     });
+    setRecoveryEscalationAudit((prev) => ({
+      ...prev,
+      acknowledgedCount: prev.acknowledgedCount + 1,
+      lastAcknowledgedAt: ackedAt,
+    }));
   }, [recoveryEscalationSignature, runtimeRecoveryEscalationAckMinutes]);
   const combatCriticalLocks = buildActiveLockGuards({
     coolingOffActive: coolingOff.active,
@@ -8041,6 +8092,7 @@ export default function Home() {
           backtestSummary={backtestSummary}
           signalAudit={signalAudit}
           recoveryTelemetry={recoveryTelemetry}
+          recoveryEscalationAudit={recoveryEscalationAudit}
           recoveryTelemetrySource={recoveryTelemetrySource}
           onRecoveryTelemetrySourceChange={setRecoveryTelemetrySource}
         />
