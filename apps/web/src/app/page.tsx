@@ -286,6 +286,13 @@ interface RecoveryAttemptTelemetry {
   failures: number;
   lastAttemptAt: string | null;
   lastStatus: 'IDLE' | 'SUCCESS' | 'FAILED' | 'LOCKED';
+  recentLogs: Array<{
+    id: string;
+    at: string;
+    status: 'SUCCESS' | 'FAILED' | 'LOCKED';
+    message: string;
+    cooldownSeconds: number | null;
+  }>;
 }
 
 interface TokenTelemetry {
@@ -4318,6 +4325,21 @@ function BottomPanel({
             >
               {`Last ${recoveryTelemetry.lastStatus}${recoveryTelemetry.lastAttemptAt ? ` @ ${new Date(recoveryTelemetry.lastAttemptAt).toLocaleTimeString('id-ID')}` : ''}`}
             </div>
+            {recoveryTelemetry.recentLogs.length > 0 ? (
+              <div className="space-y-1 border-t border-slate-800 pt-1">
+                {recoveryTelemetry.recentLogs.slice(0, 3).map((item) => (
+                  <div key={item.id} className="flex items-center justify-between gap-1">
+                    <span className={cn(item.status === 'SUCCESS' ? 'text-emerald-300' : item.status === 'LOCKED' ? 'text-amber-300' : 'text-rose-300')}>
+                      {item.status}
+                    </span>
+                    <span className="text-slate-500 truncate" title={item.message}>
+                      {item.message}
+                    </span>
+                    <span className="text-slate-500">{new Date(item.at).toLocaleTimeString('id-ID')}</span>
+                  </div>
+                ))}
+              </div>
+            ) : null}
           </div>
           <div className="border border-slate-800 rounded px-2 py-1 bg-slate-900/40 text-[9px] font-mono text-slate-400 space-y-1">
             <div className="text-slate-500 uppercase tracking-wider">Signal Audit Trail</div>
@@ -4626,6 +4648,7 @@ export default function Home() {
     failures: 0,
     lastAttemptAt: null,
     lastStatus: 'IDLE',
+    recentLogs: [],
   });
   const [coolingOff, setCoolingOff] = useState<CoolingOffState>({
     active: false,
@@ -7078,6 +7101,33 @@ export default function Home() {
       lastStatus: 'IDLE',
     }));
 
+    const appendRecoveryLog = (
+      status: 'SUCCESS' | 'FAILED' | 'LOCKED',
+      message: string,
+      cooldownSeconds: number | null,
+    ) => {
+      const attemptAt = new Date().toISOString();
+      setRecoveryTelemetry((prev) => ({
+        ...prev,
+        successes: prev.successes + (status === 'SUCCESS' ? 1 : 0),
+        failures: prev.failures + (status === 'SUCCESS' ? 0 : 1),
+        lastStatus: status,
+        lastAttemptAt: attemptAt,
+        recentLogs: [
+          {
+            id: `${attemptAt}-${status}`,
+            at: attemptAt,
+            status,
+            message,
+            cooldownSeconds,
+          },
+          ...prev.recentLogs,
+        ].slice(0, 5),
+      }));
+    };
+
+    let attemptLogged = false;
+
     setActionState({ busy: true, message: 'Resetting deadman state...' });
     try {
       const response = await fetch('/api/system-control/deadman', {
@@ -7085,39 +7135,36 @@ export default function Home() {
       });
       const body = (await response.json()) as { success?: boolean; error?: string; retry_after_seconds?: number };
       if (response.status === 423) {
-        setActionState({ busy: false, message: `Deadman reset locked: ${body.error || 'immutable audit chain lock active'}` });
-        setRecoveryTelemetry((prev) => ({
-          ...prev,
-          failures: prev.failures + 1,
-          lastStatus: 'LOCKED',
-          lastAttemptAt: new Date().toISOString(),
-        }));
+        const lockedMessage = body.error || 'immutable audit chain lock active';
+        setActionState({ busy: false, message: `Deadman reset locked: ${lockedMessage}` });
+        appendRecoveryLog('LOCKED', lockedMessage, null);
+        attemptLogged = true;
         return;
       }
       if (!response.ok || !body.success) {
+        const retryAfterSeconds = response.status === 429 && typeof body.retry_after_seconds === 'number'
+          ? Math.max(1, Math.floor(body.retry_after_seconds))
+          : null;
         if (response.status === 429 && typeof body.retry_after_seconds === 'number') {
           setDeadmanResetCooldown(Math.max(1, Math.floor(body.retry_after_seconds)));
         }
-        setRecoveryTelemetry((prev) => ({
-          ...prev,
-          failures: prev.failures + 1,
-          lastStatus: 'FAILED',
-          lastAttemptAt: new Date().toISOString(),
-        }));
+        const failedMessage = body.error || 'Deadman reset failed';
+        appendRecoveryLog('FAILED', failedMessage, retryAfterSeconds);
+        attemptLogged = true;
         throw new Error(body.error || 'Deadman reset failed');
       }
 
-      setDeadmanResetCooldown(typeof body.retry_after_seconds === 'number' ? Math.max(1, Math.floor(body.retry_after_seconds)) : 30);
+      const successCooldown = typeof body.retry_after_seconds === 'number' ? Math.max(1, Math.floor(body.retry_after_seconds)) : 30;
+      setDeadmanResetCooldown(successCooldown);
       setActionState({ busy: false, message: 'Deadman reset completed' });
-      setRecoveryTelemetry((prev) => ({
-        ...prev,
-        successes: prev.successes + 1,
-        lastStatus: 'SUCCESS',
-        lastAttemptAt: new Date().toISOString(),
-      }));
+      appendRecoveryLog('SUCCESS', 'Deadman reset completed', successCooldown);
+      attemptLogged = true;
       void fetchDashboard();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Deadman reset failed';
+      if (!attemptLogged) {
+        appendRecoveryLog('FAILED', message, null);
+      }
       setActionState({ busy: false, message: `Deadman reset failed: ${message}` });
     }
   }, [deadmanResetCooldown, fetchDashboard]);
