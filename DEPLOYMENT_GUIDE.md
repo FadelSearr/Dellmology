@@ -2,6 +2,94 @@ pm2 start npm --name dellmology-web -- start
 
 # Panduan Deployment, Maintenance, & Debug Dellmology Pro
 
+## Langkah-Langkah Detail Deployment & Running
+
+### 1. Persiapan
+- Pastikan server/VPS sudah terinstall: Docker, Node.js, Python, Go, PostgreSQL, Git.
+- Siapkan file .env dengan konfigurasi database, API key, dan token yang dibutuhkan.
+
+### 2. Deploy Database & Redis
+- Jalankan perintah berikut untuk menyalakan database dan cache:
+  ```bash
+  docker-compose up -d
+  ```
+- Pastikan database sudah aktif dan dapat diakses.
+
+### 3. Build & Deploy Frontend (Next.js)
+- Masuk ke folder frontend:
+  ```bash
+  cd apps/web
+  npm install --legacy-peer-deps
+  npm run build
+  ```
+- Jalankan frontend production:
+  ```bash
+  npm run start
+  # akses di http://localhost:3000
+  ```
+
+### 4. Deploy Go Streamer
+- Masuk ke folder streamer:
+  ```bash
+  cd apps/streamer
+  go build -o streamer
+  ./streamer
+  ```
+- Pastikan service berjalan dan terhubung ke database.
+
+### 5. Deploy Python ML Engine
+- Masuk ke folder ML engine:
+  ```bash
+  cd apps/ml-engine
+  python -m venv venv
+  venv\Scripts\activate
+  pip install -r requirements.txt
+  python main.py
+  ```
+- Pastikan ML engine berjalan dan dapat mengakses database serta API eksternal.
+
+### 6. Konfigurasi Environment
+- Pastikan file .env sudah terisi dengan benar:
+  ```
+  GEMINI_API_KEY=your_api_key
+  DATABASE_URL=postgresql://admin:password@localhost:5432/dellmology
+  INTERNAL_API_KEY=your_internal_key
+  NEXT_PUBLIC_STREAMER_URL=http://localhost:8080
+  TELEGRAM_BOT_TOKEN=your_telegram_token
+  TELEGRAM_CHAT_ID=your_chat_id
+  ```
+
+### 7. Reverse Proxy (Opsional)
+- Jika ingin menggunakan domain/SSL, setup Nginx/Apache untuk mengarahkan ke Next.js dan API.
+
+### 8. Running Setelah Deployment
+- Pastikan semua service berjalan:
+  - Database (PostgreSQL, Redis)
+  - Frontend (Next.js)
+  - Go Streamer
+  - Python ML Engine
+- Cek log di terminal dan folder logs/ untuk memastikan tidak ada error.
+- Akses dashboard di browser (http://localhost:3000 atau domain Anda).
+- Cek status health di dashboard (Health Dots, Heartbeat Monitor).
+- Lakukan pengujian fitur utama (search, broker flow, AI narrative, screener, risk dock).
+- Jika ada error, cek konfigurasi .env dan koneksi database/API.
+
+### 9. Maintenance & Monitoring
+- Jalankan script maintenance secara berkala:
+  ```bash
+  bash scripts/maintenance_dellmology.sh
+  ```
+- Backup database secara rutin.
+- Monitor log dan status service.
+
+### 10. Troubleshooting
+- Jika frontend tidak jalan: cek log Next.js, pastikan npm run build sukses.
+- Jika streamer/ML engine error: cek koneksi database, token, dan API key.
+- Jika data tidak muncul: pastikan streamer terhubung ke Stockbit dan database.
+- Gunakan Telegram alert untuk notifikasi error/offline.
+
+---
+
 ## 1. Deployment
 
 ### Frontend (Next.js di Vercel)
