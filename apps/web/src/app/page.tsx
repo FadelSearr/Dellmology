@@ -322,6 +322,8 @@ interface RecoveryEscalationAuditState {
   lastAcknowledgedAt: string | null;
 }
 
+type RecoveryEscalationAuditEventType = 'DETECTED' | 'ACKNOWLEDGED';
+
 interface TokenTelemetry {
   status: 'fresh' | 'expiring' | 'expired' | 'missing';
   syncReason: string | null;
@@ -4780,6 +4782,66 @@ export default function Home() {
   });
   const recoveryEscalationLastCountedRef = useRef<string | null>(null);
 
+  const appendRecoveryEscalationAuditEvent = useCallback(
+    (eventType: RecoveryEscalationAuditEventType, signature: string, suppressed: boolean) => {
+      void fetch('/api/system-control/recovery-escalation-audit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          event_type: eventType,
+          signature,
+          suppressed,
+        }),
+      }).catch(() => undefined);
+    },
+    [],
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const hydrateRecoveryEscalationAudit = async () => {
+      try {
+        const response = await fetch('/api/system-control/recovery-escalation-audit');
+        if (!response.ok) {
+          return;
+        }
+
+        const body = (await response.json()) as {
+          success?: boolean;
+          summary?: {
+            detected_count?: number;
+            suppressed_count?: number;
+            acknowledged_count?: number;
+            suppression_ratio_pct?: number;
+            last_acknowledged_at?: string | null;
+          };
+        };
+
+        if (!body.success || cancelled) {
+          return;
+        }
+
+        const summary = body.summary;
+        setRecoveryEscalationAudit({
+          detectedCount: Number(summary?.detected_count || 0),
+          suppressedCount: Number(summary?.suppressed_count || 0),
+          acknowledgedCount: Number(summary?.acknowledged_count || 0),
+          suppressionRatioPct: Number(summary?.suppression_ratio_pct || 0),
+          lastAcknowledgedAt: summary?.last_acknowledged_at || null,
+        });
+      } catch {
+        return;
+      }
+    };
+
+    void hydrateRecoveryEscalationAudit();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   useEffect(() => {
     try {
       const raw = window.localStorage.getItem(RECOVERY_ESCALATION_ACK_STORAGE_KEY);
@@ -7717,6 +7779,7 @@ export default function Home() {
     }
 
     recoveryEscalationLastCountedRef.current = recoveryEscalationSignature;
+    appendRecoveryEscalationAuditEvent('DETECTED', recoveryEscalationSignature, recoveryEscalationSilenced);
     setRecoveryEscalationAudit((prev) => {
       const nextDetected = prev.detectedCount + 1;
       const nextSuppressed = prev.suppressedCount + (recoveryEscalationSilenced ? 1 : 0);
@@ -7727,7 +7790,7 @@ export default function Home() {
         suppressionRatioPct: nextDetected > 0 ? (nextSuppressed / nextDetected) * 100 : 0,
       };
     });
-  }, [recoveryEscalationDetected, recoveryEscalationSilenced, recoveryEscalationSignature]);
+  }, [appendRecoveryEscalationAuditEvent, recoveryEscalationDetected, recoveryEscalationSilenced, recoveryEscalationSignature]);
   const recoveryEscalationTone =
     recoveryEscalationLevel === 'CRITICAL'
       ? 'border-rose-500/50 bg-rose-500/20 text-rose-100'
@@ -7778,7 +7841,8 @@ export default function Home() {
       acknowledgedCount: prev.acknowledgedCount + 1,
       lastAcknowledgedAt: ackedAt,
     }));
-  }, [recoveryEscalationSignature, runtimeRecoveryEscalationAckMinutes]);
+    appendRecoveryEscalationAuditEvent('ACKNOWLEDGED', recoveryEscalationSignature, false);
+  }, [appendRecoveryEscalationAuditEvent, recoveryEscalationSignature, runtimeRecoveryEscalationAckMinutes]);
   const combatCriticalLocks = buildActiveLockGuards({
     coolingOffActive: coolingOff.active,
     coolingRemainingLabel,
