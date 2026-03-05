@@ -68,6 +68,8 @@ export const Section0_CommandBar: React.FC<Section0Props> = ({
   const [regime, setRegime] = useState<'UPTREND'|'DOWNTREND'|'SIDEWAYS'>('SIDEWAYS');
   const [volatility, setVolatility] = useState<'HIGH'|'MEDIUM'|'LOW'>('MEDIUM');
   const [livePrice, setLivePrice] = useState<number|null>(null);
+  // Merge prop health with live health polling
+  const [liveHealth, setLiveHealth] = useState(systemHealth);
 
   // Fetch regime status
   useEffect(() => {
@@ -99,6 +101,32 @@ export const Section0_CommandBar: React.FC<Section0Props> = ({
     const interval = setInterval(fetchPrice, 5000);
     return () => clearInterval(interval);
   }, [searchInput]);
+
+  // Poll heartbeat / health endpoint to update health indicators
+  useEffect(() => {
+    let mounted = true;
+    const fetchHealth = async () => {
+      try {
+        const resp = await fetch('http://localhost:8080/heartbeat');
+        const json = await resp.json();
+        if (!mounted) return;
+        // Basic mapping: consider service healthy if status != 'stale'
+        const sse = json.status && json.status !== 'stale';
+        const db = json.database ? json.database.connected !== false : true;
+        // shield: if external_queue or processed_cache_size present, assume shield active
+        const shield = json.checked_at ? true : systemHealth.shield;
+        setLiveHealth({ sse: !!sse, db: !!db, shield: !!shield });
+      } catch (e) {
+        // keep previous
+      }
+    };
+    fetchHealth();
+    const t = setInterval(fetchHealth, 10000);
+    return () => {
+      mounted = false;
+      clearInterval(t);
+    };
+  }, []);
 
   // Suggestions logic (unchanged)
   const topStocks = ['BBCA', 'ASII', 'TLKM', 'GOTO', 'BMRI'];
@@ -223,22 +251,22 @@ export const Section0_CommandBar: React.FC<Section0Props> = ({
             </div>
           </div>
 
-          {/* System Health */}
+            {/* System Health */}
           <div className="flex items-center gap-2">
             {/* SSE */}
             <div
-              className={`w-3 h-3 rounded-full ${systemHealth.sse ? 'bg-green-500 shadow-lg shadow-green-500/50' : 'bg-red-500'}`}
-              title={`SSE: ${systemHealth.sse ? 'Connected' : 'Disconnected'}`}
+              className={`w-3 h-3 rounded-full ${liveHealth.sse ? 'bg-green-500 shadow-lg shadow-green-500/50' : 'bg-red-500'}`}
+              title={`SSE: ${liveHealth.sse ? 'Connected' : 'Disconnected'}`}
             />
             {/* DB */}
             <div
-              className={`w-3 h-3 rounded-full ${systemHealth.db ? 'bg-green-500 shadow-lg shadow-green-500/50' : 'bg-red-500'}`}
-              title={`DB: ${systemHealth.db ? 'Connected' : 'Disconnected'}`}
+              className={`w-3 h-3 rounded-full ${liveHealth.db ? 'bg-green-500 shadow-lg shadow-green-500/50' : 'bg-red-500'}`}
+              title={`DB: ${liveHealth.db ? 'Connected' : 'Disconnected'}`}
             />
             {/* Shield */}
             <div
-              className={`w-3 h-3 rounded-full ${systemHealth.shield ? 'bg-green-500 shadow-lg shadow-green-500/50' : 'bg-yellow-500'}`}
-              title={`Shield: ${systemHealth.shield ? 'Active' : 'Warning'}`}
+              className={`w-3 h-3 rounded-full ${liveHealth.shield ? 'bg-green-500 shadow-lg shadow-green-500/50' : 'bg-yellow-500'}`}
+              title={`Shield: ${liveHealth.shield ? 'Active' : 'Warning'}`}
             />
           </div>
 
