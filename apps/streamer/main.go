@@ -1388,6 +1388,7 @@ func fetchMLInference(symbol string) []byte {
 					if out, err := json.Marshal(wrapped); err == nil {
 						// record success
 						atomic.AddInt64(&mlFetchSuccesses, 1)
+						log.Printf("INFO: ML inference success for %s", symbol)
 						mlMutex.Lock()
 						mlLastError = ""
 						mlLastChecked = time.Now().UTC()
@@ -1410,6 +1411,7 @@ func fetchMLInference(symbol string) []byte {
 	if lastErr != nil {
 		cacheSet("ml_last_error", map[string]interface{}{"error": lastErr.Error(), "symbol": symbol, "checked_at": time.Now().UTC()}, 5*time.Minute)
 		atomic.AddInt64(&mlFetchFailures, 1)
+		log.Printf("ERROR: ML inference failed for %s: %v", symbol, lastErr)
 		mlMutex.Lock()
 		mlLastError = lastErr.Error()
 		mlLastChecked = time.Now().UTC()
