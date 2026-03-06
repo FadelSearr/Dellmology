@@ -1005,6 +1005,21 @@ func startHTTPServer() {
 			}
 		}
 		payload := analysispkg.AnalyzeBrokerFlow(symbol, days)
+		// attempt to attach ML inference to REST response as well
+		if rawInf := fetchMLInference(symbol); rawInf != nil {
+			var inf interface{}
+			if err := json.Unmarshal(rawInf, &inf); err == nil {
+				m := map[string]interface{}{}
+				if pbytes, err := json.Marshal(payload); err == nil {
+					_ = json.Unmarshal(pbytes, &m)
+				}
+				m["ml_inference"] = inf
+				if err := json.NewEncoder(w).Encode(m); err != nil {
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+				}
+				return
+			}
+		}
 		if err := json.NewEncoder(w).Encode(payload); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
