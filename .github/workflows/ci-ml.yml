@@ -60,3 +60,24 @@ jobs:
         with:
           name: toy_cnn_h5
           path: apps/ml-engine/toy_cnn.h5
+
+  ml-eval:
+    name: ML - Train and Eval (metrics)
+    runs-on: ubuntu-latest
+    needs: ml-smoke
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      - name: Install minimal deps
+        run: python -m pip install --upgrade pip && pip install numpy
+      - name: Run train_and_eval (produces model_metrics.json)
+        run: |
+          python apps/ml-engine/train_and_eval.py
+      - name: Upload model metrics artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: model_metrics
+          path: apps/ml-engine/model_metrics.json
