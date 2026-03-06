@@ -14,10 +14,10 @@ jest.mock('@/lib/security/coolingOff', () => ({
 describe('Narrative API', () => {
   it('returns 200 with default message when data empty', async () => {
     const { POST } = await import('@/app/api/narrative/route');
-    const req: any = {
+    const req = {
       json: async () => ({ type: 'broker', symbol: 'TEST', data: {} }),
-    };
-    const res = await POST(req as Request);
+    } as unknown as Request;
+    const res = await POST(req);
     const json = await res.json();
     expect(res.status).toBe(200);
     expect(json.narrative).toMatch(/narasi/i);
