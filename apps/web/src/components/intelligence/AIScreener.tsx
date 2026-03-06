@@ -16,8 +16,8 @@ interface ScreenerResult {
   recommendation: string;
 }
 
-export const filterByPrice = (
-  results: ScreenerResult[],
+export const filterByPrice = <T extends { price: number }>(
+  results: T[],
   range: { min: number; max: number }
 ) => {
   return results.filter((r) => r.price >= range.min && r.price <= range.max);

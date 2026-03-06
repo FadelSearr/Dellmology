@@ -140,7 +140,17 @@ export const Section4_RiskDock: React.FC<Section4Props> = ({
 
       {/* Real-time Trades Feed */}
       <Card title="📈 Real-time Trades" subtitle={`Live trades for ${symbol}`}>
-        <RealtimeTrades trades={trades.filter((t) => String(t.symbol) === symbol)} />
+        <RealtimeTrades
+          trades={trades
+            .filter((t) => String(t.symbol) === symbol)
+            .map((t) => ({
+              symbol: String(t.symbol ?? ''),
+              price: Number(t.price ?? 0),
+              volume: Number(t.volume ?? 0),
+              trade_type: (String((t as any).trade_type ?? (t as any).type ?? '') as 'HAKA' | 'HAKI' | 'NORMAL') || 'NORMAL',
+              timestamp: typeof t.time === 'number' ? new Date(t.time).toISOString() : String(t.time ?? new Date().toISOString()),
+            }))}
+        />
       </Card>
     </div>
   );

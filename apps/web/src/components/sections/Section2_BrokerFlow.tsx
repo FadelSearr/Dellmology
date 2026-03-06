@@ -126,7 +126,24 @@ export const Section2_BrokerFlow: React.FC<Section2Props> = ({
 
       {/* Broker Flow Table */}
       <Card title="📊 Deep Broker Flow Analysis" subtitle="Net buy/sell values with consistency scores">
-        <BrokerFlowTable symbol={symbol} data={brokerData} filterType={filterType} />
+        <BrokerFlowTable
+          symbol={symbol}
+          data={brokerData.map((b) => {
+            const r = b || {} as Record<string, unknown>;
+            return {
+              broker_id: String(r.broker_id ?? r.id ?? ''),
+              net_buy_value: Number(r.net_buy_value ?? r.net_value ?? 0),
+              active_days: Number(r.active_days ?? r.days_active ?? 0),
+              consistency_score: Number(r.consistency_score ?? r.consistency ?? 0.7),
+              avg_buy_price: Number(r.avg_buy_price ?? r.avg_price ?? 0),
+              z_score: Number(r.z_score ?? 0),
+              is_whale: Boolean(r.is_whale ?? (String(r.type ?? '').toLowerCase() === 'whale')),
+              is_retail: Boolean(r.is_retail ?? false),
+              daily_heatmap: Array.isArray(r.daily_heatmap) ? (r.daily_heatmap as unknown[]).map((n) => Number(n ?? 0)) : undefined,
+            } as any;
+          })}
+          filterType={filterType}
+        />
       </Card>
 
       {/* Z-Score & Alerts */}

@@ -32,8 +32,8 @@ export const NegotiatedMarketMonitor: React.FC = () => {
         const data = await response.json();
         const items = Array.isArray(data?.items) ? data.items : []
         setTrades(
-          items.map((t) => {
-            const r = t && typeof t === 'object' ? (t as Record<string, unknown>) : {}
+          items.map((t: unknown) => {
+            const r = t && typeof t === 'object' ? (t as Record<string, unknown>) : {};
             return {
               symbol: String(r.symbol ?? ''),
               price: Number(r.price ?? 0),
@@ -42,9 +42,9 @@ export const NegotiatedMarketMonitor: React.FC = () => {
               timestamp: String(r.timestamp ?? ''),
               buyer: String(r.buyer ?? '-'),
               seller: String(r.seller ?? '-'),
-            }
+            } as NegotiatedTrade;
           })
-        )
+        );
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
       } finally {
