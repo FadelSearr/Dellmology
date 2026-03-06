@@ -81,3 +81,4 @@ jobs:
         with:
           name: model_metrics
           path: apps/ml-engine/model_metrics.json
+      # Optional: to publish metrics to dashboard, configure a separate deployment step.

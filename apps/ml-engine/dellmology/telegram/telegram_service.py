@@ -21,19 +21,6 @@ class TelegramService:
     
     def send_message(self, message: str) -> bool:
         """Send message via Telegram"""
-        # If a local webhook is configured (for testing), POST the message there.
-        local_webhook = os.getenv('TELEGRAM_LOCAL_WEBHOOK')
-        if local_webhook:
-            try:
-                resp = requests.post(local_webhook, json={"chat_id": self.chat_id, "text": message}, timeout=5)
-                if resp.status_code == 200:
-                    return True
-                self.logger.error("Local Telegram webhook returned non-200: %s %s", resp.status_code, resp.text)
-                return False
-            except Exception as exc:
-                self.logger.error("Local webhook request error: %s", exc)
-                return False
-
         if not self.token or not self.chat_id:
             self.logger.warning("Telegram token/chat_id not configured")
             return False
