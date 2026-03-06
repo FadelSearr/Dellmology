@@ -173,6 +173,9 @@ var (
 	mlCircuitOpen bool
 	mlCircuitOpenedAt time.Time
 	mlCircuitMutex sync.Mutex
+	// debug: force ML failures (for testing circuit-breaker)
+	mlForceFail bool
+	mlForceFailMutex sync.Mutex
 	// ML latency histogram
 	mlLatencyBucketThresholds = []float64{0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 5.0}
 	mlLatencyBucketCounts []int64
@@ -1113,6 +1116,35 @@ func startHTTPServer() {
 		http.Error(w, "failed to encode payload", http.StatusInternalServerError)
 	})
 
+	// Debug endpoints to force ML failures for testing circuit-breaker
+	mux.HandleFunc("/debug/ml/fail-on", func(w http.ResponseWriter, r *http.Request) {
+		mlForceFailMutex.Lock()
+		mlForceFail = true
+		mlForceFailMutex.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"forced": true, "message": "ML failure mode enabled"})
+	})
+	mux.HandleFunc("/debug/ml/fail-off", func(w http.ResponseWriter, r *http.Request) {
+		mlForceFailMutex.Lock()
+		mlForceFail = false
+		mlForceFailMutex.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"forced": false, "message": "ML failure mode disabled"})
+	})
+	mux.HandleFunc("/debug/ml/status", func(w http.ResponseWriter, r *http.Request) {
+		mlForceFailMutex.Lock()
+		force := mlForceFail
+		mlForceFailMutex.Unlock()
+		mlCircuitMutex.Lock()
+		copen := mlCircuitOpen
+		copened := mlCircuitOpenedAt
+		mlCircuitMutex.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"force_fail": force, "circuit_open": copen, "circuit_opened_at": copened})
+	})
+
 	// SSE Endpoint: /stream/broker-analysis streams periodic broker analysis JSON
 	mux.Handle("/stream/broker-analysis", sseBroker)
 
@@ -1421,6 +1453,7 @@ func fetchMLInference(symbol string) []byte {
 		url = url + "?symbol=" + symbol
 	}
 
+
 	// circuit-breaker configuration
 	failureThreshold := 5
 	if raw := strings.TrimSpace(os.Getenv("ML_CIRCUIT_FAILURE_THRESHOLD")); raw != "" {
@@ -1433,6 +1466,42 @@ func fetchMLInference(symbol string) []byte {
 		if parsed, err := strconv.Atoi(raw); err == nil && parsed >= 1 {
 			cooldownSeconds = parsed
 		}
+	}
+
+	// debug: force failure mode check
+	mlForceFailMutex.Lock()
+	force := mlForceFail
+	mlForceFailMutex.Unlock()
+	if force {
+		// simulate a failure without calling the inference server
+		atomic.AddInt64(&mlFetchFailures, 1)
+		log.Printf("ERROR: ML inference forced failure for %s", symbol)
+		consec := atomic.AddInt64(&mlConsecutiveFailures, 1)
+		mlMutex.Lock()
+		mlLastError = "forced failure (debug)"
+		mlLastChecked = time.Now().UTC()
+		mlMutex.Unlock()
+		if int(consec) >= failureThreshold {
+			mlCircuitMutex.Lock()
+			if !mlCircuitOpen {
+				mlCircuitOpen = true
+				mlCircuitOpenedAt = time.Now().UTC()
+				log.Printf("WARN: ML circuit opened due to %d consecutive failures", consec)
+				// send Telegram alert (non-blocking)
+				go func(c int64, sym string) {
+					client := &http.Client{Timeout: telegramAlertTimeout}
+					target := strings.TrimSpace(os.Getenv("TELEGRAM_HEARTBEAT_URL"))
+					if target == "" {
+						target = telegramAlertAPIURL
+					}
+					_ = sendTelegramSystemAlert(client, target, "ML_CIRCUIT_OPEN", fmt.Sprintf("ML circuit opened for %s after %d consecutive failures", sym, c), 0)
+				}(consec, symbol)
+			}
+			mlCircuitMutex.Unlock()
+		}
+		// record latency & return nil (no inference payload)
+		recordMLLatency(startTime)
+		return nil
 	}
 
 	// if circuit is open, check cooldown
@@ -1491,6 +1560,15 @@ func fetchMLInference(symbol string) []byte {
 						mlLastError = ""
 						mlLastChecked = time.Now().UTC()
 						mlMutex.Unlock()
+						// notify if circuit was open and now recovered
+						go func(sym string) {
+							client := &http.Client{Timeout: telegramAlertTimeout}
+							target := strings.TrimSpace(os.Getenv("TELEGRAM_HEARTBEAT_URL"))
+							if target == "" {
+								target = telegramAlertAPIURL
+							}
+							_ = sendTelegramSystemAlert(client, target, "ML_CIRCUIT_RECOVERED", fmt.Sprintf("ML circuit recovered for %s (successful inference)", sym), 0)
+						}(symbol)
 						// reset consecutive failures and close circuit if open
 						atomic.StoreInt64(&mlConsecutiveFailures, 0)
 						mlCircuitMutex.Lock()
