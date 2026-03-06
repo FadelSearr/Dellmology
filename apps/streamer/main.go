@@ -1076,6 +1076,10 @@ func initDB() (*sql.DB, error) {
 }
 
 func insertTrade(t ProcessedTrade) error {
+	if db == nil {
+		// running in test or without DB; skip write
+		return nil
+	}
 	_, err := db.Exec(`INSERT INTO trades (symbol, price, volume, trade_type, timestamp) VALUES ($1, $2, $3, $4, $5)`, t.Symbol, t.Price, t.Volume, t.TradeType, t.Timestamp)
 	return err
 }
@@ -1346,6 +1350,32 @@ func startHTTPServer() {
 			resp["status"] = "ok"
 		}
 		if err := json.NewEncoder(w).Encode(resp); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	})
+
+	// Endpoint: /api/order-flow/heatmap?symbol=BBCA&limit=100
+	mux.HandleFunc("/api/order-flow/heatmap", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Content-Type", "application/json")
+		symbol := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("symbol")))
+		if symbol == "" {
+			http.Error(w, "missing symbol parameter", http.StatusBadRequest)
+			return
+		}
+		limit := 100
+		if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
+			if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 && parsed <= 1000 {
+				limit = parsed
+			}
+		}
+		rows, err := GetOrderFlowHeatmap(symbol, limit)
+		if err != nil {
+			log.Printf("ERROR: failed to get heatmap: %v", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if err := json.NewEncoder(w).Encode(map[string]interface{}{"symbol": symbol, "rows": rows}); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
 	})

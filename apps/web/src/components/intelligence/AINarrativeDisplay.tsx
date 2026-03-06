@@ -58,8 +58,13 @@ export const AINarrativeDisplay = ({
           if (!brokerData.stats) {
             throw new Error('Broker flow stats missing');
           }
+          function isBroker(obj: unknown): obj is { is_whale?: boolean } {
+            return !!obj && typeof obj === 'object' && 'is_whale' in (obj as Record<string, unknown>);
+          }
           requestPayload.data = {
-            whales: brokerData.brokers?.filter((b: any) => b.is_whale).slice(0, 3) || [],
+            whales: Array.isArray(brokerData.brokers)
+              ? brokerData.brokers.filter(isBroker).filter((b) => Boolean(b.is_whale)).slice(0, 3)
+              : [],
             wash_sale_score: brokerData.stats.wash_sale_score || 0,
             consistency: brokerData.stats.total_brokers > 0 ? 1 : 0,
             period: '7 days'
@@ -80,7 +85,7 @@ export const AINarrativeDisplay = ({
 
           const washSaleScore = Number(brokerData?.stats?.wash_sale_score || 0);
           const whaleCount = Array.isArray(brokerData?.brokers)
-            ? brokerData.brokers.filter((broker: any) => broker.is_whale).length
+            ? brokerData.brokers.filter((b) => isBroker(b) && Boolean(b.is_whale)).length
             : 0;
           const upsScore = Number(marketData?.unified_power_score?.score || 0);
           const regime = String(regimeData?.regime || 'UNKNOWN');

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Zap, TrendingUp, AlertCircle, Loader } from 'lucide-react';
+import { Zap, Loader } from 'lucide-react';
 
 type ScreenerMode = 'DAYTRADE' | 'SWING' | 'CUSTOM';
 

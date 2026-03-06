@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 
-export function useSSE(url: string) {
-  const [lastEvent, setLastEvent] = useState<any>(null)
-  const [events, setEvents] = useState<any[]>([])
+export function useSSE<T = unknown>(url: string) {
+  const [lastEvent, setLastEvent] = useState<T | null>(null)
+  const [events, setEvents] = useState<T[]>([])
   const evtSourceRef = useRef<EventSource | null>(null)
 
   useEffect(() => {
@@ -11,10 +11,11 @@ export function useSSE(url: string) {
     evtSourceRef.current = es
     es.onmessage = (e) => {
       try {
-        const data = JSON.parse(e.data)
+        const parsed: unknown = JSON.parse(e.data)
+        const data = parsed as T
         setLastEvent(data)
         setEvents((s) => [data, ...s].slice(0, 50))
-      } catch (err) {
+      } catch {
         // ignore parse errors
       }
     }

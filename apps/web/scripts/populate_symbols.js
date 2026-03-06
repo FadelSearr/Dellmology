@@ -1,7 +1,6 @@
 // seed daily_prices and sample broker_flow data using the web project's dependencies
-const { Pool } = require('pg');
-
 (async function main() {
+  const { Pool } = await import('pg');
   const pool = new Pool({
     connectionString: 'postgresql://admin:password@localhost:5433/dellmology',
   });
