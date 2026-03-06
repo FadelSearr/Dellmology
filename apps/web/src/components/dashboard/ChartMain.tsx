@@ -5,7 +5,7 @@ type Props = { symbol: string }
 
 const ChartMain: React.FC<Props> = ({ symbol }) => {
   const ref = useRef<HTMLDivElement | null>(null)
-  const chartRef = useRef<any>(null)
+  const chartRef = useRef<ReturnType<typeof createChart> | null>(null)
   const seriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null)
 
   useEffect(() => {
@@ -16,9 +16,9 @@ const ChartMain: React.FC<Props> = ({ symbol }) => {
     // initialize with placeholder data
     const now = Math.floor(Date.now() / 1000)
     seriesRef.current?.setData([
-      { time: (now - 60 * 60) as any, open: 100, high: 110, low: 95, close: 105 },
-      { time: (now - 30 * 60) as any, open: 105, high: 115, low: 100, close: 110 },
-      { time: now as any, open: 110, high: 120, low: 108, close: 115 },
+      { time: now - 60 * 60, open: 100, high: 110, low: 95, close: 105 },
+      { time: now - 30 * 60, open: 105, high: 115, low: 100, close: 110 },
+      { time: now, open: 110, high: 120, low: 108, close: 115 },
     ])
 
     const handleResize = () => {
