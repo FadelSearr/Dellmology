@@ -15,11 +15,18 @@ const TradingViewWidget = ({ symbol, width = '100%', height = 400, interval = '6
   useEffect(() => {
     if (!containerRef.current) return;
     const script = document.createElement('script');
+  }
     script.src = 'https://s3.tradingview.com/tv.js';
+  declare global {
+    interface Window {
+      TradingView?: { widget: (opts: Record<string, unknown>) => unknown };
+    }
     script.async = true;
     script.onload = () => {
-      if (window && (window as any).TradingView) {
-        new (window as any).TradingView.widget({
+      if (window && window.TradingView) {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+        // @ts-expect-error third-party widget
+        new window.TradingView.widget({
           width,
           height,
           // TradingView uses EXCHANGE:SYMBOL format

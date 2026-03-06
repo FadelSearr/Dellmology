@@ -13,7 +13,7 @@ interface CandleData {
 
 export const AdvancedChart = ({ symbol = 'BBCA' }: { symbol: string }) => {
   const containerRef = useRef<HTMLDivElement>(null);
-  const chartRef = useRef<any>(null);
+  const chartRef = useRef<ReturnType<typeof createChart> | null>(null);
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<CandleData[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -41,7 +41,7 @@ export const AdvancedChart = ({ symbol = 'BBCA' }: { symbol: string }) => {
     chartRef.current = chart;
 
     // Add candlestick series
-    const candlestickSeries = (chart as any).addCandlestickSeries({
+    const candlestickSeries = chart.addCandlestickSeries({
       upColor: '#10b981',
       downColor: '#ef4444',
       borderUpColor: '#10b981',
@@ -51,7 +51,7 @@ export const AdvancedChart = ({ symbol = 'BBCA' }: { symbol: string }) => {
     });
 
     // Add volume series (using histogram)
-    const volumeSeries = (chart as any).addHistogramSeries({
+    const volumeSeries = chart.addHistogramSeries({
       color: '#26c6da',
       title: 'Volume',
     });
