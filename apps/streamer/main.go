@@ -1009,6 +1009,62 @@ func startHTTPServer() {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
 	})
+
+	// REST Endpoint: /api/broker/stats?symbol=BBCA&days=7
+	mux.HandleFunc("/api/broker/stats", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Content-Type", "application/json")
+		symbol := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("symbol")))
+		if symbol == "" {
+			symbol = "BBCA"
+		}
+		days := 7
+		if raw := strings.TrimSpace(r.URL.Query().Get("days")); raw != "" {
+			if parsed, err := strconv.Atoi(raw); err == nil && parsed >= 1 && parsed <= 30 {
+				days = parsed
+			}
+		}
+		payload := analysispkg.AnalyzeBrokerFlow(symbol, days)
+		if err := json.NewEncoder(w).Encode(payload); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	})
+
+	// SSE Endpoint: /stream/broker-analysis streams periodic broker analysis JSON
+	mux.Handle("/stream/broker-analysis", sseBroker)
+
+	// start background broadcaster for broker analysis (periodic)
+	go func() {
+		symbolsEnv := strings.TrimSpace(os.Getenv("BROKER_POLL_SYMBOLS"))
+		symbols := []string{"BBCA"}
+		if symbolsEnv != "" {
+			parts := strings.Split(symbolsEnv, ",")
+			trimmed := make([]string, 0, len(parts))
+			for _, p := range parts {
+				if s := strings.ToUpper(strings.TrimSpace(p)); s != "" {
+					trimmed = append(trimmed, s)
+				}
+			}
+			if len(trimmed) > 0 {
+				symbols = trimmed
+			}
+		}
+		interval := 10 * time.Second
+		if raw := strings.TrimSpace(os.Getenv("BROKER_POLL_INTERVAL_SECONDS")); raw != "" {
+			if parsed, err := strconv.Atoi(raw); err == nil && parsed >= 1 {
+				interval = time.Duration(parsed) * time.Second
+			}
+		}
+		for {
+			for _, sym := range symbols {
+				payload := analysispkg.AnalyzeBrokerFlow(sym, 7)
+				if b, err := json.Marshal(payload); err == nil {
+					sseBroker.messages <- b
+				}
+			}
+			time.Sleep(interval)
+		}
+	}()
 	mux.HandleFunc("/negotiated/latest", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Content-Type", "application/json")
