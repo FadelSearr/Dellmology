@@ -14,6 +14,9 @@ Implemented (in repo):
  - Order Flow Heatmap aggregation worker and anomaly detector initialization in streamer (`apps/streamer/order_flow.go`, `apps/streamer/main.go`).
  - Order Flow Heatmap aggregation worker and anomaly detector initialization in streamer (`apps/streamer/order_flow.go`, `apps/streamer/main.go`).
  - Proxied AI Narrative generation through ML engine: web now forwards narrative requests to ML engine `/xai/narrative` to centralize Gemini usage (`apps/web/src/app/api/generate-narrative/route.ts`).
+ - ML model registry migration and basic persistence: `db/init/06-ml-models.sql` added and `dellmology.models.model_registry` updated to persist champion/challenger metadata when DB is available.
+ - ML model registry migration and basic persistence: `db/init/06-ml-models.sql` added and `dellmology.models.model_registry` updated to persist champion/challenger metadata when DB is available.
+ - Unit tests for `ModelRegistry` retrain and promotion behavior added and passing (`apps/ml-engine/tests/test_model_registry.py`).
 
 Partially implemented / Needs credentials or hardening:
 - TimescaleDB / Supabase persistence: DB migrations exist (`db/init/*.sql`) but live persistence requires service URL / service role key.
@@ -35,5 +38,13 @@ Notes & Next Steps:
 - To enable DB persistence and metrics centralization: provide `SUPABASE_URL` and service role key; then tests/migrations can be run.
 - To enable production Telegram alerts: provide `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` and optionally reintroduce safe test harness separate from production code.
 - Security hardening: replace header-based admin keys with token-based auth, enforce RLS on Supabase, and add audit logging for destructive endpoints.
+
+Recent progress (2026-03-07):
+- Added unit tests for `ModelRegistry` retrain and promotion; tests run locally and passed.
+- Updated `apps/ml-engine` to include a simple background retrain runner and exposed endpoints for status/retrain/promote.
+
+Next immediate tasks:
+- Add a small web UI for model promotion and retrain controls (planned).
+- Update roadmap status in Git and create a small commit (this file).
 
 If kamu setuju, saya bisa lanjut: 1) mengaktifkan Supabase persistence ketika kredensial tersedia, 2) menambahkan RLS skeleton and audit logging, atau 3) lanjut implementasi fitur roadmap berikutnya yang kamu minta. Pilih nomor atau beri instruksi.
