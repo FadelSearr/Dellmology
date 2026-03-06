@@ -50,15 +50,7 @@ interface Anomaly {
   description: string;
 }
 
-interface HAKAHAKIData {
-  time: string;
-  symbol: string;
-  haka_volume: number;
-  haki_volume: number;
-  haka_ratio: number;
-  dominance: string;
-  net_pressure: number;
-}
+// HAKA/HAKI summary shape used at runtime — declared inline where needed
 
 interface IcebergSignal {
   warning: boolean;

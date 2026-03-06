@@ -1,6 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 
-export async function GET(req: NextRequest) {
+export async function GET() {
   try {
     const ML_ENGINE_URL = process.env.ML_ENGINE_URL || 'http://localhost:8001'
     const resp = await fetch(`${ML_ENGINE_URL}/retrain/status`, {

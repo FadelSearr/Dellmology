@@ -1,16 +1,4 @@
 import { NextResponse } from 'next/server';
-
-export async function GET() {
-  const now = Date.now();
-  const services = [
-    { name: 'go_streamer', status: 'ok', lastChecked: now },
-    { name: 'timescaledb', status: 'degraded', note: 'read-only mode', lastChecked: now },
-    { name: 'data_integrity_shield', status: 'ok', lastChecked: now },
-  ];
-
-  return NextResponse.json({ services });
-}
-import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { isEncryptedSessionToken } from '@/lib/security/sessionTokenCrypto';
 
@@ -51,7 +39,7 @@ async function sendEngineStatusAlert(payload: {
  * GET /api/health
  * System health check endpoint
  */
-export async function GET(request: Request) {
+export async function GET() {
   try {
     let isSystemActive = process.env.SYSTEM_ACTIVE !== 'false';
     let configuredKillReason: string | null = null;
@@ -76,8 +64,8 @@ export async function GET(request: Request) {
       if (reasonFlag && typeof reasonFlag === 'string') {
         configuredKillReason = reasonFlag;
       }
-    } catch (err) {
-      console.error('System control check failed:', err);
+    } catch (error) {
+      console.error('System control check failed:', error);
     }
 
     // Check database connection
@@ -85,8 +73,8 @@ export async function GET(request: Request) {
     try {
       const result = await db.query('SELECT 1');
       dbConnected = result.rows.length === 1;
-    } catch (err) {
-      console.error('DB health check failed:', err);
+    } catch (error) {
+      console.error('DB health check failed:', error);
     }
 
     // Check data integrity (sample)
@@ -100,7 +88,7 @@ export async function GET(request: Request) {
       if (tradesResult.rows[0]?.count < 10) {
         dataIntegrity = false; // Low activity might indicate data issue
       }
-    } catch (err) {
+    } catch (error) {
       dataIntegrity = false;
     }
 
@@ -119,8 +107,8 @@ export async function GET(request: Request) {
           workerOnline = workerLastSeenSeconds <= heartbeatTimeoutSeconds;
         }
       }
-    } catch (err) {
-      console.error('Worker heartbeat check failed:', err);
+    } catch (error) {
+      console.error('Worker heartbeat check failed:', error);
     }
 
     let deadmanAlertTriggered = false;
@@ -189,8 +177,8 @@ export async function GET(request: Request) {
           heartbeatTimeoutSeconds,
         });
       }
-    } catch (err) {
-      console.error('Dead-man switch alert check failed:', err);
+    } catch (error) {
+      console.error('Dead-man switch alert check failed:', error);
     }
 
     // Check session token freshness (extension heartbeat visibility)
@@ -234,8 +222,8 @@ export async function GET(request: Request) {
           tokenStatus = 'missing';
         }
       }
-    } catch (err) {
-      console.error('Session token health check failed:', err);
+    } catch (error) {
+      console.error('Session token health check failed:', error);
     }
 
     let tokenLastSyncReason: string | null = null;
@@ -285,8 +273,8 @@ export async function GET(request: Request) {
           tokenExtensionLastSeenSeconds = Math.max(0, Math.floor((Date.now() - seenAt.getTime()) / 1000));
         }
       }
-    } catch (err) {
-      console.error('Token extension metadata check failed:', err);
+    } catch (error) {
+      console.error('Token extension metadata check failed:', error);
     }
 
     let sseConnected = false;
@@ -326,8 +314,8 @@ export async function GET(request: Request) {
       } else {
         apiRateLimit = tokenStatus === 'fresh' ? 80 : tokenStatus === 'expiring' ? 45 : 20;
       }
-    } catch (err) {
-      console.error('Telemetry health check failed:', err);
+    } catch (error) {
+      console.error('Telemetry health check failed:', error);
       sseConnected = workerOnline;
       apiRateLimit = tokenStatus === 'fresh' ? 80 : tokenStatus === 'expiring' ? 45 : 20;
     }
@@ -373,15 +361,15 @@ export async function GET(request: Request) {
       }
     });
 
-  } catch (error) {
-    console.error('Health check error:', error);
-    return NextResponse.json(
-      {
-        status: 'ERROR',
-        error: 'Health check failed',
-        timestamp: new Date().toISOString()
-      },
-      { status: 500 }
-    );
-  }
+    } catch (error) {
+      console.error('Health check error:', error);
+      return NextResponse.json(
+        {
+          status: 'ERROR',
+          error: 'Health check failed',
+          timestamp: new Date().toISOString()
+        },
+        { status: 500 }
+      );
+    }
 }
