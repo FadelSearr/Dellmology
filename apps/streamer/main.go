@@ -1045,6 +1045,53 @@ func startHTTPServer() {
 		}
 	})
 
+	// Debug endpoint: trigger AnalyzeBrokerFlow now, attach ML inference if available,
+	// broadcast result to SSE clients and return combined payload immediately.
+	mux.HandleFunc("/debug/broker/analyze-now", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Content-Type", "application/json")
+		symbol := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("symbol")))
+		if symbol == "" {
+			symbol = "BBCA"
+		}
+		days := 7
+		if raw := strings.TrimSpace(r.URL.Query().Get("days")); raw != "" {
+			if parsed, err := strconv.Atoi(raw); err == nil && parsed >= 1 && parsed <= 30 {
+				days = parsed
+			}
+		}
+		payload := analysispkg.AnalyzeBrokerFlow(symbol, days)
+		// attach ML inference if available
+		if rawInf := fetchMLInference(symbol); rawInf != nil {
+			var inf interface{}
+			if err := json.Unmarshal(rawInf, &inf); err == nil {
+				m := map[string]interface{}{}
+				if pbytes, err := json.Marshal(payload); err == nil {
+					_ = json.Unmarshal(pbytes, &m)
+				}
+				m["ml_inference"] = inf
+				if b, err := json.Marshal(m); err == nil {
+					// broadcast to SSE clients
+					sseBroker.messages <- b
+					// return combined payload
+					if err := json.NewEncoder(w).Encode(m); err != nil {
+						http.Error(w, err.Error(), http.StatusInternalServerError)
+					}
+					return
+				}
+			}
+		}
+		// fallback: broadcast and return original payload
+		if b, err := json.Marshal(payload); err == nil {
+			sseBroker.messages <- b
+			if err := json.NewEncoder(w).Encode(payload); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+			}
+			return
+		}
+		http.Error(w, "failed to encode payload", http.StatusInternalServerError)
+	})
+
 	// SSE Endpoint: /stream/broker-analysis streams periodic broker analysis JSON
 	mux.Handle("/stream/broker-analysis", sseBroker)
 
