@@ -173,6 +173,11 @@ var (
 	mlCircuitOpen bool
 	mlCircuitOpenedAt time.Time
 	mlCircuitMutex sync.Mutex
+	// ML latency histogram
+	mlLatencyBucketThresholds = []float64{0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 5.0}
+	mlLatencyBucketCounts []int64
+	mlLatencyCount int64
+	mlLatencySumMs int64
 )
 
 // --- SSE Broker ---
@@ -256,6 +261,9 @@ func main() {
 		log.Println("Redis cache connected.")
 		useExternalQueue = strings.EqualFold(os.Getenv("USE_REDIS_QUEUE"), "true")
 	}
+
+	// initialize ML latency bucket counters
+	mlLatencyBucketCounts = make([]int64, len(mlLatencyBucketThresholds))
 
 	sseBroker = newBroker()
 	go sseBroker.run()
@@ -1270,6 +1278,28 @@ func startHTTPServer() {
 			fmt.Fprintf(w, "# TYPE ml_last_error gauge\n")
 			fmt.Fprintf(w, "ml_last_error{error=\"%s\",checked=\"%s\"} 1\n", esc, lastChecked.UTC().Format(time.RFC3339))
 		}
+
+		// latency histogram exposition (buckets are cumulative)
+		latCount := atomic.LoadInt64(&mlLatencyCount)
+		latSum := atomic.LoadInt64(&mlLatencySumMs)
+		fmt.Fprintf(w, "# HELP ml_fetch_latency_count Total ML fetch latency observations\n")
+		fmt.Fprintf(w, "# TYPE ml_fetch_latency_count counter\n")
+		fmt.Fprintf(w, "ml_fetch_latency_count %d\n", latCount)
+		fmt.Fprintf(w, "# HELP ml_fetch_latency_sum_ms Sum of ML fetch latencies in milliseconds\n")
+		fmt.Fprintf(w, "# TYPE ml_fetch_latency_sum_ms counter\n")
+		fmt.Fprintf(w, "ml_fetch_latency_sum_ms %d\n", latSum)
+
+		// buckets (cumulative)
+		fmt.Fprintf(w, "# HELP ml_fetch_latency_bucket ML fetch latency buckets (cumulative)\n")
+		fmt.Fprintf(w, "# TYPE ml_fetch_latency_bucket counter\n")
+		cum := int64(0)
+		for i, th := range mlLatencyBucketThresholds {
+			cnt := atomic.LoadInt64(&mlLatencyBucketCounts[i])
+			cum += cnt
+			fmt.Fprintf(w, "ml_fetch_latency_bucket{le=\"%g\"} %d\n", th, cum)
+		}
+		// +Inf bucket
+		fmt.Fprintf(w, "ml_fetch_latency_bucket{le=\"+Inf\"} %d\n", cum)
 	})
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -1358,6 +1388,7 @@ func connectWebSocket(token string) (*websocket.Conn, error) {
 // response into a small SSE-friendly JSON object. Returns marshaled JSON
 // bytes or nil on error.
 func fetchMLInference(symbol string) []byte {
+	startTime := time.Now()
 	inferenceURL := strings.TrimSpace(os.Getenv("ML_INFERENCE_URL"))
 	if inferenceURL == "" {
 		inferenceURL = "http://127.0.0.1:5000/infer"
@@ -1466,6 +1497,8 @@ func fetchMLInference(symbol string) []byte {
 						mlCircuitOpen = false
 						mlCircuitOpenedAt = time.Time{}
 						mlCircuitMutex.Unlock()
+						// record latency for this successful call
+						recordMLLatency(startTime)
 						return out
 					}
 					lastErr = fmt.Errorf("marshal wrapped inference failed: %v", err)
@@ -1493,12 +1526,6 @@ func fetchMLInference(symbol string) []byte {
 		mlMutex.Unlock()
 
 		// check threshold and open circuit if needed
-		failureThreshold := 5
-		if raw := strings.TrimSpace(os.Getenv("ML_CIRCUIT_FAILURE_THRESHOLD")); raw != "" {
-			if parsed, err := strconv.Atoi(raw); err == nil && parsed >= 1 {
-				failureThreshold = parsed
-			}
-		}
 		if int(consec) >= failureThreshold {
 			mlCircuitMutex.Lock()
 			if !mlCircuitOpen {
@@ -1508,6 +1535,8 @@ func fetchMLInference(symbol string) []byte {
 			}
 			mlCircuitMutex.Unlock()
 		}
+			// also record latency for the failed call
+			recordMLLatency(startTime)
 	}
 	return nil
 }
@@ -1541,6 +1570,25 @@ func recordNegotiatedTrade(t ProcessedTrade) {
 	negotiatedTrades = append(negotiatedTrades, t)
 	if len(negotiatedTrades) > 100 {
 		negotiatedTrades = negotiatedTrades[len(negotiatedTrades)-100:]
+	}
+}
+
+// recordMLLatency records overall duration since start into atomic histogram counters
+func recordMLLatency(start time.Time) {
+	d := time.Since(start).Seconds()
+	ms := time.Since(start).Milliseconds()
+	atomic.AddInt64(&mlLatencyCount, 1)
+	atomic.AddInt64(&mlLatencySumMs, ms)
+	// find bucket
+	for i, th := range mlLatencyBucketThresholds {
+		if d <= th {
+			atomic.AddInt64(&mlLatencyBucketCounts[i], 1)
+			return
+		}
+	}
+	// overflow bucket (slower than last threshold)
+	if len(mlLatencyBucketCounts) > 0 {
+		atomic.AddInt64(&mlLatencyBucketCounts[len(mlLatencyBucketCounts)-1], 1)
 	}
 }
 
