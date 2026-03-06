@@ -1,8 +1,9 @@
 package main
 
 import (
-    "testing"
-    analysispkg "github.com/dellmology/streamer/internal/analysis"
+	"testing"
+
+	analysispkg "github.com/dellmology/streamer/internal/analysis"
 )
 
 // Basic smoke test for AnalyzeBrokerFlow: it should always return a map with
