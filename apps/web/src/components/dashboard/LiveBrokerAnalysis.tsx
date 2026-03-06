@@ -4,8 +4,8 @@ import React, { useEffect, useState } from 'react';
 
 interface BrokerAnalysisPayload {
   symbol?: string;
-  summary?: any;
-  ml_inference?: any;
+  summary?: Record<string, unknown>;
+  ml_inference?: Record<string, unknown>;
 }
 
 const STREAM_URL = process.env.NEXT_PUBLIC_STREAMER_URL || 'http://127.0.0.1:8080/stream/broker-analysis';
@@ -18,7 +18,7 @@ export default function LiveBrokerAnalysis() {
   useEffect(() => {
     let es: EventSource | null = null;
     try {
-      es = new EventSource(STREAM_URL, { withCredentials: false } as any);
+      es = new EventSource(STREAM_URL, { withCredentials: false } as EventSourceInit);
       es.onopen = () => {
         setConnected(true);
         setError(null);

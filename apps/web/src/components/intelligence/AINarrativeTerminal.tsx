@@ -20,7 +20,7 @@ export const AINarrativeTerminal: React.FC = () => {
         body: JSON.stringify({ symbol, text: lastEvent?.narrative || 'No narrative available' }),
       });
     } catch (err) {
-      // ignore for now
+      console.warn('Telegram send failed', err);
     } finally {
       setSending(false);
     }
@@ -28,7 +28,7 @@ export const AINarrativeTerminal: React.FC = () => {
 
   const handleSnapshot = async () => {
     try {
-      const resp = await fetch('/api/snapshots', {
+      await fetch('/api/snapshots', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ symbol, snapshotAt: new Date().toISOString(), data: lastEvent || null }),
