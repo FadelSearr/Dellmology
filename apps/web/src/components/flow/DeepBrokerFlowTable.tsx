@@ -27,12 +27,12 @@ export const DeepBrokerFlowTable: React.FC<{ symbol?: string }> = ({ symbol = 'B
         } else {
           const json = await resp.json();
           // defensive parsing
-          const parsed = Array.isArray(json) ? json.map((r: any) => ({
+          const parsed = Array.isArray(json) ? json.map((r: { [key: string]: unknown }) => ({
             broker: String(r.broker || r.name || 'UNK'),
-            identity: (r.identity === 'Whale' || r.identity === 'Retail') ? r.identity : 'Unknown',
-            netValue: Number(r.netValue || r.net || 0),
-            consistency: Number(r.consistency || r.cons || 0),
-            heatmap: Array.isArray(r.heatmap) ? r.heatmap.map((n: any) => Number(n || 0)) : [0,0,0,0,0]
+            identity: (r.identity === 'Whale' || r.identity === 'Retail') ? (r.identity as 'Whale' | 'Retail') : 'Unknown',
+            netValue: Number((r.netValue ?? r.net) || 0),
+            consistency: Number(r.consistency ?? r.cons || 0),
+            heatmap: Array.isArray(r.heatmap) ? (r.heatmap as unknown[]).map((n) => Number(n ?? 0)) : [0,0,0,0,0]
           })) : mockRows();
           setRows(parsed);
         }
