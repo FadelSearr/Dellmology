@@ -951,6 +951,23 @@ func processMessage(rawMsg []byte) {
 			Timestamp: time.Unix(trade.Timestamp, 0),
 		}
 
+		// Run data integrity validation before inserting
+		dp := DataPoint{
+			Symbol:    processed.Symbol,
+			Price:     processed.Price,
+			Volume:    processed.Volume,
+			Timestamp: processed.Timestamp.Unix() * 1000,
+			Source:    "TRADE",
+		}
+		result := dataValidator.ValidateDataPoint(dp)
+		// store validation result for monitoring
+		dataValidator.StoreValidationResult(result, processed.Symbol)
+		if !result.IsValid {
+			log.Printf("VALIDATION FAILED for %s: %v (Score: %.1f)", processed.Symbol, result.Issues, result.Score)
+			// skip inserting obviously invalid trades
+			return
+		}
+
 		if err := insertTrade(processed); err != nil {
 			log.Printf("ERROR: Failed to insert trade into DB: %v", err)
 		}
