@@ -30,7 +30,7 @@ const (
 	systemControlAPIURL = "http://localhost:3000/api/system-control"
 	workerResetAPIURL   = "http://localhost:3000/api/system-control/worker-reset"
 	databaseURL         = "postgresql://admin:password@localhost:5433/dellmology?sslmode=disable"
-	httpListenAddr      = ":8080"
+	httpListenAddr      = "127.0.0.1:8080"
 	workerHeartbeatAPIURL = "http://localhost:3000/api/worker-heartbeat"
 	reconnectMinWait    = 2 * time.Second
 	reconnectMaxWait    = 60 * time.Second
