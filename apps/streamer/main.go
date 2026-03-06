@@ -1111,6 +1111,50 @@ func startHTTPServer() {
 		}
 	})
 
+	// Debug endpoint: trigger immediate broker analysis + ML and broadcast via SSE
+	mux.HandleFunc("/debug/broker/analyze-now", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Content-Type", "application/json")
+		symbol := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("symbol")))
+		if symbol == "" {
+			symbol = "BBCA"
+		}
+		days := 7
+		if raw := strings.TrimSpace(r.URL.Query().Get("days")); raw != "" {
+			if parsed, err := strconv.Atoi(raw); err == nil && parsed >= 1 && parsed <= 30 {
+				days = parsed
+			}
+		}
+		payload := analysispkg.AnalyzeBrokerFlow(symbol, days)
+		// attach ML if available
+		if rawInf := fetchMLInference(symbol); rawInf != nil {
+			var inf interface{}
+			if err := json.Unmarshal(rawInf, &inf); err == nil {
+				m := map[string]interface{}{}
+				if pbytes, err := json.Marshal(payload); err == nil {
+					_ = json.Unmarshal(pbytes, &m)
+				}
+				m["ml_inference"] = inf
+				if b, err := json.Marshal(m); err == nil {
+					// broadcast via SSE
+					sseBroker.messages <- b
+					if _, err := w.Write(b); err != nil {
+						http.Error(w, err.Error(), http.StatusInternalServerError)
+					}
+					return
+				}
+			}
+		}
+		if b, err := json.Marshal(payload); err == nil {
+			sseBroker.messages <- b
+			if _, err := w.Write(b); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+			}
+			return
+		}
+		http.Error(w, "failed to produce payload", http.StatusInternalServerError)
+	})
+
 	// Endpoint: /market/regime?symbol=BBCA
 	mux.HandleFunc("/market/regime", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
