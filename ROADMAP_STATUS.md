@@ -10,6 +10,8 @@ Implemented (in repo):
 - Model metrics generation and storage as local artifact (`apps/ml-engine/model_metrics.json`) and web API/UI pages for metrics (`apps/web/src/app/api/model-metrics/route.ts`, `apps/web/src/app/ml/metrics/page.tsx`).
 - Broker flow UI + table components and negotiated market monitor UI (`BrokerFlowTable`, `NegotiatedMarketMonitor`).
  - XAI / AI Narrative API routes and ML engine proxy added (`apps/ml-engine/dellmology/intelligence/api.py`, registered in `apps/ml-engine/main.py`).
+ - XAI / AI Narrative API routes and ML engine proxy added (`apps/ml-engine/dellmology/intelligence/api.py`, registered in `apps/ml-engine/main.py`).
+ - Order Flow Heatmap aggregation worker and anomaly detector initialization in streamer (`apps/streamer/order_flow.go`, `apps/streamer/main.go`).
 
 Partially implemented / Needs credentials or hardening:
 - TimescaleDB / Supabase persistence: DB migrations exist (`db/init/*.sql`) but live persistence requires service URL / service role key.
