@@ -1,6 +1,8 @@
 import React from 'react'
 import ChartMain from './ChartMain'
 import { Section0_CommandBar } from '@/components/sections/Section0_CommandBar'
+import WhaleTable from './WhaleTable'
+import AINarrative from './AINarrative'
 
 const BentoGrid: React.FC = () => {
   const [symbol, setSymbol] = React.useState('BBCA')
@@ -14,10 +16,14 @@ const BentoGrid: React.FC = () => {
           <div className="mb-3 font-semibold">Chart: {symbol}</div>
           <ChartMain symbol={symbol} />
         </main>
-        <aside className="col-span-3 bg-gray-800/40 rounded p-3">Right Sidebar (Whale Flow)</aside>
+        <aside className="col-span-3 bg-gray-800/40 rounded p-3">
+          <WhaleTable />
+        </aside>
 
         <section className="col-span-8 bg-gray-800/20 rounded p-3 mt-2">Unified Power Score & Heatmaps (Bottom-Center)</section>
-        <section className="col-span-4 bg-gray-800/40 rounded p-3 mt-2">Execution Dock & AI Narrative (Bottom)</section>
+        <section className="col-span-4 bg-gray-800/40 rounded p-3 mt-2">
+          <AINarrative />
+        </section>
       </div>
     </div>
   )
