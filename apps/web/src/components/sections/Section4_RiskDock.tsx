@@ -8,7 +8,13 @@ import { StatusBadge } from '@/components/common/StatusBadge';
 
 interface Section4Props {
   symbol: string;
-  trades?: any[];
+  trades?: Array<{
+    symbol?: string;
+    price?: number;
+    volume?: number;
+    time?: number | string;
+    [key: string]: unknown;
+  }>;
   unrealizedPnL?: number;
   maxLot?: number;
   stopLossPercent?: number;
@@ -135,7 +141,7 @@ export const Section4_RiskDock: React.FC<Section4Props> = ({
 
       {/* Real-time Trades Feed */}
       <Card title="📈 Real-time Trades" subtitle={`Live trades for ${symbol}`}>
-        <RealtimeTrades trades={trades.filter((t) => t.symbol === symbol)} />
+        <RealtimeTrades trades={trades.filter((t) => String(t.symbol) === symbol)} />
       </Card>
     </div>
   );
