@@ -29,3 +29,34 @@ jobs:
       - name: Smoke /infer
         run: |
           curl --fail --silent http://127.0.0.1:5000/infer?symbol=BBCA | jq -r '.' || (cat /dev/null)
+
+  ml-train-tf:
+    name: ML - Train with TensorFlow (CI)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      - name: Upgrade pip and install TF (CPU)
+        run: |
+          python -m pip install --upgrade pip
+          pip install numpy h5py tensorflow==2.12.0
+      - name: Train model with TensorFlow
+        run: |
+          python apps/ml-engine/train_or_stub.py --output-dir apps/ml-engine --epochs 1 --samples 32
+      - name: List generated files
+        run: ls -la apps/ml-engine || true
+      - name: Start inference server
+        run: |
+          python apps/ml-engine/inference_server.py &
+          sleep 4
+      - name: Smoke /infer
+        run: |
+          curl --fail --silent http://127.0.0.1:5000/infer?symbol=BBCA || (cat /dev/null)
+      - name: Upload trained model artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: toy_cnn_h5
+          path: apps/ml-engine/toy_cnn.h5
