@@ -1017,8 +1017,23 @@ func processMessage(rawMsg []byte) {
 			log.Printf("WARN: Failed to parse depth data: %v", err)
 			return
 		}
-		// Process order flow analysis asynchronously
+		// Process order flow analysis asynchronously (legacy processor)
 		go processDepthData(depth)
+
+		// Also forward to anomaly detector (if initialized). AnomalyDetector expects
+		// timestamp in milliseconds, while incoming `DepthData.Timestamp` is seconds.
+		if anomalyDetector != nil {
+			// create copy and convert seconds->milliseconds
+			depthMs := depth
+			if depthMs.Timestamp > 0 && depthMs.Timestamp < 1e12 {
+				depthMs.Timestamp = depthMs.Timestamp * 1000
+			}
+			go func(d DepthData) {
+				if err := anomalyDetector.ProcessDepthData(ctx, d); err != nil {
+					log.Printf("WARN: anomaly detector ProcessDepthData failed: %v", err)
+				}
+			}(depthMs)
+		}
 	}
 }
 
@@ -1395,6 +1410,40 @@ func startHTTPServer() {
 			log.Printf("ERROR: failed to get heatmap: %v", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
+		}
+		if err := json.NewEncoder(w).Encode(map[string]interface{}{"symbol": symbol, "rows": rows}); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	})
+
+	// Debug: trigger order-flow heatmap calculation on-demand and return results
+	mux.HandleFunc("/debug/order-flow/calc-heatmap", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Content-Type", "application/json")
+		symbol := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("symbol")))
+		if symbol == "" {
+			http.Error(w, "missing symbol parameter", http.StatusBadRequest)
+			return
+		}
+		minutes := 60
+		if raw := strings.TrimSpace(r.URL.Query().Get("minutes")); raw != "" {
+			if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 && parsed <= 1440 {
+				minutes = parsed
+			}
+		}
+		if anomalyDetector == nil {
+			http.Error(w, "anomaly detector not initialized", http.StatusServiceUnavailable)
+			return
+		}
+		rows, err := anomalyDetector.CalculateHeatmap(context.Background(), symbol, minutes)
+		if err != nil {
+			log.Printf("ERROR: CalculateHeatmap failed: %v", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		// broadcast to SSE clients for convenience
+		if b, err := json.Marshal(map[string]interface{}{"type": "order_flow_heatmap", "symbol": symbol, "rows": rows}); err == nil {
+			sseBroker.messages <- b
 		}
 		if err := json.NewEncoder(w).Encode(map[string]interface{}{"symbol": symbol, "rows": rows}); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
