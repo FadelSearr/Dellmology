@@ -1,3 +1,36 @@
+# ML Engine — Quick Start
+
+This folder contains a lightweight inference server and helpers for Fase 5 (CNN pattern recognition).
+
+Quick commands (developer machine):
+
+- Generate a JSON stub model (no TensorFlow required):
+
+```bash
+python generate_stub_model.py --output-dir . --classes 2 --samples 2
+```
+
+- Or run the trainer which will train a tiny Keras model if TensorFlow is installed; otherwise it writes a JSON stub:
+
+```bash
+python train_or_stub.py --output-dir . --epochs 3 --samples 128
+```
+
+- Start the inference server:
+
+```bash
+python inference_server.py
+```
+
+- Test the `/infer` endpoint:
+
+```bash
+curl http://127.0.0.1:5000/infer?symbol=BBCA
+```
+
+Notes:
+- `train_or_stub.py` will create `toy_cnn.h5` when TensorFlow is available and also write a `toy_cnn_stub.json` companion for compatibility.
+- The inference server will try to load `toy_cnn.h5`, then `toy_cnn_stub.json`, then fall back to the built-in scaffold.
 """
 README for ML-Engine Package
 Dellmology Pro - Advanced Stock Market Analysis
