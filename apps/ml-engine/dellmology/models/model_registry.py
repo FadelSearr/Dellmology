@@ -20,8 +20,10 @@ class ModelRegistry:
         self._lock = threading.Lock()
         self.champion: Optional[str] = "champion_v1"
         self.champion_metrics: Dict = {}
+        self.champion_checkpoint: Optional[str] = None
         self.challenger: Optional[str] = None
         self.challenger_metrics: Dict = {}
+        self.challenger_checkpoint: Optional[str] = None
         self._retrain_thread: Optional[threading.Thread] = None
 
     def get_status(self) -> Dict:
@@ -29,8 +31,10 @@ class ModelRegistry:
             return {
                 "champion": self.champion,
                 "champion_metrics": self.champion_metrics,
+                "champion_checkpoint": self.champion_checkpoint,
                 "challenger": self.challenger,
                 "challenger_metrics": self.challenger_metrics,
+                "challenger_checkpoint": self.challenger_checkpoint,
                 "retrain_running": self._retrain_thread is not None and self._retrain_thread.is_alive(),
             }
 
@@ -117,45 +121,53 @@ class ModelRegistry:
         with self._lock:
             if not self.challenger:
                 return False
+            # Promote in-memory
             self.champion = self.challenger
             self.champion_metrics = self.challenger_metrics or {}
+            self.champion_checkpoint = self.challenger_checkpoint
+            # reset challenger
             self.challenger = None
             self.challenger_metrics = {}
+            self.challenger_checkpoint = None
             logger.info(f"Promoted new champion: {self.champion}")
-            # Persist role change to DB if available
-            try:
-                with get_db_connection() as conn:
+
+        # Persist role change to DB if available (best-effort)
+        try:
+            with get_db_connection() as conn:
+                try:
+                    trans = conn.begin()
                     try:
-                        # Perform role changes inside a transaction
-                        trans = conn.begin()
+                        conn.execute("UPDATE ml_models SET role='archived' WHERE role='champion'")
+                        res = conn.execute(
+                            "UPDATE ml_models SET role='champion', checkpoint_name = :checkpoint WHERE model_name = :name",
+                            {'name': self.champion, 'checkpoint': getattr(self, 'champion_checkpoint', None)}
+                        )
+                        if getattr(res, 'rowcount', None) in (None, 0):
+                            conn.execute(
+                                "INSERT INTO ml_models (model_name, role, metrics, checkpoint_name) VALUES (:name, 'champion', :metrics::jsonb, :checkpoint)",
+                                {'name': self.champion, 'metrics': json.dumps(self.champion_metrics or {}), 'checkpoint': getattr(self, 'champion_checkpoint', None)}
+                            )
+                        # Attempt to record promotion in audit table
                         try:
-                            conn.execute("UPDATE ml_models SET role='archived' WHERE role='champion'")
-                            res = conn.execute("UPDATE ml_models SET role='champion' WHERE model_name = :name", {'name': self.champion})
-                            if getattr(res, 'rowcount', None) in (None, 0):
-                                conn.execute(
-                                    "INSERT INTO ml_models (model_name, role, metrics) VALUES (:name, 'champion', :metrics::jsonb)",
-                                    {'name': self.champion, 'metrics': json.dumps(self.champion_metrics or {})}
-                                )
-                            # Attempt to record promotion in audit table
-                            try:
-                                conn.execute(
-                                    "INSERT INTO ml_model_audit (model_name, action, details) VALUES (:name, 'promoted_to_champion', :details::jsonb)",
-                                    {'name': self.champion, 'details': json.dumps({'metrics': self.champion_metrics or {}})}
-                                )
-                            except Exception:
-                                pass
-                            trans.commit()
+                            conn.execute(
+                                "INSERT INTO ml_model_audit (model_name, action, details) VALUES (:name, 'promoted_to_champion', :details::jsonb)",
+                                {'name': self.champion, 'details': json.dumps({'metrics': self.champion_metrics or {}, 'checkpoint': getattr(self, 'champion_checkpoint', None)})}
+                            )
                         except Exception:
-                            try:
-                                trans.rollback()
-                            except Exception:
-                                pass
+                            pass
+                        trans.commit()
                     except Exception:
-                        # Best-effort: ignore DB failures
-                        pass
-            except Exception:
-                logger.debug("DB not available or failed to persist promotion")
-            return True
+                        try:
+                            trans.rollback()
+                        except Exception:
+                            pass
+                except Exception:
+                    # Best-effort: ignore DB failures
+                    pass
+        except Exception:
+            logger.debug("DB not available or failed to persist promotion")
+
+        return True
 
 
 # Singleton registry
