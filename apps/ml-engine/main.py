@@ -8,6 +8,7 @@ import logging
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
+from datetime import datetime
 import sys
 from pathlib import Path
 
@@ -118,10 +119,34 @@ async def models_backtest(request: Request):
 
 @app.post("/models/promote")
 async def promote_model(request: Request):
-    """Promote current challenger to champion."""
+    """Promote current challenger to champion.
+    Body (json): { "require_backtest": bool, "start_date": str, "end_date": str }
+    If require_backtest is true, run backtest on the challenger and only promote if
+    the net_return_pct meets `Config.PROMOTE_MIN_NET_RETURN`.
+    """
     token = request.headers.get('x-admin-token')
     if not token or token != Config.ADMIN_TOKEN:
         raise HTTPException(status_code=401, detail="Unauthorized")
+    body = await request.json()
+    require_backtest = bool(body.get('require_backtest', False))
+    start_date = body.get('start_date') or Config.BACKTEST_START_DATE
+    end_date = body.get('end_date') or Config.BACKTEST_END_DATE
+
+    if require_backtest:
+        status = model_registry.get_status()
+        challenger = status.get('challenger')
+        if not challenger:
+            return {"promoted": False, "reason": "no_challenger_present"}
+            metrics = run_backtest(challenger, start_date, end_date)
+            net = metrics.get('net_return_pct')
+            trades = int(metrics.get('trades', 0)) if metrics.get('trades') is not None else 0
+            if net is None:
+                return {'promoted': False, 'reason': 'backtest_failed', 'metrics': metrics}
+            if trades < int(Config.PROMOTE_MIN_TRADES):
+                return {'promoted': False, 'reason': 'insufficient_trades', 'metrics': metrics}
+            if float(net) < float(Config.PROMOTE_MIN_NET_RETURN):
+                return {'promoted': False, 'reason': 'insufficient_performance', 'metrics': metrics}
+
     ok = model_registry.promote_challenger()
     return {"promoted": ok}
 

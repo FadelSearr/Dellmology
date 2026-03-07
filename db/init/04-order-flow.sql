@@ -15,8 +15,8 @@ CREATE TABLE IF NOT EXISTS order_flow_heatmap (
     PRIMARY KEY (time, symbol, price)
 );
 SELECT create_hypertable('order_flow_heatmap', 'time', if_not_exists => TRUE);
-CREATE INDEX idx_order_flow_symbol_time ON order_flow_heatmap (symbol, time DESC);
-CREATE INDEX idx_order_flow_price ON order_flow_heatmap (symbol, price);
+CREATE INDEX IF NOT EXISTS idx_order_flow_symbol_time ON order_flow_heatmap (symbol, time DESC);
+CREATE INDEX IF NOT EXISTS idx_order_flow_price ON order_flow_heatmap (symbol, price);
 
 -- 1-minute continuous aggregation for performance
 CREATE TABLE IF NOT EXISTS order_flow_heatmap_1min (
@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS order_flow_heatmap_1min (
     PRIMARY KEY (bucket, symbol, price)
 );
 SELECT create_hypertable('order_flow_heatmap_1min', 'bucket', if_not_exists => TRUE);
-CREATE INDEX idx_heatmap_1min_symbol ON order_flow_heatmap_1min (symbol, bucket DESC);
+CREATE INDEX IF NOT EXISTS idx_heatmap_1min_symbol ON order_flow_heatmap_1min (symbol, bucket DESC);
 
 -- Order flow anomalies (spoofing, phantom liquidity, wash sales)
 CREATE TABLE IF NOT EXISTS order_flow_anomalies (
@@ -48,8 +48,8 @@ CREATE TABLE IF NOT EXISTS order_flow_anomalies (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 SELECT create_hypertable('order_flow_anomalies', 'time', if_not_exists => TRUE);
-CREATE INDEX idx_anomaly_symbol_time ON order_flow_anomalies (symbol, time DESC);
-CREATE INDEX idx_anomaly_severity ON order_flow_anomalies (severity, symbol);
+CREATE INDEX IF NOT EXISTS idx_anomaly_symbol_time ON order_flow_anomalies (symbol, time DESC);
+CREATE INDEX IF NOT EXISTS idx_anomaly_severity ON order_flow_anomalies (severity, symbol);
 
 -- Market depth snapshots (bid/ask levels)
 CREATE TABLE IF NOT EXISTS market_depth (
@@ -65,7 +65,7 @@ CREATE TABLE IF NOT EXISTS market_depth (
     PRIMARY KEY (time, symbol)
 );
 SELECT create_hypertable('market_depth', 'time', if_not_exists => TRUE);
-CREATE INDEX idx_market_depth_symbol ON market_depth (symbol, time DESC);
+CREATE INDEX IF NOT EXISTS idx_market_depth_symbol ON market_depth (symbol, time DESC);
 
 -- Order lifetime tracking (for spoofing detection)
 CREATE TABLE IF NOT EXISTS order_events (
@@ -82,8 +82,8 @@ CREATE TABLE IF NOT EXISTS order_events (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 SELECT create_hypertable('order_events', 'time', if_not_exists => TRUE);
-CREATE INDEX idx_order_events_symbol ON order_events (symbol, time DESC);
-CREATE INDEX idx_order_events_type ON order_events (event_type, symbol);
+CREATE INDEX IF NOT EXISTS idx_order_events_symbol ON order_events (symbol, time DESC);
+CREATE INDEX IF NOT EXISTS idx_order_events_type ON order_events (event_type, symbol);
 
 -- HAKA/HAKI aggregation summary
 CREATE TABLE IF NOT EXISTS haka_haki_summary (
@@ -97,8 +97,8 @@ CREATE TABLE IF NOT EXISTS haka_haki_summary (
     PRIMARY KEY (time, symbol)
 );
 SELECT create_hypertable('haka_haki_summary', 'time', if_not_exists => TRUE);
-CREATE INDEX idx_haka_haki_symbol ON haka_haki_summary (symbol, time DESC);
-CREATE INDEX idx_haka_haki_dominance ON haka_haki_summary (dominance, symbol);
+CREATE INDEX IF NOT EXISTS idx_haka_haki_symbol ON haka_haki_summary (symbol, time DESC);
+CREATE INDEX IF NOT EXISTS idx_haka_haki_dominance ON haka_haki_summary (dominance, symbol);
 
 -- Broker Z-Score tracking (for whale detection)
 CREATE TABLE IF NOT EXISTS broker_zscore (
@@ -111,13 +111,20 @@ CREATE TABLE IF NOT EXISTS broker_zscore (
     PRIMARY KEY (time, symbol, broker_code)
 );
 SELECT create_hypertable('broker_zscore', 'time', if_not_exists => TRUE);
-CREATE INDEX idx_broker_zscore_symbol ON broker_zscore (symbol, time DESC);
-CREATE INDEX idx_broker_zscore_anomaly ON broker_zscore (is_anomaly, symbol, time DESC);
+CREATE INDEX IF NOT EXISTS idx_broker_zscore_symbol ON broker_zscore (symbol, time DESC);
+CREATE INDEX IF NOT EXISTS idx_broker_zscore_anomaly ON broker_zscore (is_anomaly, symbol, time DESC);
 
--- Grant permissions
-GRANT SELECT ON ALL TABLES IN SCHEMA public TO anon, authenticated;
-GRANT INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO service_role;
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated;
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+        EXECUTE 'GRANT SELECT ON ALL TABLES IN SCHEMA public TO anon, authenticated';
+        EXECUTE 'GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated';
+    END IF;
+
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
+        EXECUTE 'GRANT INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO service_role';
+    END IF;
+END$$;
 
 DO $$
 BEGIN

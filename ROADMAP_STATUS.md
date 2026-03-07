@@ -42,9 +42,17 @@ Notes & Next Steps:
 Recent progress (2026-03-07):
 - Added unit tests for `ModelRegistry` retrain and promotion; tests run locally and passed.
 - Updated `apps/ml-engine` to include a simple background retrain runner and exposed endpoints for status/retrain/promote.
+ - Implemented trade-level backtester (slippage, commission, position sizing) in `apps/ml-engine/dellmology/backtest/backtest_runner.py`.
+ - Updated promotion gating to use trade-level metrics and a minimum trade count (`PROMOTE_MIN_TRADES`) in `apps/ml-engine/main.py` and `apps/ml-engine/config.py`.
+ - Hardened migration runner to execute materialized-view SQL with autocommit and made `db/init/06-performance-aggregates.sql` idempotent for Timescale continuous aggregates.
 
 Next immediate tasks:
 - Add a small web UI for model promotion and retrain controls (planned).
 - Update roadmap status in Git and create a small commit (this file).
+
+Recent next steps (recommended):
+- Run `docker-compose.test-db.yml` locally to start a TimescaleDB instance and execute `apps/ml-engine/scripts/run_migrations.py` to validate migrations end-to-end.
+- Continue hardening remaining `db/init/*.sql` files for idempotency and Timescale-specific constraints (materialized views, hypertable unique-index rules).
+- Verify S3 checkpoint uploads end-to-end when `AWS_S3_BUCKET` and credentials are available.
 
 If kamu setuju, saya bisa lanjut: 1) mengaktifkan Supabase persistence ketika kredensial tersedia, 2) menambahkan RLS skeleton and audit logging, atau 3) lanjut implementasi fitur roadmap berikutnya yang kamu minta. Pilih nomor atau beri instruksi.

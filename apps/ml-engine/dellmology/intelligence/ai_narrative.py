@@ -67,19 +67,31 @@ def generate_narrative(analysis_data: Dict, symbol: str = None) -> str:
             except Exception:
                 text = getattr(response, 'output_text', '') or ''
         else:
-            # Fallback to older package API. Import lazily and suppress the deprecation warning.
-            import warnings
-            with warnings.catch_warnings():
-                warnings.filterwarnings("ignore", category=FutureWarning)
-                import google.generativeai as genai  # type: ignore
-            genai.configure(api_key=api_key)
-            response = genai.responses.create(
-                model="gemini-1.5-flash",
-                input=prompt,
-                max_output_tokens=300
-            )
-            # response may provide output_text or structured
-            text = getattr(response, 'output_text', None) or ''
+            # If a module-level `genai` (mock) was injected e.g., by tests, use it
+            if genai is not None:
+                try:
+                    genai.configure(api_key=api_key)
+                except Exception:
+                    pass
+                try:
+                    response = genai.responses.create(model="gemini-1.5-flash", input=prompt, max_output_tokens=300)
+                    text = getattr(response, 'output_text', None) or ''
+                except Exception:
+                    text = ''
+            else:
+                # Fallback to older package API. Import lazily and suppress the deprecation warning.
+                import warnings
+                with warnings.catch_warnings():
+                    warnings.filterwarnings("ignore", category=FutureWarning)
+                    import google.generativeai as genai_module  # type: ignore
+                genai_module.configure(api_key=api_key)
+                response = genai_module.responses.create(
+                    model="gemini-1.5-flash",
+                    input=prompt,
+                    max_output_tokens=300
+                )
+                # response may provide output_text or structured
+                text = getattr(response, 'output_text', None) or ''
         return text
     except Exception as exc:
         logger.error(f"Gemini API call failed: {exc}")

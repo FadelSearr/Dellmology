@@ -69,6 +69,10 @@ class Config:
     BACKTEST_START_DATE = os.getenv('BACKTEST_START_DATE', '2023-01-01')
     BACKTEST_END_DATE = os.getenv('BACKTEST_END_DATE', '2024-12-31')
     INITIAL_CAPITAL = float(os.getenv('INITIAL_CAPITAL', 10000000))  # IDR
+    # Minimum net return percent required to auto-approve a challenger promotion
+    PROMOTE_MIN_NET_RETURN = float(os.getenv('PROMOTE_MIN_NET_RETURN', '0.5'))
+    # Minimum number of trades in backtest required to consider promotion
+    PROMOTE_MIN_TRADES = int(os.getenv('PROMOTE_MIN_TRADES', '3'))
     
     # Scheduler Settings
     RETRAIN_SCHEDULE = os.getenv('RETRAIN_SCHEDULE', '0 17 * * 1-5')  # 5 PM weekdays

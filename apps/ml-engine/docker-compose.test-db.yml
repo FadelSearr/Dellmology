@@ -1,0 +1,21 @@
+version: '3.8'
+services:
+  timescaledb:
+    image: timescale/timescaledb:latest-pg14
+    container_name: idx_test_timescaledb
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: dellmology
+    ports:
+      - "5433:5432"
+    volumes:
+      - db_data_timescaledb:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d dellmology"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  db_data_timescaledb:

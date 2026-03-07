@@ -49,7 +49,7 @@ Where to look first
 - `ROADMAP.md`, `README.md`, `apps/web/src`, `apps/ml-engine`, `apps/streamer`, `db/init`.
 
 If you need clarification
-- Ask one concise question with up to 3 options when decisions are required.
+- Ask one concise question with up to 1 options when decisions are required.
 
 ---
 This instruction file is a lightweight bootstrap to make Copilot-style agents productive in this workspace. Update sparingly and keep preferences aligned with the project's roadmap and security rules.
