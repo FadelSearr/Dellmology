@@ -10,6 +10,7 @@ import numpy as np
 
 from . import train_manager
 from dellmology.utils.db_utils import get_db_connection
+from dellmology.models import retrain_manager
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +95,12 @@ class ModelRegistry:
                             pass
                 except Exception:
                     logger.debug("DB not available or failed to persist challenger metadata")
+                # Best-effort: save a local checkpoint for this challenger
+                try:
+                    retrain_manager.save_checkpoint(challenger_name, history or {}, metadata={"source": "auto_retrain"})
+                except Exception:
+                    logger.debug("Failed to save retrain checkpoint locally")
+
                 logger.info(f"Retrain job finished, challenger={challenger_name}")
             except Exception:
                 logger.exception("Retrain job failed")
