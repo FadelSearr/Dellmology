@@ -45,6 +45,10 @@ Recent progress (2026-03-07):
  - Implemented trade-level backtester (slippage, commission, position sizing) in `apps/ml-engine/dellmology/backtest/backtest_runner.py`.
  - Updated promotion gating to use trade-level metrics and a minimum trade count (`PROMOTE_MIN_TRADES`) in `apps/ml-engine/main.py` and `apps/ml-engine/config.py`.
  - Hardened migration runner to execute materialized-view SQL with autocommit and made `db/init/06-performance-aggregates.sql` idempotent for Timescale continuous aggregates.
+ - Added MinIO + Timescale compose for local integration testing: `apps/ml-engine/docker-compose.test.yml`.
+ - Added `apps/ml-engine/scripts/test_s3_checkpoint.py` to validate checkpoint uploads against MinIO.
+ - Updated migration runbook `apps/ml-engine/MIGRATIONS_RUNBOOK.md` with MinIO instructions.
+ - Updated web UI for model management to support backtest gating and display backtest metrics: `apps/web/src/app/ml/models/page.tsx`.
 
 Next immediate tasks:
 - Add a small web UI for model promotion and retrain controls (planned).
