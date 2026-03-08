@@ -38,11 +38,28 @@ export default function AuditPage() {
     }
   }
 
+  const [verifyResult, setVerifyResult] = useState<any | null>(null)
+  async function verifyChain() {
+    setLoading(true)
+    setVerifyResult(null)
+    try {
+      const res = await fetch('/api/maintenance/audit/verify')
+      const json = await res.json()
+      if (res.ok) setVerifyResult(json.result)
+      else setVerifyResult({ error: json.error || 'verify failed' })
+    } catch (err: any) {
+      setVerifyResult({ error: err?.message || 'failed' })
+    } finally {
+      setLoading(false)
+    }
+  }
+
   return (
     <div style={{ padding: 16 }}>
       <h2>Audit Log</h2>
       <div style={{ marginBottom: 12 }}>
         <button onClick={loadAudit} disabled={loading} style={{ marginLeft: 8 }}>Load</button>
+        <button onClick={verifyChain} disabled={loading} style={{ marginLeft: 8 }}>Verify Chain</button>
         <button onClick={clearOld} disabled={loading} style={{ marginLeft: 8 }}>Clear >365d</button>
       </div>
       {error && <div style={{ color: 'red' }}>{error}</div>}
@@ -76,6 +93,12 @@ export default function AuditPage() {
           </table>
         )}
       </div>
+      {verifyResult && (
+        <div style={{ marginTop: 12 }}>
+          <h4>Verification</h4>
+          <pre style={{ background: '#f6f8fa', padding: 8 }}>{JSON.stringify(verifyResult, null, 2)}</pre>
+        </div>
+      )}
     </div>
   )
 }
