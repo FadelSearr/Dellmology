@@ -7,6 +7,7 @@ import logging
 from typing import Optional
 import requests
 import os
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -27,20 +28,30 @@ class TelegramService:
 
         base = os.getenv('TELEGRAM_API_BASE', 'https://api.telegram.org')
         endpoint = f"{base}/bot{self.token}/sendMessage"
+        debug_path = Path(__file__).resolve().parents[2] / 'logs' / 'notifier_debug.log'
         payload = {
             "chat_id": self.chat_id,
             "text": message,
             "parse_mode": "Markdown",
             "disable_web_page_preview": True,
         }
-
         try:
             response = requests.post(endpoint, json=payload, timeout=8)
+            try:
+                with debug_path.open('a', encoding='utf-8') as df:
+                    df.write(f"POST {endpoint} payload={payload} status={response.status_code} resp={response.text}\n")
+            except Exception:
+                pass
             if response.status_code != 200:
                 self.logger.error("Telegram send failed: %s %s", response.status_code, response.text)
                 return False
             return bool(response.json().get("ok", False))
         except Exception as exc:
+            try:
+                with debug_path.open('a', encoding='utf-8') as df:
+                    df.write(f"POST {endpoint} payload={payload} error={exc}\n")
+            except Exception:
+                pass
             self.logger.error("Telegram request error: %s", exc)
             return False
     

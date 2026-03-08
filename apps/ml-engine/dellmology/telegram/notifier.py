@@ -16,15 +16,30 @@ class UPSNotifier:
         self._stop = threading.Event()
         self._thread = None
         self._service = TelegramService(self.bot_token, self.chat_id)
-        self.log_path = Path(__file__).parent.parent / 'logs' / 'ups_events.jsonl'
+        # Default to repo-level apps/ml-engine/logs/ups_events.jsonl for compatibility
+        env_path = os.getenv('UPS_EVENTS_PATH')
+        if env_path:
+            self.log_path = Path(env_path)
+        else:
+            # notifier.py location: apps/ml-engine/dellmology/telegram/notifier.py
+            # parents[2] -> apps/ml-engine
+            repo_logs = Path(__file__).resolve().parents[2] / 'logs' / 'ups_events.jsonl'
+            self.log_path = repo_logs
 
     def _tail_loop(self):
         # Ensure file exists
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
+        debug_log = self.log_path.parent / 'notifier_debug.log'
         last_pos = 0
         while not self._stop.is_set():
             try:
                 if not self.log_path.exists():
+                    # write debug
+                    try:
+                        with debug_log.open('a', encoding='utf-8') as df:
+                            df.write(f"UPS file not found at {self.log_path}\n")
+                    except Exception:
+                        pass
                     time.sleep(self.poll_interval)
                     continue
                 with self.log_path.open('r', encoding='utf-8') as fh:
@@ -33,6 +48,11 @@ class UPSNotifier:
                         line = line.strip()
                         if not line:
                             continue
+                        try:
+                            with debug_log.open('a', encoding='utf-8') as df:
+                                df.write(f"Read UPS line: {line}\n")
+                        except Exception:
+                            pass
                         try:
                             ev = json.loads(line)
                         except Exception:
@@ -47,7 +67,12 @@ class UPSNotifier:
                                 metric_snippet = ', '.join(f"{k}={v}" for k,v in list(metrics.items())[:5])
                                 msg = f"Model evaluation: challenger={chall} champion={champ} passed={passed} | {metric_snippet}"
                                 try:
-                                    self._service.send_message(msg)
+                                    ok = self._service.send_message(msg)
+                                    try:
+                                        with debug_log.open('a', encoding='utf-8') as df:
+                                            df.write(f"Sent message: {msg} ok={ok}\n")
+                                    except Exception:
+                                        pass
                                 except Exception:
                                     logger.exception('Failed to send Telegram notification')
                         except Exception:

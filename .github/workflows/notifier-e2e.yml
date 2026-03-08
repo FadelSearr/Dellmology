@@ -29,12 +29,24 @@ jobs:
         run: |
           python apps/ml-engine/scripts/notifier_e2e.py
         timeout-minutes: 5
+      - name: Archive logs
+        if: always()
+        run: |
+          mkdir -p artifacts
+          tar -czf artifacts/notifier-logs.tar.gz -C apps/ml-engine logs || true
 
-      - name: Upload notifier logs
+      - name: Archive workspace
+        if: always()
+        run: |
+          mkdir -p artifacts
+          tar --exclude='.git' --exclude='venv' -czf artifacts/workspace.tar.gz . || true
+
+      - name: Upload notifier artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: notifier-e2e-logs
+          name: notifier-e2e-artifacts
           path: |
+            artifacts/*.tar.gz
             apps/ml-engine/logs/ups_events.jsonl
             apps/ml-engine/logs/*.log
