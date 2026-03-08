@@ -33,6 +33,7 @@ from broker_flow import main as broker_flow_main
 from exit_whale import main as exit_whale_main
 from apscheduler.schedulers.background import BackgroundScheduler
 from dellmology.utils.model_retrain_scheduler import start_scheduler, get_status, reschedule
+from dellmology.utils.model_retrain_scheduler import start_eval_scheduler, get_eval_status, reschedule_eval
 from dellmology.utils.db_utils import init_db, get_db_connection, get_db_health
 try:
     import boto3
@@ -97,6 +98,24 @@ async def lifespan(app: FastAPI):
         logger.info("Model retraining scheduler initialized")
     except Exception:
         logger.exception("Failed to initialize model retraining scheduler")
+
+    try:
+        # Start evaluation scheduler (default daily 19:00) — read cron from env or use default
+        eval_cron = os.getenv('RETRAIN_EVAL_CRON', '0 19 * * *')
+        # By default do not auto-promote on scheduled runs; use API to enable
+        start_eval_scheduler(lambda: model_registry.evaluate_and_promote(auto_promote=False), eval_cron)
+        logger.info(f"Model evaluation scheduler initialized with cron {eval_cron}")
+    except Exception:
+        logger.exception("Failed to initialize evaluation scheduler")
+
+    # Start Telegram UPS notifier if configured
+    try:
+        from dellmology.telegram.notifier import UPSNotifier
+        notifier = UPSNotifier()
+        notifier.start()
+        logger.info('Telegram UPS notifier started (if credentials present)')
+    except Exception:
+        logger.exception('Failed to start UPS notifier')
 
     try:
         yield
