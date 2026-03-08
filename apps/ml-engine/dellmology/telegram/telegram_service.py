@@ -25,7 +25,8 @@ class TelegramService:
             self.logger.warning("Telegram token/chat_id not configured")
             return False
 
-        endpoint = f"https://api.telegram.org/bot{self.token}/sendMessage"
+        base = os.getenv('TELEGRAM_API_BASE', 'https://api.telegram.org')
+        endpoint = f"{base}/bot{self.token}/sendMessage"
         payload = {
             "chat_id": self.chat_id,
             "text": message,
