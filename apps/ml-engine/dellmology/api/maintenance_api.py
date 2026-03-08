@@ -86,10 +86,17 @@ def refresh_continuous_aggregates(view: str | None = None):
                 if v not in known:
                     results[v] = {'skipped': True, 'reason': 'unknown_view'}
                     continue
+                # Check that the continuous aggregate view exists in Timescale metadata
+                exists_q = text("SELECT 1 FROM timescaledb_information.continuous_aggregates WHERE view_name = :view")
+                r = conn.execute(exists_q, {'view': v}).fetchone()
+                if not r:
+                    results[v] = {'skipped': True, 'reason': 'view_not_present'}
+                    continue
+
                 try:
-                    # refresh_continuous_aggregate is a PROCEDURE in newer TimescaleDB
-                    # Use CALL to invoke it and handle per-view errors gracefully.
-                    conn.execute(text("CALL refresh_continuous_aggregate(:view, NULL, NULL)"), {'view': v})
+                    # Use a fresh connection for each CALL to avoid cross-call transaction aborts
+                    with get_db_connection() as single_conn:
+                        single_conn.execute(text("CALL refresh_continuous_aggregate(:view, NULL, NULL)"), {'view': v})
                     results[v] = {'refreshed': True}
                 except Exception as ie:
                     logger.exception('Failed to refresh %s', v)
