@@ -108,3 +108,15 @@ Next recommended steps:
 - Validate Supabase RLS & continuous-aggregate policies once `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are available.
 - Add a CI `docker-compose` E2E job that mirrors `scripts/run_local_e2e.ps1` for PR gating.
 - Optional: add lightweight CI smoke for the `screener` and `promotion` pages (headless browser or playwright) to catch runtime regressions.
+
+Local verification (2026-03-08, continued):
+- **Backend tests:** 35 passed, 2 skipped (local run in `apps/ml-engine`).
+- **Frontend build:** Next.js production build succeeded; static pages generated (admin UI routes present).
+- **Maintenance smoke:** exercised `GET /api/maintenance/rls-smoke` (returned `roles: ["anon","service_role"]`, many tables show `rowsecurity: true`) and `POST /api/maintenance/refresh-aggregates` (attempted `CALL refresh_continuous_aggregate` for configured views). Several refresh attempts returned "relation ... does not exist" for materialized views absent in the local test DB — this is expected on a minimal local stack; calls are handled and reported per-view.
+- **Model status (local):** champion present (`champion_v1`), no challenger, `retrain_running: false`.
+
+Recommendations: merge verification branch (`ci/trigger-e2e`) into `main` when ready, then run an automated compose-E2E CI run or repeat local `docker-compose.test-db.yml` + `scripts/run_migrations.py` to validate Supabase/Timescale-specific artifacts in a fully provisioned environment.
+
+Recent addition (evaluation persistence):
+- **Persist evaluations:** Scheduled evaluations now persist results to `public.ml_model_evaluations` (best-effort; table optional) when available.
+- **UPS event:** Each evaluation writes a UPS event to `apps/ml-engine/logs/ups_events.jsonl` so downstream notifiers (UPS/Telegram) can pick up evaluation outcomes.
