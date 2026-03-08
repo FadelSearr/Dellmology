@@ -1,6 +1,6 @@
 # ROADMAP Implementation Status
 
-Ringkasan status implementasi roadmap terhadap kode yang ada di repository saat ini (per 2026-03-07).
+Ringkasan status implementasi roadmap terhadap kode yang ada di repository saat ini (per 2026-03-08).
 
 Implemented (in repo):
 - Core real-time streamer (Go) and SSE endpoints — `apps/streamer` exists.
@@ -71,6 +71,7 @@ Recent progress (2026-03-08):
 - Ran local integration E2E via `scripts/run_local_e2e.ps1`: `apps/ml-engine` tests executed against the local compose stack — 22 tests passed, 1 skipped.
 - Patched `apps/ml-engine/scripts/run_migrations.py` to execute Timescale/PLpgSQL migration files as a single autocommit statement (preserves dollar-quoted DO blocks). Re-ran migrations successfully; Timescale-specific continuous-aggregate statements are skipped when Supabase credentials are not set.
 - Ran frontend unit/smoke tests in `apps/web` — installed missing test dependency and executed the test suite: 20 test suites passed (51 tests total).
+- Reviewed and updated `ROADMAP_STATUS.md` with current repository findings and timestamp.
 
 Next recommended steps:
 - Validate Supabase RLS & continuous-aggregate policies once `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are available.
