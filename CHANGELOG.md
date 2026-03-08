@@ -63,6 +63,19 @@ GET /model-alerts/thresholds?symbol=BBCA
 
 ---
 
+## Release v2.0.0 (2026-03-08)
+
+Summary:
+- Verified and merged roadmap changes including RLS hardening, audit logging, retrain scheduler, and admin model controls.
+- Added maintenance APIs: RLS smoke checks, Timescale continuous-aggregate refresh, retrain-status/schedule, evaluate-promote, and retrain evaluation scheduling.
+- Hardened admin auth paths: bearer token, `x-admin-token`, HS256 JWT support, and JWKS/RS256 validation.
+- Admin UI additions: audit viewer with verify/clear, evaluate & promote controls, and frontend proxy routes for maintenance endpoints.
+- CI & local verification: ran compose-E2E locally, migrations applied through `13-rls-hardening.sql`, backend tests and frontend build verified.
+
+Notes:
+- Tag created: `v2.0.0` — contains roadmap verification and operational maintenance features. Recommended: run staged rollout and re-run CI compose-E2E in target environment.
+
+
 ### 3. **Database Schema for Alert Thresholds**
 
 **Migration file**: `db/init/03-alert-thresholds.sql`

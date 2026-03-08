@@ -179,77 +179,72 @@ def evaluate_promote(body: dict | None = None):
 
     Body example: { "auto_promote": true }
     """
+    # Run evaluation/promotion (keep this separate and fail fast)
     try:
-        auto = False
-        if body and isinstance(body, dict):
-            auto = bool(body.get('auto_promote', False))
+        auto = bool(body.get('auto_promote', False)) if body and isinstance(body, dict) else False
         from dellmology.models.model_registry import registry
         result = registry.evaluate_and_promote(auto_promote=auto)
-
-        # Best-effort: persist evaluation result to ml_model_evaluations table
-        try:
-            init_db()
-            with get_db_connection() as conn:
-                try:
-                    insert_q = text(
-                        "INSERT INTO public.ml_model_evaluations (model_name, champion, challenger, metrics, passed, created_at) VALUES (:name, :champ, :challenger, :metrics::jsonb, :passed, now())"
-                    )
-                    conn.execute(insert_q, {
-                        'name': result.get('challenger'),
-                        'champ': result.get('champion'),
-                        'challenger': result.get('challenger'),
-                        'metrics': json.dumps(result.get('challenger_metrics', {})),
-                        'passed': bool(result.get('passed', False)),
-                    })
-                except Exception:
-                    # Table may not exist in minimal DB; ignore
-                    pass
-        except Exception:
-            logger.debug('DB not available; skipping evaluation persistence')
-
-        # Best-effort: record UPS event to local UPS log (apps/ml-engine/logs/ups_events.jsonl)
-        try:
-            from pathlib import Path
-            logs_dir = Path(__file__).parent.parent.parent / 'logs'
-            logs_dir.mkdir(parents=True, exist_ok=True)
-            out_file = logs_dir / 'ups_events.jsonl'
-            ups_entry = {
-                'ts': __import__('datetime').datetime.utcnow().isoformat() + 'Z',
-                'source': 'model_evaluation',
-                'type': 'evaluation',
-                'payload': result
-            }
-            try:
-                with out_file.open('a', encoding='utf-8') as fh:
-                    fh.write(json.dumps(ups_entry, ensure_ascii=False) + '\n')
-            except Exception:
-                logger.exception('Failed to write UPS event for evaluation')
-
-            # Best-effort: send Telegram notification if configured
-            try:
-                bot_token = os.getenv('TELEGRAM_BOT_TOKEN')
-                chat_id = os.getenv('TELEGRAM_CHAT_ID')
-                if bot_token and chat_id:
-                    # Compose a concise message
-                    champ = result.get('champion')
-                    chall = result.get('challenger')
-                    passed = result.get('passed')
-                    metrics = result.get('challenger_metrics') or {}
-                    metric_snippet = ''
-                    if isinstance(metrics, dict) and metrics:
-                        metric_snippet = ' | ' + ', '.join(f"{k}={v}" for k, v in list(metrics.items())[:5])
-                    msg = f"Model evaluation: challenger={chall} champion={champ} passed={passed}{metric_snippet}"
-                    try:
-                        requests.post(f"https://api.telegram.org/bot{bot_token}/sendMessage", json={
-                            'chat_id': chat_id,
-                            'text': msg
-                        }, timeout=10)
-                    except Exception:
-                        logger.exception('Telegram notify failed')
-            except Exception:
-                logger.exception('Failed to prepare/send Telegram notification')
-
-        return result
     except Exception as e:
         logger.exception('Failed to evaluate/promote challenger')
         raise HTTPException(status_code=500, detail=str(e))
+
+    # Persist evaluation result (best-effort)
+    try:
+        init_db()
+        with get_db_connection() as conn:
+            insert_q = text(
+                "INSERT INTO public.ml_model_evaluations (model_name, champion, challenger, metrics, passed, created_at) VALUES (:name, :champ, :challenger, :metrics::jsonb, :passed, now())"
+            )
+            conn.execute(insert_q, {
+                'name': result.get('challenger'),
+                'champ': result.get('champion'),
+                'challenger': result.get('challenger'),
+                'metrics': json.dumps(result.get('challenger_metrics', {})),
+                'passed': bool(result.get('passed', False)),
+            })
+    except Exception:
+        # ignore persistence errors in smoke/local runs
+        logger.debug('DB not available; skipping evaluation persistence')
+
+    # Record UPS event locally (best-effort)
+    try:
+        from pathlib import Path
+        logs_dir = Path(__file__).parent.parent.parent / 'logs'
+        logs_dir.mkdir(parents=True, exist_ok=True)
+        out_file = logs_dir / 'ups_events.jsonl'
+        ups_entry = {
+            'ts': __import__('datetime').datetime.utcnow().isoformat() + 'Z',
+            'source': 'model_evaluation',
+            'type': 'evaluation',
+            'payload': result
+        }
+        with out_file.open('a', encoding='utf-8') as fh:
+            fh.write(json.dumps(ups_entry, ensure_ascii=False) + '\n')
+    except Exception:
+        logger.exception('Failed to write UPS event for evaluation')
+
+    # Send Telegram notification if configured (best-effort)
+    try:
+        bot_token = os.getenv('TELEGRAM_BOT_TOKEN')
+        chat_id = os.getenv('TELEGRAM_CHAT_ID')
+        if bot_token and chat_id:
+            champ = result.get('champion')
+            chall = result.get('challenger')
+            passed = result.get('passed')
+            metrics = result.get('challenger_metrics') or {}
+            metric_items = list(metrics.items())[:5] if isinstance(metrics, dict) else []
+            metric_snippet = ''
+            if metric_items:
+                metric_snippet = ' | ' + ', '.join(f"{k}={v}" for k, v in metric_items)
+            msg = f"Model evaluation: challenger={chall} champion={champ} passed={passed}{metric_snippet}"
+            try:
+                requests.post(f"https://api.telegram.org/bot{bot_token}/sendMessage", json={
+                    'chat_id': chat_id,
+                    'text': msg
+                }, timeout=10)
+            except Exception:
+                logger.exception('Telegram notify failed')
+    except Exception:
+        logger.exception('Failed to prepare/send Telegram notification')
+
+    return result

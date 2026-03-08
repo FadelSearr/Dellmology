@@ -1,0 +1,41 @@
+name: Telegram E2E Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      message:
+        description: 'Optional test message to send'
+        required: false
+        default: 'Dellmology: Telegram E2E test from CI'
+
+jobs:
+  send-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check Telegram secrets
+        run: |
+          if [ -z "${{ secrets.TELEGRAM_BOT_TOKEN }}" ] || [ -z "${{ secrets.TELEGRAM_CHAT_ID }}" ]; then
+            echo "Telegram secrets not set. Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in repo secrets to run this workflow.";
+            exit 0
+          fi
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r apps/ml-engine/requirements.txt
+
+      - name: Send Telegram test message
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_TEST_MESSAGE: ${{ github.event.inputs.message }}
+        run: |
+          python apps/ml-engine/scripts/send_telegram_test.py

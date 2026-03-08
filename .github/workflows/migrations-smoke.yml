@@ -11,6 +11,32 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Debug: git info
+        run: |
+          echo "Git HEAD:" && git rev-parse HEAD || true
+          echo "Current branch:" && git branch --show-current || true
+          echo "Git status:" && git status --porcelain || true
+          echo "Last commit:" && git log -1 --pretty=fuller || true
+          echo "Tracked files (first 200):" && git ls-files | sed -n '1,200p' || true
+
+      - name: Debug: full workspace listing
+        run: |
+          echo "PWD: $(pwd)"
+          echo "Top-level ls:" && ls -la || true
+          echo "Recursive ls (first 1000 lines):" && ls -R | sed -n '1,1000p' || true
+
+      - name: Pack workspace
+        run: |
+          tar -czf workspace.tar.gz . || true
+
+      - name: Upload workspace tarball
+        uses: actions/upload-artifact@v4
+        with:
+          name: workspace.tar.gz
+          path: workspace.tar.gz
 
       - name: Debug: list scripts
         run: |
@@ -57,6 +83,23 @@ jobs:
           DATABASE_URL: postgresql://admin:password@localhost:5433/dellmology
         run: |
           python apps/ml-engine/scripts/run_migrations.py 2>&1 | tee run_migrations.log
+
+      - name: Run RLS smoke check
+        env:
+          DATABASE_URL: postgresql://admin:password@localhost:5433/dellmology
+        run: |
+          if [ -f apps/ml-engine/scripts/rls_smoke_check.py ]; then
+            python apps/ml-engine/scripts/rls_smoke_check.py 2>&1 | tee rls_smoke.log || true
+          else
+            echo "rls_smoke_check.py not found"
+          fi
+
+      - name: Upload RLS smoke log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rls_smoke.log
+          path: rls_smoke.log
 
       - name: Upload migrations log
         uses: actions/upload-artifact@v4

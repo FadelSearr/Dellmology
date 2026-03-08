@@ -190,6 +190,97 @@ class ModelRegistry:
 
         return True
 
+    def evaluate_and_promote(self, min_net_return: float = None, min_trades: int = None, auto_promote: bool = False) -> dict:
+        """Evaluate challenger vs champion using simple promotion rules.
+
+        Checks for a numeric net return and minimum trades in the challenger's
+        metrics. If `auto_promote` is True and rules are satisfied, perform
+        promotion and return the promotion result.
+        """
+        with self._lock:
+            if not self.challenger:
+                return {'promoted': False, 'reason': 'no_challenger'}
+
+            cm = self.champion_metrics or {}
+            chm = self.challenger_metrics or {}
+
+        # Determine candidate metric keys
+        # net return may be stored under keys like 'net_return', 'net_return_pct', 'return_pct'
+        net_keys = ['net_return', 'net_return_pct', 'return_pct', 'return']
+        trades_keys = ['total_trades', 'trades', 'n_trades']
+
+        net = None
+        for k in net_keys:
+            if k in chm:
+                try:
+                    net = float(chm[k])
+                    break
+                except Exception:
+                    continue
+
+        trades = None
+        for k in trades_keys:
+            if k in chm:
+                try:
+                    trades = int(chm[k])
+                    break
+                except Exception:
+                    continue
+
+        # Apply defaults from config if not provided
+        try:
+            from dellmology.utils.config import Config
+            if min_net_return is None:
+                min_net_return = float(getattr(Config, 'PROMOTE_MIN_NET_RETURN', 0.5))
+            if min_trades is None:
+                min_trades = int(getattr(Config, 'PROMOTE_MIN_TRADES', 3))
+        except Exception:
+            if min_net_return is None:
+                min_net_return = 0.5
+            if min_trades is None:
+                min_trades = 3
+
+        reasons = []
+        if net is None:
+            reasons.append('no_net_return')
+        else:
+            # If net is expressed as a percent (0-100), normalize to percent if > 1
+            if abs(net) > 1 and abs(net) > 100:
+                # likely a raw number, accept as-is
+                pass
+        if trades is None:
+            reasons.append('no_trades')
+
+        # Check thresholds
+        passed = True
+        if net is not None and min_net_return is not None:
+            if net < min_net_return:
+                passed = False
+                reasons.append(f'net_return_below_threshold:{net}<{min_net_return}')
+        if trades is not None and min_trades is not None:
+            if trades < min_trades:
+                passed = False
+                reasons.append(f'trades_below_threshold:{trades}<{min_trades}')
+
+        result = {
+            'champion': self.champion,
+            'challenger': self.challenger,
+            'champion_metrics': cm,
+            'challenger_metrics': chm,
+            'net': net,
+            'trades': trades,
+            'min_net_return': min_net_return,
+            'min_trades': min_trades,
+            'passed': passed,
+            'reasons': reasons,
+        }
+
+        if passed and auto_promote:
+            promoted = self.promote_challenger()
+            result['promoted'] = promoted
+
+        return result
+
 
 # Singleton registry
 registry = ModelRegistry()

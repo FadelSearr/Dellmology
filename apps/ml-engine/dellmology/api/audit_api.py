@@ -25,13 +25,52 @@ router = APIRouter(prefix="/api/admin", tags=["admin"])
 
 
 def _check_admin(request: Request):
-    token = request.headers.get('x-admin-token')
-    if not token or token != Config.ADMIN_TOKEN:
-        raise HTTPException(status_code=401, detail="Unauthorized")
+    # Accept `Authorization: Bearer <token>` or legacy `x-admin-token` header.
+    auth = request.headers.get('authorization') or request.headers.get('Authorization')
+    x_token = request.headers.get('x-admin-token')
+    token = None
+    if auth and auth.lower().startswith('bearer '):
+        token = auth.split(None, 1)[1]
+    elif x_token:
+        token = x_token
+
+    # Accept either the ADMIN_TOKEN or ML_ENGINE_KEY for server-to-server calls.
+    if token and (token == Config.ADMIN_TOKEN or token == getattr(Config, 'ML_ENGINE_KEY', None)):
+        return
+
+    # If ADMIN_JWT_SECRET is set, attempt JWT validation (HS256 by default).
+    if getattr(Config, 'ADMIN_JWT_SECRET', ''):
+        try:
+            import jwt
+            payload = jwt.decode(token, Config.ADMIN_JWT_SECRET, algorithms=[getattr(Config, 'ADMIN_JWT_ALGORITHM', 'HS256')], options={"verify_aud": False})
+            if payload.get('role') in ('admin', 'service_role'):
+                return
+        except Exception:
+            pass
+
+    # If ADMIN_JWKS_URL is set, attempt RS256/JWKS validation using PyJWKClient
+    jwks_url = getattr(Config, 'ADMIN_JWKS_URL', '')
+    if jwks_url:
+        try:
+            from jwt import PyJWKClient
+            import jwt
+            jwk_client = PyJWKClient(jwks_url)
+            signing_key = jwk_client.get_signing_key_from_jwt(token)
+            decode_kwargs = {}
+            aud = getattr(Config, 'ADMIN_JWKS_AUDIENCE', '')
+            if aud:
+                decode_kwargs['audience'] = aud
+            payload = jwt.decode(token, signing_key.key, algorithms=[signing_key.alg], options={"verify_aud": bool(aud)}, **decode_kwargs)
+            if payload.get('role') in ('admin', 'service_role'):
+                return
+        except Exception:
+            pass
+
+    raise HTTPException(status_code=401, detail="Unauthorized")
 
 
 @router.get("/audit")
-async def list_audit(request: Request, limit: int = 100):
+async def list_audit(request: Request, limit: int = 100, table_name: str = None, since: str = None):
     """List recent audit entries from `ml_audit_log`.
 
     Protected by `x-admin-token` header.
@@ -46,8 +85,24 @@ async def list_audit(request: Request, limit: int = 100):
 
     try:
         with get_db_connection() as conn:
-            q = text("SELECT id, table_name, operation, changed_by, changed_at, payload FROM public.ml_audit_log ORDER BY changed_at DESC LIMIT :limit")
-            res = conn.execute(q, {"limit": int(limit)})
+            base_q = "SELECT id, table_name, operation, changed_by, changed_at, payload FROM public.ml_audit_log"
+            where_clauses = []
+            params = {}
+            if table_name:
+                where_clauses.append("table_name = :table_name")
+                params['table_name'] = table_name
+            if since:
+                where_clauses.append("changed_at >= :since")
+                params['since'] = since
+
+            if where_clauses:
+                base_q = base_q + " WHERE " + " AND ".join(where_clauses)
+
+            base_q = base_q + " ORDER BY changed_at DESC LIMIT :limit"
+            params['limit'] = int(limit)
+
+            q = text(base_q)
+            res = conn.execute(q, params)
             rows = res.fetchall()
             entries = [dict(r._mapping) for r in rows]
         return {"entries": entries}
