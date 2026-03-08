@@ -171,6 +171,11 @@ async def audit_middleware(request: Request, call_next):
                 except Exception:
                     # Ignore if DB does not allow set_config or variable not defined
                     pass
+                try:
+                    # Set current app user for DB-level audit triggers
+                    conn.execute(text("SELECT set_config('app.current_user','admin', true)"))
+                except Exception:
+                    pass
 
                 q = text("INSERT INTO public.ml_audit_log (table_name, operation, changed_by, payload) VALUES (:table_name, :op, :user, :payload)")
                 conn.execute(q, {

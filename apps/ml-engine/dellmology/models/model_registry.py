@@ -57,6 +57,18 @@ class ModelRegistry:
                 # Persist challenger record to DB if available
                 try:
                     with get_db_connection() as conn:
+                        # Ensure a DB session user is set so audit triggers record who made changes.
+                        try:
+                            cur = conn.execute("SELECT current_setting('app.current_user', true) AS cu")
+                            row = cur.fetchone()
+                            if not row or not row[0]:
+                                try:
+                                    conn.execute("SELECT set_config('app.current_user','system', true)")
+                                except Exception:
+                                    pass
+                        except Exception:
+                            # ignore session inspection errors
+                            pass
                         # Try to update existing record first
                         try:
                             update_sql = """
@@ -132,8 +144,19 @@ class ModelRegistry:
             logger.info(f"Promoted new champion: {self.champion}")
 
         # Persist role change to DB if available (best-effort)
-        try:
-            with get_db_connection() as conn:
+                try:
+                    with get_db_connection() as conn:
+                        # Ensure session user for audit triggers (background promote)
+                        try:
+                            cur = conn.execute("SELECT current_setting('app.current_user', true) AS cu")
+                            row = cur.fetchone()
+                            if not row or not row[0]:
+                                try:
+                                    conn.execute("SELECT set_config('app.current_user','system', true)")
+                                except Exception:
+                                    pass
+                        except Exception:
+                            pass
                 try:
                     trans = conn.begin()
                     try:
