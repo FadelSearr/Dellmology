@@ -1,6 +1,10 @@
 name: Notifier E2E (mock)
 
 on:
+  push:
+    branches:
+      - 'release/**'
+      - 'ci/**'
   workflow_dispatch:
     inputs:
       run_tests:
@@ -10,6 +14,10 @@ on:
   schedule:
     # Daily at 02:00 UTC
     - cron: '0 2 * * *'
+  push:
+    branches:
+      - 'release/**'
+      - 'ci/**'
 
 jobs:
   notifier-e2e:
