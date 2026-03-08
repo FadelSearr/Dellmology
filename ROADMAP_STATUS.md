@@ -1,4 +1,9 @@
 Recent progress (2026-03-08):
+- Ran local integration E2E via `scripts/run_local_e2e.ps1`: `apps/ml-engine` tests executed against the local compose stack — 22 tests passed, 1 skipped.
+- Patched `apps/ml-engine/scripts/run_migrations.py` to execute Timescale/PLpgSQL migration files as a single autocommit statement (preserves dollar-quoted DO blocks). Re-ran migrations successfully; Timescale-specific continuous-aggregate statements are skipped when Supabase credentials are not set.
+ - Reviewed and updated `ROADMAP_STATUS.md` with current repository findings and timestamp.
+CI trigger: bump to re-run migrations smoke (2026-03-08 00:00 UTC)
+Recent progress (2026-03-08):
 - Added a server-side audit verification API (`GET /api/admin/audit/verify`) and wired it into the admin audit UI (`apps/web/src/app/admin/audit/page.tsx`).
 - Added a server-side verification endpoint in `apps/ml-engine/dellmology/api/audit_api.py` and unit tests in `apps/ml-engine/tests/test_audit_verify.py` (passed locally).
 - Implemented admin model controls (retrain/promote/status) and server-side proxy routes in `apps/web/src/app/api/ml/*` and UI at `apps/web/src/app/admin/models/page.tsx`.
