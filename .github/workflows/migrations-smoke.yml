@@ -41,17 +41,23 @@ jobs:
         env:
           DATABASE_URL: postgresql://admin:password@localhost:5433/dellmology
         run: |
-          python apps/ml-engine/scripts/run_migrations.py
+          python apps/ml-engine/scripts/run_migrations.py 2>&1 | tee run_migrations.log
+
+      - name: Upload migrations log
+        uses: actions/upload-artifact@v4
+        with:
+          name: run_migrations.log
+          path: run_migrations.log
 
       - name: Run smoke insert (script or inline fallback)
         env:
           DATABASE_URL: postgresql://admin:password@localhost:5433/dellmology
         run: |
           if [ -f apps/ml-engine/scripts/smoke_insert_evaluation.py ]; then
-            python apps/ml-engine/scripts/smoke_insert_evaluation.py
+            python apps/ml-engine/scripts/smoke_insert_evaluation.py 2>&1 | tee smoke_insert.log
           else
             echo "smoke_insert_evaluation.py not found — running inline fallback"
-            python - <<'PY'
+            python - <<'PY' 2>&1 | tee smoke_insert.log
 import os
 from sqlalchemy import create_engine, text
 
@@ -71,6 +77,12 @@ with engine.begin() as conn:
 print('Inserted sample evaluation (inline)')
 PY
           fi
+
+      - name: Upload smoke insert log
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke_insert.log
+          path: smoke_insert.log
 
       - name: Tear down
         if: always()
