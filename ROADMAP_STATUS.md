@@ -9,6 +9,8 @@ Recent progress (2026-03-08):
 Pending validation:
 - TimescaleDB E2E workflow (`.github/workflows/timescaledb-e2e.yml`) pending run on a PR to validate migrations, RLS, and the verification API.
 - Local migration readiness still requires Docker daemon availability for full end-to-end checks.
+ - PR #2 opened: https://github.com/FadelSearr/Dellmology-pro/pull/2 — TimescaleDB E2E and related CI runs are currently in progress.
+ - Update (2026-03-08): PR #2 was merged into `main` after TimescaleDB E2E passed (run ID 22815652423). CI validated migrations, RLS policies, and supabase-marked tests.
 # ROADMAP Implementation Status
 
 Ringkasan status implementasi roadmap terhadap kode yang ada di repository saat ini (per 2026-03-08).
