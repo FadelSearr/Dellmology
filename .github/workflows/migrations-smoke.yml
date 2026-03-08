@@ -12,6 +12,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Debug: list scripts
+        run: |
+          echo "Workspace files:" && ls -la
+          echo "Scripts dir:" && ls -la apps/ml-engine/scripts || true
+          echo "Show smoke script (if present):" && cat apps/ml-engine/scripts/smoke_insert_evaluation.py || true
+
       - name: Set up Docker Compose
         run: |
           docker compose version
