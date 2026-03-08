@@ -1,0 +1,40 @@
+name: Notifier E2E (mock)
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_tests:
+        description: 'Run the notifier E2E test (mock server)'
+        required: false
+        default: 'true'
+
+jobs:
+  notifier-e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r apps/ml-engine/requirements.txt
+
+      - name: Run notifier E2E (mock Telegram)
+        run: |
+          python apps/ml-engine/scripts/notifier_e2e.py
+        timeout-minutes: 5
+
+      - name: Upload notifier logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: notifier-e2e-logs
+          path: |
+            apps/ml-engine/logs/ups_events.jsonl
+            apps/ml-engine/logs/*.log
