@@ -49,7 +49,16 @@ def start_scheduler(job_func: Callable, cron_expr: str = "0 17 * * 1-5", epochs:
             job_func()
 
     _scheduler.add_job(_wrapped_job, trigger, id=_job_id, replace_existing=True)
-    _scheduler.start()
+    try:
+        if not getattr(_scheduler, 'running', False):
+            _scheduler.start()
+    except Exception:
+        # Some APScheduler versions expose `state` instead of `running`
+        try:
+            if getattr(_scheduler, 'state', None) != 1:  # STATE_STOPPED == 1
+                _scheduler.start()
+        except Exception:
+            pass
     _current_cron = cron_expr
     logger.info(f"Retraining scheduler started with cron: {_current_cron}")
 
@@ -81,7 +90,15 @@ def start_eval_scheduler(eval_func: Callable, cron_expr: str = "0 19 * * *"):
             logger.exception('Scheduled evaluation job failed')
 
     _scheduler.add_job(_wrapped_eval, trigger, id=_eval_job_id, replace_existing=True)
-    _scheduler.start()
+    try:
+        if not getattr(_scheduler, 'running', False):
+            _scheduler.start()
+    except Exception:
+        try:
+            if getattr(_scheduler, 'state', None) != 1:
+                _scheduler.start()
+        except Exception:
+            pass
     _current_eval_cron = cron_expr
     logger.info(f"Evaluation scheduler started with cron: {_current_eval_cron}")
 
@@ -148,5 +165,12 @@ def stop_eval_scheduler():
             _scheduler.remove_job(_eval_job_id)
         except Exception:
             pass
+    # If there are no remaining jobs on the scheduler, shut it down fully.
+    try:
+        if _scheduler and not _scheduler.get_jobs():
+            _scheduler.shutdown(wait=False)
+            _scheduler = None
+    except Exception:
+        pass
     _current_eval_cron = None
     logger.info('Evaluation scheduler stopped')
