@@ -14,9 +14,14 @@ CREATE TABLE IF NOT EXISTS order_flow_heatmap (
     trade_count INT DEFAULT 0,
     PRIMARY KEY (time, symbol, price)
 );
-SELECT create_hypertable('order_flow_heatmap', 'time', if_not_exists => TRUE);
-CREATE INDEX idx_order_flow_symbol_time ON order_flow_heatmap (symbol, time DESC);
-CREATE INDEX idx_order_flow_price ON order_flow_heatmap (symbol, price);
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'timescaledb') THEN
+        PERFORM create_hypertable('order_flow_heatmap', 'time', if_not_exists => TRUE);
+    END IF;
+END$$;
+CREATE INDEX IF NOT EXISTS idx_order_flow_symbol_time ON order_flow_heatmap (symbol, time DESC);
+CREATE INDEX IF NOT EXISTS idx_order_flow_price ON order_flow_heatmap (symbol, price);
 
 -- 1-minute continuous aggregation for performance
 CREATE TABLE IF NOT EXISTS order_flow_heatmap_1min (
@@ -31,12 +36,17 @@ CREATE TABLE IF NOT EXISTS order_flow_heatmap_1min (
     trade_count INT,
     PRIMARY KEY (bucket, symbol, price)
 );
-SELECT create_hypertable('order_flow_heatmap_1min', 'bucket', if_not_exists => TRUE);
-CREATE INDEX idx_heatmap_1min_symbol ON order_flow_heatmap_1min (symbol, bucket DESC);
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'timescaledb') THEN
+        PERFORM create_hypertable('order_flow_heatmap_1min', 'bucket', if_not_exists => TRUE);
+    END IF;
+END$$;
+CREATE INDEX IF NOT EXISTS idx_heatmap_1min_symbol ON order_flow_heatmap_1min (symbol, bucket DESC);
 
 -- Order flow anomalies (spoofing, phantom liquidity, wash sales)
 CREATE TABLE IF NOT EXISTS order_flow_anomalies (
-    id SERIAL PRIMARY KEY,
+    id SERIAL,
     time TIMESTAMPTZ NOT NULL,
     symbol VARCHAR(10) NOT NULL,
     anomaly_type VARCHAR(50) NOT NULL, -- 'SPOOFING', 'PHANTOM_LIQUIDITY', 'WASH_SALE', 'LAYERING', 'ICEBERG'
@@ -45,11 +55,33 @@ CREATE TABLE IF NOT EXISTS order_flow_anomalies (
     severity VARCHAR(10) NOT NULL, -- 'LOW', 'MEDIUM', 'HIGH'
     description TEXT,
     is_confirmed BOOLEAN DEFAULT FALSE,
-    created_at TIMESTAMPTZ DEFAULT NOW()
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    PRIMARY KEY (id, time)
 );
-SELECT create_hypertable('order_flow_anomalies', 'time', if_not_exists => TRUE);
-CREATE INDEX idx_anomaly_symbol_time ON order_flow_anomalies (symbol, time DESC);
-CREATE INDEX idx_anomaly_severity ON order_flow_anomalies (severity, symbol);
+-- Ensure primary key includes partitioning column to satisfy Timescale
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_class WHERE relname = 'order_flow_anomalies') THEN
+        IF NOT EXISTS (
+            SELECT 1 FROM pg_index i
+            JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
+            WHERE i.indrelid = 'order_flow_anomalies'::regclass
+              AND i.indisprimary
+              AND a.attname = 'time'
+        ) THEN
+            ALTER TABLE order_flow_anomalies DROP CONSTRAINT IF EXISTS order_flow_anomalies_pkey;
+            ALTER TABLE order_flow_anomalies ADD PRIMARY KEY (id, time);
+        END IF;
+    END IF;
+END$$;
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'timescaledb') THEN
+        PERFORM create_hypertable('order_flow_anomalies', 'time', if_not_exists => TRUE);
+    END IF;
+END$$;
+CREATE INDEX IF NOT EXISTS idx_anomaly_symbol_time ON order_flow_anomalies (symbol, time DESC);
+CREATE INDEX IF NOT EXISTS idx_anomaly_severity ON order_flow_anomalies (severity, symbol);
 
 -- Market depth snapshots (bid/ask levels)
 CREATE TABLE IF NOT EXISTS market_depth (
@@ -64,26 +96,53 @@ CREATE TABLE IF NOT EXISTS market_depth (
     spread_bps INT, -- basis points
     PRIMARY KEY (time, symbol)
 );
-SELECT create_hypertable('market_depth', 'time', if_not_exists => TRUE);
-CREATE INDEX idx_market_depth_symbol ON market_depth (symbol, time DESC);
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'timescaledb') THEN
+        PERFORM create_hypertable('market_depth', 'time', if_not_exists => TRUE);
+    END IF;
+END$$;
+CREATE INDEX IF NOT EXISTS idx_market_depth_symbol ON market_depth (symbol, time DESC);
 
 -- Order lifetime tracking (for spoofing detection)
 CREATE TABLE IF NOT EXISTS order_events (
-    id SERIAL PRIMARY KEY,
+    id SERIAL,
     time TIMESTAMPTZ NOT NULL,
     symbol VARCHAR(10) NOT NULL,
     price DECIMAL(10, 2),
     volume BIGINT,
     side VARCHAR(10), -- 'BID' or 'ASK'
-    event_type VARCHAR(20), -- 'PLACED', 'MODIFIED', 'CANCELLED', 'EXECUTED'
+    event_type VARCHAR(20), -- 'PLACED', 'MODIFIED', 'CANCELLED', 'EXECUTED'    
     order_id VARCHAR(100),
     broker_code VARCHAR(10),
     duration_ms INT, -- how long order existed before cancellation
-    created_at TIMESTAMPTZ DEFAULT NOW()
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    PRIMARY KEY (id, time)
 );
-SELECT create_hypertable('order_events', 'time', if_not_exists => TRUE);
-CREATE INDEX idx_order_events_symbol ON order_events (symbol, time DESC);
-CREATE INDEX idx_order_events_type ON order_events (event_type, symbol);
+-- Ensure primary key includes partitioning column for order_events
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_class WHERE relname = 'order_events') THEN
+        IF NOT EXISTS (
+            SELECT 1 FROM pg_index i
+            JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
+            WHERE i.indrelid = 'order_events'::regclass
+              AND i.indisprimary
+              AND a.attname = 'time'
+        ) THEN
+            ALTER TABLE order_events DROP CONSTRAINT IF EXISTS order_events_pkey;
+            ALTER TABLE order_events ADD PRIMARY KEY (id, time);
+        END IF;
+    END IF;
+END$$;
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'timescaledb') THEN
+        PERFORM create_hypertable('order_events', 'time', if_not_exists => TRUE);
+    END IF;
+END$$;
+CREATE INDEX IF NOT EXISTS idx_order_events_symbol ON order_events (symbol, time DESC);
+CREATE INDEX IF NOT EXISTS idx_order_events_type ON order_events (event_type, symbol);
 
 -- HAKA/HAKI aggregation summary
 CREATE TABLE IF NOT EXISTS haka_haki_summary (
@@ -96,9 +155,14 @@ CREATE TABLE IF NOT EXISTS haka_haki_summary (
     net_pressure INT, -- (HAKA - HAKI) / (HAKA + HAKI) * 100
     PRIMARY KEY (time, symbol)
 );
-SELECT create_hypertable('haka_haki_summary', 'time', if_not_exists => TRUE);
-CREATE INDEX idx_haka_haki_symbol ON haka_haki_summary (symbol, time DESC);
-CREATE INDEX idx_haka_haki_dominance ON haka_haki_summary (dominance, symbol);
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'timescaledb') THEN
+        PERFORM create_hypertable('haka_haki_summary', 'time', if_not_exists => TRUE);
+    END IF;
+END$$;
+CREATE INDEX IF NOT EXISTS idx_haka_haki_symbol ON haka_haki_summary (symbol, time DESC);
+CREATE INDEX IF NOT EXISTS idx_haka_haki_dominance ON haka_haki_summary (dominance, symbol);
 
 -- Broker Z-Score tracking (for whale detection)
 CREATE TABLE IF NOT EXISTS broker_zscore (
@@ -110,14 +174,27 @@ CREATE TABLE IF NOT EXISTS broker_zscore (
     is_anomaly BOOLEAN DEFAULT FALSE,
     PRIMARY KEY (time, symbol, broker_code)
 );
-SELECT create_hypertable('broker_zscore', 'time', if_not_exists => TRUE);
-CREATE INDEX idx_broker_zscore_symbol ON broker_zscore (symbol, time DESC);
-CREATE INDEX idx_broker_zscore_anomaly ON broker_zscore (is_anomaly, symbol, time DESC);
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'timescaledb') THEN
+        PERFORM create_hypertable('broker_zscore', 'time', if_not_exists => TRUE);
+    END IF;
+END$$;
+CREATE INDEX IF NOT EXISTS idx_broker_zscore_symbol ON broker_zscore (symbol, time DESC);
+CREATE INDEX IF NOT EXISTS idx_broker_zscore_anomaly ON broker_zscore (is_anomaly, symbol, time DESC);
 
--- Grant permissions
-GRANT SELECT ON ALL TABLES IN SCHEMA public TO anon, authenticated;
-GRANT INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO service_role;
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated;
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+        EXECUTE 'GRANT SELECT ON ALL TABLES IN SCHEMA public TO anon, authenticated';
+        EXECUTE 'GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated';
+    END IF;
+
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
+        EXECUTE 'GRANT INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO service_role';
+    END IF;
+END$$;
 
 DO $$
 BEGIN

@@ -985,3 +985,67 @@ func GetAnomalies(symbol string, severity string, limit int) ([]OrderFlowAnomaly
 	return anomalies, rows.Err()
 }
 
+// GetBrokerZScores computes net volume per broker and returns z-scores
+func GetBrokerZScores(symbol string, days int) ([]struct {
+	BrokerCode string
+	NetVolume  int64
+	ZScore     float64
+}, error) {
+	if db == nil {
+		return nil, fmt.Errorf("db not initialized")
+	}
+
+	query := `
+		SELECT broker_code, COALESCE(SUM(CASE WHEN side='BID' THEN volume ELSE -volume END),0) AS net_volume
+		FROM order_events
+		WHERE symbol = $1 AND time > NOW() - ($2 || ' days')::interval
+		GROUP BY broker_code
+	`
+	rows, err := db.Query(query, symbol, days)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	type rec struct{
+		BrokerCode string
+		NetVolume int64
+	}
+	var recs []rec
+	var sum float64
+	for rows.Next() {
+		var r rec
+		if err := rows.Scan(&r.BrokerCode, &r.NetVolume); err != nil {
+			return nil, err
+		}
+		recs = append(recs, r)
+		sum += float64(r.NetVolume)
+	}
+	if err := rows.Err(); err != nil { return nil, err }
+
+	n := float64(len(recs))
+	if n == 0 {
+		return []struct{BrokerCode string; NetVolume int64; ZScore float64}{}, nil
+	}
+	mean := sum / n
+
+	var variance float64
+	for _, r := range recs {
+		d := float64(r.NetVolume) - mean
+		variance += d * d
+	}
+	varStd := math.Sqrt(variance / n)
+
+	out := make([]struct{BrokerCode string; NetVolume int64; ZScore float64}, 0, len(recs))
+	for _, r := range recs {
+		z := 0.0
+		if varStd > 0 { z = (float64(r.NetVolume) - mean) / varStd }
+		out = append(out, struct{BrokerCode string; NetVolume int64; ZScore float64}{BrokerCode: r.BrokerCode, NetVolume: r.NetVolume, ZScore: z})
+	}
+
+	// sort by absolute z-score desc
+	sort.Slice(out, func(i,j int) bool { return math.Abs(out[i].ZScore) > math.Abs(out[j].ZScore) })
+
+	return out, nil
+}
+

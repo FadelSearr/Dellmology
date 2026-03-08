@@ -1,7 +1,6 @@
 'use client';
 
 import React from 'react';
-import { TrendingUp, TrendingDown } from 'lucide-react';
 
 interface BrokerEntry {
   broker_id: string;
@@ -43,7 +42,6 @@ function getBrokerCharacterProfile(broker: BrokerEntry): string {
 
 export const BrokerFlowTable: React.FC<BrokerFlowTableProps> = ({
   data,
-  symbol,
   filterType = 'ALL',
 }) => {
   // convert broker.daily_heatmap (numbers) into items with sentiment

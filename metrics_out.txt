@@ -1,7 +1,0 @@
-﻿# HELP ml_fetch_successes Total successful ML fetches
-# TYPE ml_fetch_successes counter
-ml_fetch_successes 1
-# HELP ml_fetch_failures Total failed ML fetch attempts
-# TYPE ml_fetch_failures counter
-ml_fetch_failures 0
-

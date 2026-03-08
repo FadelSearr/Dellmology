@@ -295,6 +295,27 @@ func main() {
 	defer db.Close()
 	log.Println("Successfully connected to the database.")
 
+	// Initialize anomaly detector for order-flow heatmap & anomalies
+	anomalyDetector = NewAnomalyDetector(db)
+	// Start aggregation worker for configured symbols
+	go func() {
+		symbolsEnv := strings.TrimSpace(os.Getenv("BROKER_POLL_SYMBOLS"))
+		symbols := []string{"BBCA"}
+		if symbolsEnv != "" {
+			parts := strings.Split(symbolsEnv, ",")
+			trimmed := make([]string, 0, len(parts))
+			for _, p := range parts {
+				if s := strings.ToUpper(strings.TrimSpace(p)); s != "" {
+					trimmed = append(trimmed, s)
+				}
+			}
+			if len(trimmed) > 0 {
+				symbols = trimmed
+			}
+		}
+		anomalyDetector.StartAggregationWorker(context.Background(), symbols)
+	}()
+
 	go startHTTPServer()
 	go startWorkerHeartbeatReporter()
 	go startTelegramHeartbeatMonitor()
@@ -951,6 +972,23 @@ func processMessage(rawMsg []byte) {
 			Timestamp: time.Unix(trade.Timestamp, 0),
 		}
 
+		// Run data integrity validation before inserting
+		dp := DataPoint{
+			Symbol:    processed.Symbol,
+			Price:     processed.Price,
+			Volume:    processed.Volume,
+			Timestamp: processed.Timestamp.Unix() * 1000,
+			Source:    "TRADE",
+		}
+		result := dataValidator.ValidateDataPoint(dp)
+		// store validation result for monitoring
+		dataValidator.StoreValidationResult(result, processed.Symbol)
+		if !result.IsValid {
+			log.Printf("VALIDATION FAILED for %s: %v (Score: %.1f)", processed.Symbol, result.Issues, result.Score)
+			// skip inserting obviously invalid trades
+			return
+		}
+
 		if err := insertTrade(processed); err != nil {
 			log.Printf("ERROR: Failed to insert trade into DB: %v", err)
 		}
@@ -979,8 +1017,23 @@ func processMessage(rawMsg []byte) {
 			log.Printf("WARN: Failed to parse depth data: %v", err)
 			return
 		}
-		// Process order flow analysis asynchronously
+		// Process order flow analysis asynchronously (legacy processor)
 		go processDepthData(depth)
+
+		// Also forward to anomaly detector (if initialized). AnomalyDetector expects
+		// timestamp in milliseconds, while incoming `DepthData.Timestamp` is seconds.
+		if anomalyDetector != nil {
+			// create copy and convert seconds->milliseconds
+			depthMs := depth
+			if depthMs.Timestamp > 0 && depthMs.Timestamp < 1e12 {
+				depthMs.Timestamp = depthMs.Timestamp * 1000
+			}
+			go func(d DepthData) {
+				if err := anomalyDetector.ProcessDepthData(ctx, d); err != nil {
+					log.Printf("WARN: anomaly detector ProcessDepthData failed: %v", err)
+				}
+			}(depthMs)
+		}
 	}
 }
 
@@ -1059,6 +1112,10 @@ func initDB() (*sql.DB, error) {
 }
 
 func insertTrade(t ProcessedTrade) error {
+	if db == nil {
+		// running in test or without DB; skip write
+		return nil
+	}
 	_, err := db.Exec(`INSERT INTO trades (symbol, price, volume, trade_type, timestamp) VALUES ($1, $2, $3, $4, $5)`, t.Symbol, t.Price, t.Volume, t.TradeType, t.Timestamp)
 	return err
 }
@@ -1133,6 +1190,32 @@ func startHTTPServer() {
 		}
 		payload := analysispkg.AnalyzeBrokerFlow(symbol, days)
 		if err := json.NewEncoder(w).Encode(payload); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	})
+
+	// REST Endpoint: /api/broker/zscore?symbol=BBCA&days=7
+	mux.HandleFunc("/api/broker/zscore", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Content-Type", "application/json")
+		symbol := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("symbol")))
+		if symbol == "" {
+			http.Error(w, "missing symbol parameter", http.StatusBadRequest)
+			return
+		}
+		days := 7
+		if raw := strings.TrimSpace(r.URL.Query().Get("days")); raw != "" {
+			if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 && parsed <= 365 {
+				days = parsed
+			}
+		}
+		rows, err := GetBrokerZScores(symbol, days)
+		if err != nil {
+			log.Printf("ERROR: GetBrokerZScores failed: %v", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if err := json.NewEncoder(w).Encode(map[string]interface{}{"symbol": symbol, "days": days, "rows": rows}); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
 	})
@@ -1258,8 +1341,21 @@ func startHTTPServer() {
 						continue
 					}
 				}
+				// broadcast broker analysis
 				if b, err := json.Marshal(payload); err == nil {
 					sseBroker.messages <- b
+				}
+
+				// compute and broadcast order-flow heatmap if anomalyDetector available
+				if anomalyDetector != nil {
+					if rows, err := anomalyDetector.CalculateHeatmap(context.Background(), sym, 60); err == nil {
+						heat := map[string]interface{}{"type": "order_flow_heatmap", "symbol": sym, "rows": rows}
+						if hb, err := json.Marshal(heat); err == nil {
+							sseBroker.messages <- hb
+						}
+					} else {
+						log.Printf("WARN: failed to calculate heatmap for %s: %v", sym, err)
+					}
 				}
 			}
 			time.Sleep(interval)
@@ -1329,6 +1425,66 @@ func startHTTPServer() {
 			resp["status"] = "ok"
 		}
 		if err := json.NewEncoder(w).Encode(resp); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	})
+
+	// Endpoint: /api/order-flow/heatmap?symbol=BBCA&limit=100
+	mux.HandleFunc("/api/order-flow/heatmap", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Content-Type", "application/json")
+		symbol := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("symbol")))
+		if symbol == "" {
+			http.Error(w, "missing symbol parameter", http.StatusBadRequest)
+			return
+		}
+		limit := 100
+		if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
+			if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 && parsed <= 1000 {
+				limit = parsed
+			}
+		}
+		rows, err := GetOrderFlowHeatmap(symbol, limit)
+		if err != nil {
+			log.Printf("ERROR: failed to get heatmap: %v", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if err := json.NewEncoder(w).Encode(map[string]interface{}{"symbol": symbol, "rows": rows}); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	})
+
+	// Debug: trigger order-flow heatmap calculation on-demand and return results
+	mux.HandleFunc("/debug/order-flow/calc-heatmap", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Content-Type", "application/json")
+		symbol := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("symbol")))
+		if symbol == "" {
+			http.Error(w, "missing symbol parameter", http.StatusBadRequest)
+			return
+		}
+		minutes := 60
+		if raw := strings.TrimSpace(r.URL.Query().Get("minutes")); raw != "" {
+			if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 && parsed <= 1440 {
+				minutes = parsed
+			}
+		}
+		if anomalyDetector == nil {
+			http.Error(w, "anomaly detector not initialized", http.StatusServiceUnavailable)
+			return
+		}
+		rows, err := anomalyDetector.CalculateHeatmap(context.Background(), symbol, minutes)
+		if err != nil {
+			log.Printf("ERROR: CalculateHeatmap failed: %v", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		// broadcast to SSE clients for convenience
+		if b, err := json.Marshal(map[string]interface{}{"type": "order_flow_heatmap", "symbol": symbol, "rows": rows}); err == nil {
+			sseBroker.messages <- b
+		}
+		if err := json.NewEncoder(w).Encode(map[string]interface{}{"symbol": symbol, "rows": rows}); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
 	})

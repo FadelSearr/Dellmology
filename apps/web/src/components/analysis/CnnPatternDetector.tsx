@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react';
 import {
   TrendingUp,
   TrendingDown,
-  AlertTriangle,
   Zap,
   Target,
   Shield,

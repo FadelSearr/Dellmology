@@ -20,8 +20,10 @@ export async function POST(request: Request) {
       return NextResponse.json(buildCoolingOffLockPayload(coolingOff, 'Cooling-off active: recommendation temporarily locked'), { status: 423 });
     }
 
-    const body = await request.json();
-    const { type, data, symbol } = body;
+    const body = (await request.json()) as Record<string, unknown> | null;
+    const type = body && typeof body.type === 'string' ? body.type : undefined;
+    const data = body && typeof body.data === 'object' && body.data !== null ? (body.data as Record<string, unknown>) : undefined;
+    const symbol = body && typeof body.symbol === 'string' ? body.symbol : undefined;
 
     if (!type || !data) {
       return NextResponse.json(
@@ -93,7 +95,7 @@ function splitNarrativeSections(narrative: string): { primaryNarrative: string; 
 
 function inferNarrativeBias(
   type: string,
-  data: any,
+  data: Record<string, unknown>,
   confidence: { score: number; label: 'LOW' | 'MEDIUM' | 'HIGH' },
 ): { bias: 'BUY' | 'SELL' | 'NEUTRAL'; score: number } {
   if (type !== 'broker') {
@@ -106,9 +108,9 @@ function inferNarrativeBias(
     return { bias: 'NEUTRAL', score: confidence.score };
   }
 
-  const washSaleScore = Number(data?.wash_sale_score || 0);
-  const consistency = Number(data?.consistency || 0);
-  const whaleCount = Array.isArray(data?.whales) ? data.whales.length : 0;
+  const washSaleScore = Number((data['wash_sale_score'] ?? 0) as number);
+  const consistency = Number((data['consistency'] ?? 0) as number);
+  const whaleCount = Array.isArray(data['whales']) ? (data['whales'] as unknown[]).length : 0;
 
   const signalStrength = whaleCount * 20 + consistency * 50 - washSaleScore * 0.35;
   const normalized = Math.max(0, Math.min(100, 50 + signalStrength));
@@ -126,7 +128,7 @@ function inferNarrativeBias(
  * Generate narrative based on type and data
  * In production, this would call a Python service via subprocess or API
  */
-async function generateNarrative(type: string, data: any, symbol?: string): Promise<string> {
+async function generateNarrative(type: 'broker' | 'regime' | 'screener' | 'swot' | string, data: Record<string, unknown>, symbol?: string): Promise<string> {
   // Basic defensives: if the payload is missing any useful information,
   // return a generic message rather than letting downstream logic blow up.
   if (!data || (typeof data === 'object' && Object.keys(data).length === 0)) {
@@ -174,7 +176,7 @@ async function generateNarrative(type: string, data: any, symbol?: string): Prom
   return `${narrative}\n\n🛡️ Bearish Counter-Case:\n${bearishCounterCase}`;
 }
 
-async function tryGenerateGeminiNarrative(type: string, data: any, symbol?: string): Promise<string | null> {
+async function tryGenerateGeminiNarrative(type: 'broker' | 'regime' | 'screener' | 'swot' | string, data: Record<string, unknown>, symbol?: string): Promise<string | null> {
   try {
     if (!process.env.GEMINI_API_KEY) {
       return null;
@@ -214,7 +216,7 @@ async function tryGenerateGeminiNarrative(type: string, data: any, symbol?: stri
   }
 }
 
-function calculateNarrativeConfidence(type: string, data: any): { score: number; label: 'LOW' | 'MEDIUM' | 'HIGH' } {
+function calculateNarrativeConfidence(type: 'broker' | 'regime' | 'screener' | 'swot' | string, data: Record<string, unknown>): { score: number; label: 'LOW' | 'MEDIUM' | 'HIGH' } {
   if (!data || typeof data !== 'object') {
     return { score: 20, label: 'LOW' };
   }
@@ -222,23 +224,23 @@ function calculateNarrativeConfidence(type: string, data: any): { score: number;
   let score = 30;
 
   if (type === 'broker') {
-    if (Array.isArray(data.whales) && data.whales.length > 0) score += 30;
-    if (typeof data.wash_sale_score === 'number') score += 20;
-    if (typeof data.consistency === 'number') score += 20;
+    if (Array.isArray(data['whales']) && (data['whales'] as unknown[]).length > 0) score += 30;
+    if (typeof data['wash_sale_score'] === 'number') score += 20;
+    if (typeof data['consistency'] === 'number') score += 20;
   } else if (type === 'regime') {
-    if (typeof data.regime === 'string') score += 20;
-    if (typeof data.volatility === 'string') score += 15;
-    if (typeof data.rsi === 'number') score += 20;
-    if (typeof data.trend_strength === 'number') score += 15;
+    if (typeof data['regime'] === 'string') score += 20;
+    if (typeof data['volatility'] === 'string') score += 15;
+    if (typeof data['rsi'] === 'number') score += 20;
+    if (typeof data['trend_strength'] === 'number') score += 15;
   } else if (type === 'screener') {
-    if (typeof data.mode === 'string') score += 20;
-    if (typeof data.count === 'number') score += 20;
-    if (Array.isArray(data.signals) && data.signals.length > 0) score += 30;
+    if (typeof data['mode'] === 'string') score += 20;
+    if (typeof data['count'] === 'number') score += 20;
+    if (Array.isArray(data['signals']) && (data['signals'] as unknown[]).length > 0) score += 30;
   } else if (type === 'swot') {
-    if (Array.isArray(data.strengths) && data.strengths.length > 0) score += 15;
-    if (Array.isArray(data.weaknesses) && data.weaknesses.length > 0) score += 15;
-    if (Array.isArray(data.opportunities) && data.opportunities.length > 0) score += 15;
-    if (Array.isArray(data.threats) && data.threats.length > 0) score += 15;
+    if (Array.isArray(data['strengths']) && (data['strengths'] as unknown[]).length > 0) score += 15;
+    if (Array.isArray(data['weaknesses']) && (data['weaknesses'] as unknown[]).length > 0) score += 15;
+    if (Array.isArray(data['opportunities']) && (data['opportunities'] as unknown[]).length > 0) score += 15;
+    if (Array.isArray(data['threats']) && (data['threats'] as unknown[]).length > 0) score += 15;
   }
 
   const normalized = Math.max(0, Math.min(100, score));
@@ -247,7 +249,7 @@ function calculateNarrativeConfidence(type: string, data: any): { score: number;
   return { score: normalized, label: 'LOW' };
 }
 
-function generateBearishCounterCase(type: string, data: any): string {
+function generateBearishCounterCase(type: 'broker' | 'regime' | 'screener' | 'swot' | string, data: Record<string, unknown>): string {
   if (type === 'broker') {
     const washSaleScore = Number(data?.wash_sale_score || 0);
     const consistency = Number(data?.consistency || 0);
@@ -281,37 +283,45 @@ function generateBearishCounterCase(type: string, data: any): string {
   ].join('\n');
 }
 
-function generateBrokerNarrative(data: any, symbol?: string): string {
-  const { whales, consistency, wash_sale_score } = data;
-  
+function generateBrokerNarrative(data: Record<string, unknown>, symbol?: string): string {
+  const whales = Array.isArray(data['whales']) ? (data['whales'] as Array<Record<string, unknown>>) : [];
+  const consistency = Number((data['consistency'] ?? 0) as number);
+  const wash_sale_score = Number((data['wash_sale_score'] ?? 0) as number);
+
   let narrative = `📊 Analisis Aliran Broker - ${symbol || 'EMITEN'}\n\n`;
-  
+
   if (wash_sale_score && wash_sale_score > 60) {
     narrative += `⚠️ PERINGATAN: Skor aktivitas mencurigakan tinggi (${wash_sale_score.toFixed(1)}%). `;
     narrative += `Volume tinggi namun akumulasi rendah menunjukkan potensi transaksi semu.\n\n`;
   }
-  
+
   if (whales && whales.length > 0) {
     narrative += `🐋 Aktivitas Paus Terdeteksi:\n`;
-    whales.slice(0, 3).forEach((whale: any) => {
-      narrative += `- ${whale.broker}: Net Buy ${(whale.net_value / 1e9).toFixed(2)} M (Z-Score: ${whale.z_score.toFixed(2)})\n`;
+    whales.slice(0, 3).forEach((whale) => {
+      const broker = String(whale['broker'] ?? 'unknown');
+      const netValue = Number(whale['net_value'] ?? 0);
+      const zscore = Number(whale['z_score'] ?? 0);
+      narrative += `- ${broker}: Net Buy ${(netValue / 1e9).toFixed(2)} M (Z-Score: ${zscore.toFixed(2)})\n`;
     });
     narrative += `\n`;
   }
-  
+
   if (consistency) {
     const signal = consistency > 70 ? '✅ Konsisten' : consistency > 40 ? '⚠️ Fluktuatif' : '❌ Tidak konsisten';
     narrative += `🎯 Konsistensi: ${(consistency * 100).toFixed(0)}% - ${signal}\n`;
   }
-  
+
   narrative += `\n💡 Kesimpulan: Pantau pergerakan broker dominan untuk konfirmasi entry/exit points.`;
-  
+
   return narrative;
 }
 
-function generateRegimeNarrative(data: any): string {
-  const { regime, volatility, rsi, trend_strength } = data;
-  
+function generateRegimeNarrative(data: Record<string, unknown>): string {
+  const regime = String(data['regime'] ?? 'UNKNOWN');
+  const volatility = String(data['volatility'] ?? 'UNKNOWN');
+  const rsi = Number(data['rsi'] ?? 0);
+  const trend_strength = Number(data['trend_strength'] ?? 0);
+
   let narrative = `🔍 Status Pasar Saat Ini\n\n`;
   narrative += `📈 Trend: ${regime}\n`;
   narrative += `📊 Volatilitas: ${volatility}\n`;
@@ -340,16 +350,18 @@ function generateRegimeNarrative(data: any): string {
   return narrative;
 }
 
-function generateScreenerNarrative(data: any): string {
-  const { mode, count, signals } = data;
-  
+function generateScreenerNarrative(data: Record<string, unknown>): string {
+  const mode = String(data['mode'] ?? 'unknown');
+  const count = Number(data['count'] ?? 0);
+  const signals = Array.isArray(data['signals']) ? (data['signals'] as number[]) : [];
+
   let narrative = `🤖 AI Screener Report (Mode: ${mode})\n\n`;
   narrative += `📍 Total Emiten yang Cocok: ${count || 0}\n`;
-  
+
   if (signals && signals.length > 0) {
     const avgSignal = signals.reduce((a: number, b: number) => a + b, 0) / signals.length;
     narrative += `⭐ Rata-rata Sinyal: ${avgSignal.toFixed(0)}/100\n\n`;
-    
+
     if (mode === 'DAYTRADE') {
       narrative += `🚀 Mode Daytrade: Mencari volatilitas tinggi dan dominasi HAKA.\n`;
       narrative += `Cocok untuk scalping cepat dalam 1-4 jam.`;
@@ -358,31 +370,34 @@ function generateScreenerNarrative(data: any): string {
       narrative += `Cocok untuk holding 2-5 hari untuk keuntungan lebih besar.`;
     }
   }
-  
+
   return narrative;
 }
 
-function generateSWOTNarrative(data: any, symbol?: string): string {
-  const { strengths, weaknesses, opportunities, threats } = data;
-  
+function generateSWOTNarrative(data: Record<string, unknown>, symbol?: string): string {
+  const strengths = Array.isArray(data['strengths']) ? (data['strengths'] as string[]) : [];
+  const weaknesses = Array.isArray(data['weaknesses']) ? (data['weaknesses'] as string[]) : [];
+  const opportunities = Array.isArray(data['opportunities']) ? (data['opportunities'] as string[]) : [];
+  const threats = Array.isArray(data['threats']) ? (data['threats'] as string[]) : [];
+
   let narrative = `💼 SWOT Analysis - ${symbol || 'EMITEN'}\n\n`;
-  
+
   if (strengths && strengths.length > 0) {
-    narrative += `✅ Kekuatan:\n${strengths.map((s: string) => `• ${s}`).join('\n')}\n\n`;
+    narrative += `✅ Kekuatan:\n${strengths.map((s) => `• ${s}`).join('\n')}\n\n`;
   }
-  
+
   if (weaknesses && weaknesses.length > 0) {
-    narrative += `⚠️ Kelemahan:\n${weaknesses.map((w: string) => `• ${w}`).join('\n')}\n\n`;
+    narrative += `⚠️ Kelemahan:\n${weaknesses.map((w) => `• ${w}`).join('\n')}\n\n`;
   }
-  
+
   if (opportunities && opportunities.length > 0) {
-    narrative += `💡 Peluang:\n${opportunities.map((o: string) => `• ${o}`).join('\n')}\n\n`;
+    narrative += `💡 Peluang:\n${opportunities.map((o) => `• ${o}`).join('\n')}\n\n`;
   }
-  
+
   if (threats && threats.length > 0) {
-    narrative += `🚨 Ancaman:\n${threats.map((t: string) => `• ${t}`).join('\n')}\n\n`;
+    narrative += `🚨 Ancaman:\n${threats.map((t) => `• ${t}`).join('\n')}\n\n`;
   }
-  
+
   return narrative;
 }
 
@@ -390,7 +405,7 @@ function generateSWOTNarrative(data: any, symbol?: string): string {
  * GET /api/narrative/template
  * Returns available narrative templates
  */
-export async function GET(request: Request) {
+export async function GET() {
   const templates = [
     {
       type: 'broker',

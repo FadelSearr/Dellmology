@@ -24,7 +24,7 @@ global.fetch = jest.fn(() =>
           timestamp: new Date().toISOString(),
         },
       }),
-  } as any)
+  } as unknown as Response)
 ) as jest.Mock;
 
 describe('BacktestRunner', () => {

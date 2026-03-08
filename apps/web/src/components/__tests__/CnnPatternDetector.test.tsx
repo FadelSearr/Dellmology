@@ -10,7 +10,7 @@ global.fetch = jest.fn(() =>
         detected_patterns: [],
         confidences: { high: 0, medium: 0, low: 0 },
       }),
-  } as any)
+  } as unknown as Response)
 ) as jest.Mock;
 
 describe('CnnPatternDetector', () => {

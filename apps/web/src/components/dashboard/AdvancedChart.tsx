@@ -13,9 +13,9 @@ interface CandleData {
 
 export const AdvancedChart = ({ symbol = 'BBCA' }: { symbol: string }) => {
   const containerRef = useRef<HTMLDivElement>(null);
-  const chartRef = useRef<any>(null);
+  const chartRef = useRef<ReturnType<typeof createChart> | null>(null);
   const [loading, setLoading] = useState(true);
-  const [data, setData] = useState<CandleData[]>([]);
+  // chart data is managed directly via the chart API; avoid storing duplicate state
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -84,40 +84,6 @@ export const AdvancedChart = ({ symbol = 'BBCA' }: { symbol: string }) => {
       return data;
     };
 
-    const applyChartData = (chartData: CandleData[]) => {
-      setData(chartData);
-      candlestickSeries.setData(chartData);
-
-      const volumeData = chartData.map((point, index) => ({
-        time: point.time,
-        value: Math.max(10, Math.abs(point.close - point.open) * 120 + index),
-        color: point.close >= point.open ? '#10b981' : '#ef4444',
-      }));
-      volumeSeries.setData(volumeData);
-
-      const smaData = [];
-      for (let i = 19; i < chartData.length; i++) {
-        const sum = chartData.slice(i - 19, i + 1).reduce((acc, d) => acc + d.close, 0);
-        smaData.push({
-          time: chartData[i].time,
-          value: sum / 20,
-        });
-      }
-      smaLine20.setData(smaData);
-
-      const smaData50 = [];
-      for (let i = 49; i < chartData.length; i++) {
-        const sum = chartData.slice(i - 49, i + 1).reduce((acc, d) => acc + d.close, 0);
-        smaData50.push({
-          time: chartData[i].time,
-          value: sum / 50,
-        });
-      }
-      smaLine50.setData(smaData50);
-
-      chart.timeScale().fitContent();
-    };
-
     // Add 20-day SMA (Simple Moving Average)
     const smaLine20 = (chart as any).addLineSeries({
       color: '#f59e0b',
@@ -131,6 +97,42 @@ export const AdvancedChart = ({ symbol = 'BBCA' }: { symbol: string }) => {
       lineWidth: 2,
       title: 'SMA 50',
     });
+
+    const applyChartData = (chartData: CandleData[]) => {
+      // Update chart series directly; avoid calling React setState inside this effect
+      candlestickSeries.setData(chartData);
+
+      const volumeData = chartData.map((point, index) => ({
+        time: point.time,
+        value: Math.max(10, Math.abs(point.close - point.open) * 120 + index),
+        color: point.close >= point.open ? '#10b981' : '#ef4444',
+      }));
+      volumeSeries.setData(volumeData);
+
+      const smaData: { time: number; value: number }[] = [];
+      for (let i = 19; i < chartData.length; i++) {
+        const sum = chartData.slice(i - 19, i + 1).reduce((acc, d) => acc + d.close, 0);
+        smaData.push({
+          time: chartData[i].time,
+          value: sum / 20,
+        });
+      }
+      smaLine20.setData(smaData);
+
+      const smaData50: { time: number; value: number }[] = [];
+      for (let i = 49; i < chartData.length; i++) {
+        const sum = chartData.slice(i - 49, i + 1).reduce((acc, d) => acc + d.close, 0);
+        smaData50.push({
+          time: chartData[i].time,
+          value: sum / 50,
+        });
+      }
+      smaLine50.setData(smaData50);
+
+      chart.timeScale().fitContent();
+    };
+
+    // SMA series already initialized above
 
     const loadChartData = async () => {
       try {
@@ -215,26 +217,24 @@ export const AdvancedChart = ({ symbol = 'BBCA' }: { symbol: string }) => {
       <div className="grid grid-cols-4 gap-2 text-sm">
         <div className="bg-gray-800/50 border border-gray-700 rounded p-2">
           <span className="text-gray-400">Last:</span>
-          <span className="ml-2 text-white font-semibold">
-            {data.length > 0 ? data[data.length - 1].close : '-'}
-          </span>
+          <span className="ml-2 text-white font-semibold">-</span>
         </div>
         <div className="bg-gray-800/50 border border-gray-700 rounded p-2">
           <span className="text-gray-400">High:</span>
           <span className="ml-2 text-green-400 font-semibold">
-            {data.length > 0 ? Math.max(...data.map(d => d.high)) : '-'}
+            -
           </span>
         </div>
         <div className="bg-gray-800/50 border border-gray-700 rounded p-2">
           <span className="text-gray-400">Low:</span>
           <span className="ml-2 text-red-400 font-semibold">
-            {data.length > 0 ? Math.min(...data.map(d => d.low)) : '-'}
+            -
           </span>
         </div>
         <div className="bg-gray-800/50 border border-gray-700 rounded p-2">
           <span className="text-gray-400">Vol:</span>
           <span className="ml-2 text-cyan-400 font-semibold">
-            {data.length}M
+            -
           </span>
         </div>
       </div>

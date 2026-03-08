@@ -6,6 +6,7 @@ Telegram bot integration for notifications
 import logging
 from typing import Optional
 import requests
+import os
 
 logger = logging.getLogger(__name__)
 

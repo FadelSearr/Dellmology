@@ -28,8 +28,8 @@ export const WhaleIdentityClustering: React.FC<{ symbol: string }> = ({ symbol }
         if (!response.ok) throw new Error('Failed to fetch whale clusters');
         const data = await response.json();
         setClusters(data.clusters || []);
-      } catch (e: any) {
-        setError(e.message);
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : String(err));
       } finally {
         setLoading(false);
       }

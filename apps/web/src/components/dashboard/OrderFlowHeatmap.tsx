@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { AlertTriangle, TrendingUp, TrendingDown } from 'lucide-react';
+import { AlertTriangle } from 'lucide-react';
 
 interface HeatmapData {
   prices: number[];
@@ -61,8 +61,9 @@ export const OrderFlowHeatmap = ({ symbol = 'BBCA' }: { symbol: string }) => {
   const [anomalies, setAnomalies] = useState<Anomaly[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedPrice, setSelectedPrice] = useState<number | null>(null);
   const [aggregate, setAggregate] = useState(false);
+  const [selectedPrice, setSelectedPrice] = useState<number | null>(null);
+  
 
   useEffect(() => {
     let mounted = true;

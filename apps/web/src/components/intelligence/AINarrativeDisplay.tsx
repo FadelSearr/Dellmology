@@ -35,11 +35,16 @@ export const AINarrativeDisplay = ({
   const [narrative, setNarrative] = useState<AInarrative | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showAdversarial, setShowAdversarial] = useState(false);
 
   useEffect(() => {
     const generateNarrative = async () => {
       try {
         setLoading(true);
+
+        function isBroker(obj: unknown): obj is { is_whale?: boolean } {
+          return !!obj && typeof obj === 'object' && 'is_whale' in (obj as Record<string, unknown>);
+        }
 
         // Prepare data based on type
         const requestPayload: BrokerNarrativePayload = {
@@ -59,7 +64,9 @@ export const AINarrativeDisplay = ({
             throw new Error('Broker flow stats missing');
           }
           requestPayload.data = {
-            whales: brokerData.brokers?.filter((b: any) => b.is_whale).slice(0, 3) || [],
+            whales: Array.isArray(brokerData.brokers)
+              ? brokerData.brokers.filter(isBroker).filter((b: any) => Boolean((b as any).is_whale)).slice(0, 3)
+              : [],
             wash_sale_score: brokerData.stats.wash_sale_score || 0,
             consistency: brokerData.stats.total_brokers > 0 ? 1 : 0,
             period: '7 days'
@@ -80,7 +87,7 @@ export const AINarrativeDisplay = ({
 
           const washSaleScore = Number(brokerData?.stats?.wash_sale_score || 0);
           const whaleCount = Array.isArray(brokerData?.brokers)
-            ? brokerData.brokers.filter((broker: any) => broker.is_whale).length
+            ? brokerData.brokers.filter((b: any) => isBroker(b) && Boolean((b as any).is_whale)).length
             : 0;
           const upsScore = Number(marketData?.unified_power_score?.score || 0);
           const regime = String(regimeData?.regime || 'UNKNOWN');
@@ -124,20 +131,47 @@ export const AINarrativeDisplay = ({
           requestPayload.data = {};
         }
 
-        const response = await fetch('/api/narrative', {
+        // Prefer the new detailed XAI endpoint, fallback to legacy `/api/narrative`.
+        let response = await fetch('/api/xai/narrative_detailed', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(requestPayload)
-        });
+          body: JSON.stringify(requestPayload),
+        }).catch(() => null as any);
 
-        if (!response.ok) {
-          const text = await response.text();
-          console.error('Narrative API error', response.status, text);
-          throw new Error(`Failed to generate narrative (${response.status})`);
+        if (!response || !response.ok) {
+          // Fallback: try legacy endpoint
+          response = await fetch('/api/narrative', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(requestPayload),
+          });
         }
 
-        const result = await response.json();
-        setNarrative(result);
+        if (!response || !response.ok) {
+          const text = response ? await response.text() : 'no response';
+          console.error('Narrative API error', response?.status, text);
+          throw new Error(`Failed to generate narrative (${response?.status ?? 'no-response'})`);
+        }
+
+        const resJson = await response.json();
+
+        // Map backend shape to local `AInarrative` shape.
+        const mapped: any = {
+          type,
+          symbol,
+          narrative: resJson.primary || resJson.narrative || '',
+          primary_narrative: resJson.primary || resJson.primary_narrative || resJson.narrative || '',
+          bearish_counter_case: resJson.adversarial || resJson.bearish_counter_case || null,
+          confidence_score: typeof resJson.confidence === 'number' ? resJson.confidence : resJson.confidence_score ?? null,
+          confidence_label: resJson.confidence_label || (typeof resJson.confidence === 'number'
+            ? (resJson.confidence >= 75 ? 'HIGH' : resJson.confidence >= 50 ? 'MEDIUM' : 'LOW')
+            : undefined),
+          market_bias: resJson.market_bias,
+          market_bias_score: resJson.market_bias_score ?? resJson.ups_score,
+          generated_at: resJson.generated_at || new Date().toISOString(),
+        } as AInarrative;
+
+        setNarrative(mapped);
         setError(null);
       } catch (err) {
         console.error('Error generating narrative:', err);
@@ -216,14 +250,21 @@ export const AINarrativeDisplay = ({
               <span className="text-gray-500">{narrative.confidence_score ?? 0}/100</span>
             </div>
           </div>
-          <span className="text-xs text-gray-500">
-            {new Date(narrative.generated_at).toLocaleTimeString()}
-          </span>
+          <div className="flex flex-col items-end gap-2">
+            <button
+              type="button"
+              onClick={() => setShowAdversarial(!showAdversarial)}
+              className={`text-xs px-2 py-1 rounded border ${showAdversarial ? 'border-rose-600 bg-rose-900/20 text-rose-200' : 'border-gray-600 bg-gray-800/20 text-gray-300'}`}
+            >
+              {showAdversarial ? 'Adversarial' : 'Primary'}
+            </button>
+            <span className="text-xs text-gray-500">{new Date(narrative.generated_at).toLocaleTimeString()}</span>
+          </div>
         </div>
 
         <div className="prose prose-invert max-w-none">
           <p className="text-sm text-gray-300 whitespace-pre-wrap font-mono">
-            {primaryNarrative}
+            {showAdversarial && bearishCounterCase ? bearishCounterCase : primaryNarrative}
           </p>
         </div>
 

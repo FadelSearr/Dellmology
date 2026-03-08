@@ -9,7 +9,7 @@ Provides lightweight production-safe fallbacks for:
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Query
@@ -72,7 +72,7 @@ async def backtest_endpoint(payload: BacktestPayload):
             "max_drawdown": float(base.get("max_drawdown", 0.0)) * 100,
             "sharpe_ratio": float(base.get("sharpe_ratio", 0.0)),
             "trades": [],
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
         return {"success": True, "result": simulated}
@@ -97,7 +97,7 @@ async def telegram_alert_endpoint(payload: TelegramAlertPayload):
         "symbol": payload.symbol.upper(),
         "data": payload.data,
         "sent": bool(sent),
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     }
     _append_alert_history(item)
 
@@ -138,8 +138,8 @@ async def detect_patterns_endpoint(
                 "pattern_name": "Momentum Continuation" if bullish else "Momentum Breakdown",
                 "pattern_type": "BULLISH" if bullish else "BEARISH",
                 "confidence": confidence,
-                "start_date": datetime.utcnow().date().isoformat(),
-                "end_date": datetime.utcnow().date().isoformat(),
+                "start_date": datetime.now(timezone.utc).date().isoformat(),
+                "end_date": datetime.now(timezone.utc).date().isoformat(),
                 "entry_price": latest,
                 "target_price": round(latest * (1.03 if bullish else 0.97), 2),
                 "stop_loss": round(latest * (0.98 if bullish else 1.02), 2),
@@ -155,7 +155,7 @@ async def detect_patterns_endpoint(
 
     return {
         "symbol": symbol_up,
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "detected_patterns": patterns,
         "total_patterns": len(patterns),
         "bullish_count": bullish_count,

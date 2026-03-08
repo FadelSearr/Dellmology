@@ -3,11 +3,9 @@
 import {
   Search,
   Zap,
-  Flame,
   ShieldCheck,
   Database,
   Share2,
-  Activity,
   Gauge,
 } from "lucide-react";
 

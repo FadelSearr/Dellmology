@@ -7,7 +7,7 @@ import logging
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 from contextlib import contextmanager
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Optional
 import os
 
@@ -365,7 +365,7 @@ def save_signal_snapshot(snapshot: Dict, signal_type: str = "BUY", table: str = 
                 VALUES (:timestamp, :signal_type, :snapshot_json)
             """)
             conn.execute(query, {
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "signal_type": signal_type,
                 "snapshot_json": json.dumps(snapshot)
             })

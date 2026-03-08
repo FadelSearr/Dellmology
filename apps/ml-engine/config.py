@@ -47,6 +47,24 @@ class Config:
     # Logging Settings
     LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
     LOG_FILE = os.getenv('LOG_FILE', str(PROJECT_ROOT / 'logs' / 'dellmology.log'))
+
+    # Admin token for protecting sensitive endpoints (set in environment)
+    ADMIN_TOKEN = os.getenv('ADMIN_TOKEN', '')
+    # Optional: shared secret for JWT admin tokens (HS256). If set, incoming
+    # Bearer tokens will be validated as JWTs and must include a `role` claim
+    # equal to 'admin' (or 'service_role'). This provides better key rotation
+    # and delegated token issuance workflows.
+    ADMIN_JWT_SECRET = os.getenv('ADMIN_JWT_SECRET', '')
+    ADMIN_JWT_ALGORITHM = os.getenv('ADMIN_JWT_ALGORITHM', 'HS256')
+    # Shared key used by the web server to call ML engine admin proxies
+    ML_ENGINE_KEY = os.getenv('ML_ENGINE_KEY', '')
+
+    # Supabase / Supabase-compatible persistence (optional)
+    # Provide SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY to enable Supabase-specific
+    # migrations or to use Supabase client features. These are optional for local
+    # development but required to enable Supabase persistence features.
+    SUPABASE_URL = os.getenv('SUPABASE_URL', '')
+    SUPABASE_SERVICE_ROLE_KEY = os.getenv('SUPABASE_SERVICE_ROLE_KEY', '')
     
     # Feature Settings
     LOOKBACK_PERIOD = int(os.getenv('LOOKBACK_PERIOD', 60))  # Minutes
@@ -66,6 +84,10 @@ class Config:
     BACKTEST_START_DATE = os.getenv('BACKTEST_START_DATE', '2023-01-01')
     BACKTEST_END_DATE = os.getenv('BACKTEST_END_DATE', '2024-12-31')
     INITIAL_CAPITAL = float(os.getenv('INITIAL_CAPITAL', 10000000))  # IDR
+    # Minimum net return percent required to auto-approve a challenger promotion
+    PROMOTE_MIN_NET_RETURN = float(os.getenv('PROMOTE_MIN_NET_RETURN', '0.5'))
+    # Minimum number of trades in backtest required to consider promotion
+    PROMOTE_MIN_TRADES = int(os.getenv('PROMOTE_MIN_TRADES', '3'))
     
     # Scheduler Settings
     RETRAIN_SCHEDULE = os.getenv('RETRAIN_SCHEDULE', '0 17 * * 1-5')  # 5 PM weekdays

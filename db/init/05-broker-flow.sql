@@ -12,7 +12,12 @@ CREATE TABLE IF NOT EXISTS broker_flow (
     PRIMARY KEY (time, symbol, broker_code)
 );
 
-SELECT create_hypertable('broker_flow', 'time', if_not_exists => TRUE);
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'timescaledb') THEN
+        PERFORM create_hypertable('broker_flow', 'time', if_not_exists => TRUE);
+    END IF;
+END$$;
 
 CREATE INDEX IF NOT EXISTS idx_broker_flow_symbol ON broker_flow (symbol, time DESC);
 CREATE INDEX IF NOT EXISTS idx_broker_flow_netvalue ON broker_flow (net_value DESC, symbol);

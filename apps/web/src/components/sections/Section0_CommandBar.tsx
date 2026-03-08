@@ -1,7 +1,9 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Search, TrendingUp, Settings } from 'lucide-react';
+import { Search, TrendingUp, Settings, Filter } from 'lucide-react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { StatusBadge } from '@/components/common/StatusBadge';
 
 interface Section0Props {
@@ -26,8 +28,6 @@ interface Section0Props {
  */
 export const Section0_CommandBar: React.FC<Section0Props> = ({
   onSymbolChange,
-  marketRegime = 'BULLISH',
-  volatility: initialVolatility = 'HIGH',
   systemHealth = { sse: true, db: true, shield: true },
   rateLimitUsage = 65,
 }) => {
@@ -42,22 +42,22 @@ export const Section0_CommandBar: React.FC<Section0Props> = ({
   useEffect(() => {
     const fetchCommodities = async () => {
       try {
-        const resp = await fetch('http://localhost:8080/market/commodities');
-        const json = await resp.json();
+        const resp = await fetch('/api/market/commodities')
+        const json = await resp.json()
         setCommodities({
-          gold: json.gold,
-          coal: json.coal,
-          nickel: json.nickel,
-          ihsg: json.ihsg,
-        });
-      } catch (e) {
+          gold: json.gold ?? null,
+          coal: json.coal ?? null,
+          nickel: json.nickel ?? null,
+          ihsg: json.ihsg ?? null,
+        })
+      } catch {
         // ignore
       }
-    };
+    }
     fetchCommodities();
     const interval = setInterval(fetchCommodities, 15000);
     return () => clearInterval(interval);
-  }, []);
+  }, [systemHealth.shield]);
 
   const [searchInput, setSearchInput] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -102,31 +102,29 @@ export const Section0_CommandBar: React.FC<Section0Props> = ({
     return () => clearInterval(interval);
   }, [searchInput]);
 
-  // Poll heartbeat / health endpoint to update health indicators
+  // Poll ML engine health proxy to update health indicators
   useEffect(() => {
     let mounted = true;
     const fetchHealth = async () => {
       try {
-        const resp = await fetch('http://localhost:8080/heartbeat');
-        const json = await resp.json();
-        if (!mounted) return;
-        // Basic mapping: consider service healthy if status != 'stale'
-        const sse = json.status && json.status !== 'stale';
-        const db = json.database ? json.database.connected !== false : true;
-        // shield: if external_queue or processed_cache_size present, assume shield active
-        const shield = json.checked_at ? true : systemHealth.shield;
-        setLiveHealth({ sse: !!sse, db: !!db, shield: !!shield });
-      } catch (e) {
+        const resp = await fetch('/api/ml/health')
+        const json = await resp.json()
+        if (!mounted) return
+        const sse = json.status && json.status === 'healthy'
+        const db = json.database ? json.database.connected === true : false
+        const shield = json.database ? !!json.database.timescaledb : systemHealth.shield
+        setLiveHealth({ sse: !!sse, db: !!db, shield: !!shield })
+      } catch {
         // keep previous
       }
-    };
-    fetchHealth();
-    const t = setInterval(fetchHealth, 10000);
+    }
+    fetchHealth()
+    const t = setInterval(fetchHealth, 10000)
     return () => {
-      mounted = false;
-      clearInterval(t);
-    };
-  }, []);
+      mounted = false
+      clearInterval(t)
+    }
+  }, [systemHealth.shield])
 
   // Suggestions logic (unchanged)
   const topStocks = ['BBCA', 'ASII', 'TLKM', 'GOTO', 'BMRI'];
@@ -168,6 +166,19 @@ export const Section0_CommandBar: React.FC<Section0Props> = ({
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  // Keyboard shortcut: Ctrl/Cmd+K opens the Screener
+  const router = useRouter();
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        router.push('/screener');
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [router]);
 
   return (
     <div className="sticky top-0 z-50 bg-gray-900/95 backdrop-blur-xl border-b border-gray-700/50 py-2">
@@ -274,6 +285,16 @@ export const Section0_CommandBar: React.FC<Section0Props> = ({
           <button className="p-1.5 hover:bg-gray-800/50 rounded-lg transition-colors text-gray-400 hover:text-white">
             <Settings className="w-4 h-4" />
           </button>
+
+          {/* Screener quick access */}
+          <Link href="/screener" className="ml-2 inline-flex items-center gap-2 px-2 py-1 hover:bg-gray-800/50 rounded text-sm font-medium text-gray-200">
+            <Filter className="w-4 h-4 text-cyan-400" />
+            <span className="hidden md:inline">Screener</span>
+            <span className="ml-2 text-[10px] text-gray-400">Ctrl+K</span>
+          </Link>
+
+          {/* Promotion UI link */}
+          <a href="/ml/promotion" className="ml-2 inline-block px-3 py-1 bg-cyan-600 hover:bg-cyan-500 rounded text-sm font-semibold text-white">Model Promotion</a>
 
           {/* Rate Limit */}
           <div className="flex items-center gap-2.5 min-w-max">

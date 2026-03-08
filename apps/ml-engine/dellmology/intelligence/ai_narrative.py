@@ -6,7 +6,12 @@ Generates human-readable analysis using LLMs
 import logging
 import os
 from typing import Dict
-import google.generativeai as genai
+try:
+    # Prefer the new package if available
+    import google.genai as genai_new  # type: ignore
+except Exception:
+    genai_new = None
+genai = None
 
 logger = logging.getLogger(__name__)
 
@@ -30,8 +35,6 @@ def generate_narrative(analysis_data: Dict, symbol: str = None) -> str:
         return ""  # silent failure
 
     # configure generative ai client
-    genai.configure(api_key=api_key)
-
     stats = analysis_data.get("stats", {})
     top = analysis_data.get("top_pick")
     results = analysis_data.get("results", [])
@@ -54,15 +57,121 @@ def generate_narrative(analysis_data: Dict, symbol: str = None) -> str:
     prompt = "\n".join(prompt_lines)
 
     try:
-        # call Gemini
-        response = genai.responses.create(
-            model="gemini-1.5-flash",
-            input=prompt,
-            max_output_tokens=300
-        )
-        # response may provide output_text or structured
-        text = getattr(response, 'output_text', None) or ''
+        # Prefer the new GenAI client API if available
+        if genai_new is not None:
+            client = genai_new.Client(api_key=api_key)  # type: ignore
+            response = client.responses.generate(model="gemini-1.5-flash", input=prompt, max_output_tokens=300)
+            # Attempt to extract text from response structure
+            try:
+                text = response.output[0].content[0].text
+            except Exception:
+                text = getattr(response, 'output_text', '') or ''
+        else:
+            # If a module-level `genai` (mock) was injected e.g., by tests, use it
+            if genai is not None:
+                try:
+                    genai.configure(api_key=api_key)
+                except Exception:
+                    pass
+                try:
+                    response = genai.responses.create(model="gemini-1.5-flash", input=prompt, max_output_tokens=300)
+                    text = getattr(response, 'output_text', None) or ''
+                except Exception:
+                    text = ''
+            else:
+                # Fallback to older package API. Import lazily and suppress the deprecation warning.
+                import warnings
+                with warnings.catch_warnings():
+                    warnings.filterwarnings("ignore", category=FutureWarning)
+                    import google.generativeai as genai_module  # type: ignore
+                genai_module.configure(api_key=api_key)
+                response = genai_module.responses.create(
+                    model="gemini-1.5-flash",
+                    input=prompt,
+                    max_output_tokens=300
+                )
+                # response may provide output_text or structured
+                text = getattr(response, 'output_text', None) or ''
         return text
     except Exception as exc:
         logger.error(f"Gemini API call failed: {exc}")
         return ""
+
+
+def generate_narrative_detailed(analysis_data: Dict, symbol: str = None) -> Dict:
+    """Generate a detailed narrative payload containing:
+    - primary: main (bullish) narrative text
+    - adversarial: bearish/adversarial narrative text
+    - confidence: heuristic confidence score (0.0-1.0)
+
+    This function preserves the original `generate_narrative` behavior and
+    attempts two LLM calls (primary + adversarial). If Gemini is not
+    configured, returns empty strings and zero confidence.
+    """
+    primary = generate_narrative(analysis_data, symbol=symbol)
+    api_key = os.environ.get("GEMINI_API_KEY")
+    adversarial = ""
+    confidence = 0.0
+
+    if not api_key:
+        # No key: return primary (maybe empty) and defaults
+        return {"primary": primary or "", "adversarial": "", "confidence": confidence}
+
+    # Build adversarial prompt based on analysis
+    stats = analysis_data.get("stats", {})
+    prompt_lines = [
+        "You are a skeptical market analyst. Provide a concise bearish case for the symbol",
+        f"Symbol: {symbol or 'N/A'}.",
+        "List 3 concrete reasons this primary analysis might be wrong (data issues, wash sales, spoofing, liquidity, news risks).",
+        "Keep the answer short (3-5 sentences) and finish with a single-line recommended risk mitigation.",
+    ]
+    if stats:
+        prompt_lines.append("\nStats Summary:")
+        for k, v in stats.items():
+            prompt_lines.append(f"- {k}: {v}")
+    adv_prompt = "\n".join(prompt_lines)
+
+    try:
+        # Prefer new client
+        if genai_new is not None:
+            client = genai_new.Client(api_key=api_key)  # type: ignore
+            response = client.responses.generate(model="gemini-1.5-flash", input=adv_prompt, max_output_tokens=220)
+            try:
+                adversarial = response.output[0].content[0].text
+            except Exception:
+                adversarial = getattr(response, 'output_text', '') or ''
+        else:
+            if genai is not None:
+                try:
+                    genai.configure(api_key=api_key)
+                except Exception:
+                    pass
+                try:
+                    response = genai.responses.create(model="gemini-1.5-flash", input=adv_prompt, max_output_tokens=220)
+                    adversarial = getattr(response, 'output_text', None) or ''
+                except Exception:
+                    adversarial = ''
+            else:
+                import warnings
+                with warnings.catch_warnings():
+                    warnings.filterwarnings("ignore", category=FutureWarning)
+                    import google.generativeai as genai_module  # type: ignore
+                genai_module.configure(api_key=api_key)
+                response = genai_module.responses.create(model="gemini-1.5-flash", input=adv_prompt, max_output_tokens=220)
+                adversarial = getattr(response, 'output_text', None) or ''
+    except Exception:
+        logger.exception('Adversarial Gemini call failed')
+        adversarial = ''
+
+    # Simple confidence heuristic: longer primary + short adversarial -> higher confidence
+    try:
+        p_len = len(primary or '')
+        a_len = len(adversarial or '')
+        if p_len <= 20:
+            confidence = 0.0
+        else:
+            confidence = max(0.0, min(1.0, (p_len - a_len) / max(1, p_len)))
+    except Exception:
+        confidence = 0.0
+
+    return {"primary": primary or "", "adversarial": adversarial or "", "confidence": round(confidence, 2)}

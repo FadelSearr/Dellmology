@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Activity, CheckCircle, AlertCircle, Clock, RefreshCw } from 'lucide-react'
+import { Activity, AlertCircle, RefreshCw } from 'lucide-react'
 
 interface SymbolStatus {
   status: 'success' | 'failed' | 'pending'
@@ -202,7 +202,7 @@ export default function RetrainStatusWidget() {
           </summary>
           <div className="space-y-1 pl-2">
             {Object.entries(status.symbol_status)
-              .filter(([_, s]) => s.status === 'failed')
+              .filter(([, s]) => s.status === 'failed')
               .map(([sym, s]) => (
                 <div key={sym} className="text-red-400 text-xs">
                   <strong>{sym}</strong>: {s.error || 'Unknown error'}

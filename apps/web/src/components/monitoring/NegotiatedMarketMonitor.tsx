@@ -30,17 +30,23 @@ export const NegotiatedMarketMonitor: React.FC = () => {
         const response = await fetch('http://localhost:8080/negotiated/latest');
         if (!response.ok) throw new Error('Failed to fetch negotiated trades');
         const data = await response.json();
-        setTrades((data.items || []).map((t: any) => ({
-          symbol: t.symbol,
-          price: t.price,
-          volume: t.volume,
-          tradeType: t.tradeType,
-          timestamp: t.timestamp,
-          buyer: t.buyer || '-',
-          seller: t.seller || '-',
-        })));
-      } catch (e: any) {
-        setError(e.message);
+        const items = Array.isArray(data?.items) ? data.items : []
+        setTrades(
+          items.map((t: unknown) => {
+            const r = t && typeof t === 'object' ? (t as Record<string, unknown>) : {};
+            return {
+              symbol: String(r.symbol ?? ''),
+              price: Number(r.price ?? 0),
+              volume: Number(r.volume ?? 0),
+              tradeType: String(r.tradeType ?? ''),
+              timestamp: String(r.timestamp ?? ''),
+              buyer: String(r.buyer ?? '-'),
+              seller: String(r.seller ?? '-'),
+            } as NegotiatedTrade;
+          })
+        );
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
       } finally {
         setLoading(false);
       }

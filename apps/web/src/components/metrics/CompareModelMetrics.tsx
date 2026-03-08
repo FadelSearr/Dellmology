@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { BarChart, ArrowRight, Zap } from 'lucide-react'
+import { BarChart } from 'lucide-react'
 
 interface Metric {
   id: number

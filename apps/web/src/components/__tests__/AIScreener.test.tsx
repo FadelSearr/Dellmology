@@ -1,12 +1,14 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import { AIScreener, filterByPrice } from '../intelligence/AIScreener';
 
+type SampleRow = { symbol: string; price: number };
+
 describe('AIScreener helper functions', () => {
   it('filterByPrice excludes results outside range', () => {
-    const sample = [
-      { symbol: 'A', price: 100 } as any,
-      { symbol: 'B', price: 500 } as any,
-      { symbol: 'C', price: 1000 } as any,
+    const sample: SampleRow[] = [
+      { symbol: 'A', price: 100 },
+      { symbol: 'B', price: 500 },
+      { symbol: 'C', price: 1000 },
     ];
     const filtered = filterByPrice(sample, { min: 200, max: 800 });
     expect(filtered.map((r) => r.symbol)).toEqual(['B']);

@@ -3,6 +3,7 @@ import { act, render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { OrderFlowHeatmap } from '../dashboard/OrderFlowHeatmap';
 
 // Mock fetch
+// Mock fetch
 global.fetch = jest.fn(() =>
   Promise.resolve({
     ok: true,
@@ -12,7 +13,7 @@ global.fetch = jest.fn(() =>
         marketDepth: null,
         anomalies: [],
       }),
-  } as any)
+  } as unknown as Response)
 ) as jest.Mock;
 
 describe('OrderFlowHeatmap Component', () => {

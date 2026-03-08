@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { AlertCircle, CheckCircle, AlertTriangle, TrendingUp, BarChart3 } from 'lucide-react';
+import { AlertCircle, CheckCircle, AlertTriangle, BarChart3 } from 'lucide-react';
 
 interface ValidationResult {
   timestamp: string;

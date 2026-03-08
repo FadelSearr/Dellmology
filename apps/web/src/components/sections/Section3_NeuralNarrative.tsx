@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Brain, Filter } from 'lucide-react';
+import { Brain } from 'lucide-react';
 import { Card } from '@/components/common/Card';
 import { AIScreener } from '@/components/intelligence/AIScreener';
 import { AINarrativeDisplay } from '@/components/intelligence/AINarrativeDisplay';
@@ -21,11 +21,7 @@ interface Section3Props {
  * - Retail sentiment divergence
  * - Multi-model voting system
  */
-export const Section3_NeuralNarrative: React.FC<Section3Props> = ({
-  symbol,
-  aiNarrative,
-  isLoading = false,
-}) => {
+export const Section3_NeuralNarrative: React.FC<Section3Props> = ({ symbol }) => {
   const [screenerMode, setScreenerMode] = useState<'DAYTRADE' | 'SWING' | 'CUSTOM'>('DAYTRADE');
   const [priceRange, setPriceRange] = useState({ min: 100, max: 10000 });
   const [sentimentData, setSentimentData] = useState<{
@@ -87,8 +83,8 @@ export const Section3_NeuralNarrative: React.FC<Section3Props> = ({
         <h2 className="text-2xl font-bold text-white">🧠 Neural Narrative Hub</h2>
       </div>
 
-      // Removed duplicate useEffect
-            {sentimentData.newsEvents && sentimentData.newsEvents.length > 0 && (
+      {/* Removed duplicate useEffect */}
+        {sentimentData.newsEvents && sentimentData.newsEvents.length > 0 && (
               <div className="mt-2">
                 <div className="text-xs font-bold text-cyan-300 mb-1">📰 News Impact Overlay</div>
                 <ul>

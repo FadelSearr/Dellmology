@@ -1,0 +1,22 @@
+name: Scheduled Retrain
+
+on:
+  schedule:
+    - cron: '0 10 * * 1' # Every Monday 10:00 UTC
+  workflow_dispatch: {}
+
+jobs:
+  trigger-retrain:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger retrain via API
+        env:
+          RETRAIN_URL: ${{ secrets.RETRAIN_API_URL }}
+          ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
+        run: |
+          if [ -z "$RETRAIN_URL" ] || [ -z "$ADMIN_TOKEN" ]; then
+            echo "RETRAIN_API_URL or ADMIN_TOKEN not set; skipping retrain."
+            exit 0
+          fi
+          echo "Triggering retrain at $RETRAIN_URL"
+          curl -s -X POST "$RETRAIN_URL/models/retrain?epochs=3" -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" -d '{}' || true

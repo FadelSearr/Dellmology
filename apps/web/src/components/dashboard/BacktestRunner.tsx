@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Calendar, Play, RefreshCcw } from 'lucide-react'
+import { Play, RefreshCcw } from 'lucide-react'
 
 interface BacktestInput {
   symbol: string

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { BarChart3, TrendingDown, AlertCircle } from 'lucide-react';
+import { BarChart3, AlertCircle } from 'lucide-react';
 import { Card } from '@/components/common/Card';
 import { StatusBadge } from '@/components/common/StatusBadge';
 import { BrokerFlowTable } from '@/components/tables/BrokerFlowTable';
@@ -27,13 +27,13 @@ export const Section2_BrokerFlow: React.FC<Section2Props> = ({
 }) => {
   const [filterType, setFilterType] = useState<'ALL' | 'SMART_MONEY' | 'WHALE' | 'RETAIL'>('ALL');
   const [timelineType, setTimelineType] = useState<'1D' | '7D' | '14D' | '21D'>('7D');
-  const [brokerData, setBrokerData] = useState<any[]>([]);
+  const [brokerData, setBrokerData] = useState<Record<string, unknown>[]>([]);
   const [brokerStats, setBrokerStats] = useState<{
     wash_sale_score?: number;
     avg_net_value?: number;
     std_deviation?: number;
   } | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  
 
   const daysForTimeline = (t: string) => {
     switch (t) {
@@ -48,20 +48,21 @@ export const Section2_BrokerFlow: React.FC<Section2Props> = ({
   // fetch broker flow whenever relevant params change
   useEffect(() => {
     const load = async () => {
-      setIsLoading(true);
+      
       try {
         const resp = await fetch(`/api/broker-flow?symbol=${encodeURIComponent(symbol)}&days=${daysForTimeline(timelineType)}&filter=${
           filterType === 'ALL' ? 'mix' : filterType.toLowerCase()
         }`);
         if (resp.ok) {
-          const json = await resp.json();
-          setBrokerData(json.brokers || []);
-          setBrokerStats(json.stats || null);
+          const json = (await resp.json()) as { brokers?: unknown[]; stats?: Record<string, unknown> | null } | null;
+          const brokersRaw = Array.isArray(json?.brokers) ? json!.brokers! : [];
+          const brokers = brokersRaw.map((b) => (typeof b === 'object' && b ? (b as Record<string, unknown>) : {}));
+          setBrokerData(brokers as Record<string, unknown>[]);
+          setBrokerStats(json?.stats ?? null);
         }
       } catch (err) {
         console.error('broker flow fetch error', err);
       } finally {
-        setIsLoading(false);
       }
     };
     if (symbol) load();
@@ -125,7 +126,24 @@ export const Section2_BrokerFlow: React.FC<Section2Props> = ({
 
       {/* Broker Flow Table */}
       <Card title="📊 Deep Broker Flow Analysis" subtitle="Net buy/sell values with consistency scores">
-        <BrokerFlowTable symbol={symbol} data={brokerData} filterType={filterType} />
+        <BrokerFlowTable
+          symbol={symbol}
+          data={brokerData.map((b) => {
+            const r = b || {} as Record<string, unknown>;
+            return {
+              broker_id: String(r.broker_id ?? r.id ?? ''),
+              net_buy_value: Number(r.net_buy_value ?? r.net_value ?? 0),
+              active_days: Number(r.active_days ?? r.days_active ?? 0),
+              consistency_score: Number(r.consistency_score ?? r.consistency ?? 0.7),
+              avg_buy_price: Number(r.avg_buy_price ?? r.avg_price ?? 0),
+              z_score: Number(r.z_score ?? 0),
+              is_whale: Boolean(r.is_whale ?? (String(r.type ?? '').toLowerCase() === 'whale')),
+              is_retail: Boolean(r.is_retail ?? false),
+              daily_heatmap: Array.isArray(r.daily_heatmap) ? (r.daily_heatmap as unknown[]).map((n) => Number(n ?? 0)) : undefined,
+            } as any;
+          })}
+          filterType={filterType}
+        />
       </Card>
 
       {/* Z-Score & Alerts */}

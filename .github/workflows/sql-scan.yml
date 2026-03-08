@@ -1,0 +1,26 @@
+name: SQL Scan
+
+on:
+  pull_request:
+  push:
+    branches: [ main, master ]
+
+jobs:
+  sql-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pytest
+
+      - name: Run SQL migration scanner
+        run: |
+          python scripts/scan_sql_migrations.py

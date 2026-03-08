@@ -5,21 +5,21 @@ type Props = { symbol: string }
 
 const ChartMain: React.FC<Props> = ({ symbol }) => {
   const ref = useRef<HTMLDivElement | null>(null)
-  const chartRef = useRef<any>(null)
+  const chartRef = useRef<ReturnType<typeof createChart> | null>(null)
   const seriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null)
 
   useEffect(() => {
     if (!ref.current) return
     chartRef.current = createChart(ref.current, { width: ref.current.clientWidth, height: 400, layout: { textColor: '#e5e7eb' } })
-    seriesRef.current = chartRef.current.addCandlestickSeries()
+    seriesRef.current = (chartRef.current as any).addCandlestickSeries()
 
     // initialize with placeholder data
     const now = Math.floor(Date.now() / 1000)
     seriesRef.current?.setData([
-      { time: (now - 60 * 60) as any, open: 100, high: 110, low: 95, close: 105 },
-      { time: (now - 30 * 60) as any, open: 105, high: 115, low: 100, close: 110 },
-      { time: now as any, open: 110, high: 120, low: 108, close: 115 },
-    ])
+      { time: now - 60 * 60, open: 100, high: 110, low: 95, close: 105 },
+      { time: now - 30 * 60, open: 105, high: 115, low: 100, close: 110 },
+      { time: now, open: 110, high: 120, low: 108, close: 115 },
+    ] as any)
 
     const handleResize = () => {
       if (!ref.current || !chartRef.current) return
@@ -32,7 +32,7 @@ const ChartMain: React.FC<Props> = ({ symbol }) => {
   useEffect(() => {
     // symbol change can trigger data fetch; for now, update title
     if (!chartRef.current) return
-    chartRef.current.applyOptions({ watermark: { text: symbol, color: 'rgba(255,255,255,0.08)', visible: true } })
+    ;(chartRef.current as any).applyOptions({ watermark: { text: symbol, color: 'rgba(255,255,255,0.08)', visible: true } })
   }, [symbol])
 
   return <div ref={ref} className="w-full h-96" />

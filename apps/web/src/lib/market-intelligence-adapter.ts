@@ -197,15 +197,18 @@ async function buildFromPrimaryTrades(symbol: string, window: string) {
   let hakaCount = 0;
   let hakiCount = 0;
 
-  tradesResult.rows.forEach((row: any) => {
-    if (row.trade_type === 'HAKA') {
-      hakaVolume = Number(row.total_volume || 0);
-      hakaCount = Number(row.count || 0);
-    } else if (row.trade_type === 'HAKI') {
-      hakiVolume = Number(row.total_volume || 0);
-      hakiCount = Number(row.count || 0);
+  tradesResult.rows.forEach((row: { trade_type?: string; count?: number | string; total_volume?: number | string }) => {
+    const type = String(row.trade_type || '').toUpperCase();
+    const count = Number(row.count || 0);
+    const totalVol = Number(row.total_volume || 0);
+    if (type === 'HAKA') {
+      hakaVolume = totalVol;
+      hakaCount = count;
+    } else if (type === 'HAKI') {
+      hakiVolume = totalVol;
+      hakiCount = count;
     } else {
-      normalVolume = Number(row.total_volume || 0);
+      normalVolume = totalVol;
     }
   });
 
@@ -272,7 +275,7 @@ async function buildFromFallbackDailyPrices(symbol: string) {
   const earliest = fallbackResult.rows[fallbackResult.rows.length - 1];
   const latestClose = Number(latest.close || 0);
   const earliestClose = Number(earliest.close || latestClose || 0);
-  const totalVolume = fallbackResult.rows.reduce((sum: number, row: any) => sum + Number(row.volume || 0), 0);
+  const totalVolume = fallbackResult.rows.reduce((sum: number, row: { volume?: number | string }) => sum + Number(row.volume || 0), 0);
   const avgVolume = fallbackResult.rows.length > 0 ? totalVolume / fallbackResult.rows.length : 0;
   const trendPct = earliestClose > 0 ? ((latestClose - earliestClose) / earliestClose) * 100 : 0;
 
@@ -281,8 +284,8 @@ async function buildFromFallbackDailyPrices(symbol: string) {
   const hakiVolume = avgVolume * (1 - bullishBias);
   const normalVolume = Math.max(0, avgVolume - hakaVolume - hakiVolume);
 
-  const highMax = Math.max(...fallbackResult.rows.map((row: any) => Number(row.high || 0)));
-  const lowMin = Math.min(...fallbackResult.rows.map((row: any) => Number(row.low || 0)));
+  const highMax = Math.max(...fallbackResult.rows.map((row: { high?: number | string }) => Number(row.high || 0)));
+  const lowMin = Math.min(...fallbackResult.rows.map((row: { low?: number | string }) => Number(row.low || 0)));
   const priceRange = Math.max(0, highMax - lowMin);
   const volatilityPct = latestClose > 0 ? (priceRange / latestClose) * 100 : 0;
 

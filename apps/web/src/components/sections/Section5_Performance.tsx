@@ -1,7 +1,7 @@
     'use client';
 
 import React, { useState } from 'react';
-import { BarChart2, TreePine, TrendingUp } from 'lucide-react';
+import { BarChart2, TreePine } from 'lucide-react';
 import { Card } from '@/components/common/Card';
 import { StatusBadge } from '@/components/common/StatusBadge';
 import BacktestRunner from '@/components/dashboard/BacktestRunner';

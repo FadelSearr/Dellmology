@@ -53,9 +53,10 @@ export function BrokerFlow() {
         } else {
           throw new Error(result.error || 'An unknown error occurred');
         }
-      } catch (e: any) {
-        setError(e.message);
-        console.error(e);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        setError(msg);
+        console.error(err);
       } finally {
         setLoading(false);
       }
@@ -78,8 +79,8 @@ export function BrokerFlow() {
         throw new Error(result.error || 'Failed to generate narrative.');
       }
       setNarrative(result.narrative);
-    } catch (e: any) {
-      setNarrativeError(e.message);
+    } catch (err: unknown) {
+      setNarrativeError(err instanceof Error ? err.message : String(err));
     } finally {
       setIsNarrativeLoading(false);
     }

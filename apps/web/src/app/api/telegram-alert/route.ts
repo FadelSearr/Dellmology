@@ -5,7 +5,7 @@ import { buildImmutableAuditLockPayload } from '@/lib/security/lockPayloads';
 interface AlertPayload {
   type: 'trading' | 'market' | 'broker' | 'wash_sale' | 'screener' | 'backtest';
   symbol: string;
-  data: Record<string, any>;
+  data: Record<string, unknown>;
 }
 
 /**

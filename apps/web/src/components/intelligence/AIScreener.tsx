@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Zap, TrendingUp, AlertCircle, Loader } from 'lucide-react';
+import { Zap, Loader } from 'lucide-react';
 
 type ScreenerMode = 'DAYTRADE' | 'SWING' | 'CUSTOM';
 
@@ -16,8 +16,8 @@ interface ScreenerResult {
   recommendation: string;
 }
 
-export const filterByPrice = (
-  results: ScreenerResult[],
+export const filterByPrice = <T extends { price: number }>(
+  results: T[],
   range: { min: number; max: number }
 ) => {
   return results.filter((r) => r.price >= range.min && r.price <= range.max);
@@ -46,7 +46,7 @@ export const AIScreener = ({
     if (customPriceRange) {
       setPriceRange(customPriceRange);
     }
-  }, [customPriceRange?.min, customPriceRange?.max]);
+  }, [customPriceRange]);
 
   useEffect(() => {
     const runScreener = async () => {
@@ -86,26 +86,32 @@ export const AIScreener = ({
         const payload = await response.json();
         const mappedResults: ScreenerResult[] =
           selectedMode === 'CUSTOM'
-            ? (payload?.data || []).map((item: any) => ({
-                symbol: String(item.symbol || ''),
-                signal_score: Number(item.score || 0),
-                haka_ratio: 0,
-                volatility: Math.abs(Number(item.change_pct || 0)),
-                consistency: Number(item.total_net_accumulation || 0) > 0 ? 65 : 35,
-                price: Number(item.last_price || 0),
-                reason: String(item.status || 'Custom range candidate'),
-                recommendation: Number(item.total_net_accumulation || 0) > 0 ? 'WATCH BUY' : 'WAIT',
-              }))
-            : (payload?.results || []).map((item: any) => ({
-                symbol: String(item.symbol || ''),
-                signal_score: Number(item.score || 0),
-                haka_ratio: Number(item.haka_ratio || 0) * 100,
-                volatility: Number(item.volatility_percent || 0),
-                consistency: Number(item.flow_score || 0),
-                price: Number(item.current_price || 0),
-                reason: String(item.reason || 'No reason provided'),
-                recommendation: String(item.recommendation || 'HOLD'),
-              }));
+            ? (payload?.data || []).map((item: unknown) => {
+                const it = item as Record<string, unknown>;
+                return {
+                  symbol: String(it.symbol ?? ''),
+                  signal_score: Number(it.score ?? 0),
+                  haka_ratio: 0,
+                  volatility: Math.abs(Number(it.change_pct ?? 0)),
+                  consistency: Number(it.total_net_accumulation ?? 0) > 0 ? 65 : 35,
+                  price: Number(it.last_price ?? 0),
+                  reason: String(it.status ?? 'Custom range candidate'),
+                  recommendation: Number(it.total_net_accumulation ?? 0) > 0 ? 'WATCH BUY' : 'WAIT',
+                } as ScreenerResult;
+              })
+            : (payload?.results || []).map((item: unknown) => {
+                const it = item as Record<string, unknown>;
+                return {
+                  symbol: String(it.symbol ?? ''),
+                  signal_score: Number(it.score ?? 0),
+                  haka_ratio: Number(it.haka_ratio ?? 0) * 100,
+                  volatility: Number(it.volatility_percent ?? 0),
+                  consistency: Number(it.flow_score ?? 0),
+                  price: Number(it.current_price ?? 0),
+                  reason: String(it.reason ?? 'No reason provided'),
+                  recommendation: String(it.recommendation ?? 'HOLD'),
+                } as ScreenerResult;
+              });
 
         // apply price range filter before sorting
         const filteredByPrice = filterByPrice(mappedResults, priceRange);
@@ -123,7 +129,7 @@ export const AIScreener = ({
     };
 
     runScreener();
-  }, [selectedMode, priceRange.min, priceRange.max]);
+  }, [selectedMode, priceRange]);
 
   return (
     <div className="space-y-4">

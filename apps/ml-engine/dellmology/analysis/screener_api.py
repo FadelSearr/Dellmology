@@ -1,3 +1,39 @@
+from fastapi import APIRouter, Query
+from typing import List, Dict
+from datetime import datetime
+
+router = APIRouter(prefix="/market", tags=["market"])
+
+
+@router.get('/screener')
+async def screener(mode: str = Query('swing', regex='^(swing|daytrade|custom)$'), limit: int = 25):
+    """Mock screener endpoint returning sample symbols and scores.
+
+    This endpoint is intentionally simple and returns deterministic sample data
+    so the frontend can render the Screener UI while the real engine is integrated.
+    """
+    now = datetime.utcnow().isoformat() + 'Z'
+    base = [
+        {'symbol': 'BBCA', 'score': 92.3, 'z_score': 2.4, 'volume': 120000, 'last_price': 8800},
+        {'symbol': 'ASII', 'score': 78.1, 'z_score': -0.5, 'volume': 45000, 'last_price': 6200},
+        {'symbol': 'TLKM', 'score': 81.5, 'z_score': 1.2, 'volume': 98000, 'last_price': 3300},
+        {'symbol': 'GOTO', 'score': 65.2, 'z_score': 0.4, 'volume': 210000, 'last_price': 230},
+        {'symbol': 'BMRI', 'score': 87.0, 'z_score': 1.9, 'volume': 76000, 'last_price': 6600},
+    ]
+
+    # simple mode adjustments
+    if mode == 'daytrade':
+        for x in base:
+            x['score'] = round(x['score'] * 0.9, 2)
+    if mode == 'custom':
+        # return same but limited
+        base = base[:min(limit, len(base))]
+
+    return {
+        'mode': mode,
+        'generated_at': now,
+        'results': base[:limit]
+    }
 """
 Advanced Screener API Module
 Provides REST endpoints for the Dellmology advanced stock screener
@@ -210,7 +246,7 @@ async def run_screening(request: ScreeningRequest, _=Depends(rate_limit_dep)):
                 ai_text = generate_narrative({
                     "stats": stats,
                     "top_pick": response_results[0] if response_results else None,
-                    "results": [r.dict() for r in response_results],
+                    "results": [r.model_dump() for r in response_results],
                 }, symbol=response_results[0].symbol if response_results else None)
             except Exception as ex:
                 logger.warning(f"AI narrative generation failed: {ex}")
@@ -249,7 +285,7 @@ async def run_screening(request: ScreeningRequest, _=Depends(rate_limit_dep)):
             ai_narrative=ai_text,
         )
 
-        cache_set(cache_key, final_resp.dict(), ttl=30)
+        cache_set(cache_key, final_resp.model_dump(), ttl=30)
         return final_resp
     except Exception as e:
         logger.error(f"Error during screening: {e}")

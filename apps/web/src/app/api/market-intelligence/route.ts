@@ -43,7 +43,18 @@ export async function GET(request: Request) {
       );
     }
 
+    interface MarketMetrics {
+      haka_ratio?: number;
+      haki_ratio?: number;
+      pressure_index?: number;
+      haka_count?: number;
+      haki_count?: number;
+      total_volume?: number;
+      last_price?: number;
+    }
+
     const { metrics, volatility, upsScore, signal } = payload;
+    const metricsSafe = (metrics || {}) as MarketMetrics;
 
     return NextResponse.json({
       symbol,
@@ -54,10 +65,11 @@ export async function GET(request: Request) {
         score: Math.round(upsScore),
         signal,
         components: {
-          haka_strength: Math.min((metrics.haka_ratio / 50) * 40, 40),
-          volume_momentum: Math.min((metrics.total_volume / 10000) * 30, 30),
-          price_strength: Math.min(Math.abs(metrics.pressure_index) / 2.5, 20),
-          consistency: (metrics.haka_count / (metrics.haka_count + metrics.haki_count || 1)) * 10,
+          haka_strength: Math.min(((metricsSafe.haka_ratio || 0) / 50) * 40, 40),
+          volume_momentum: Math.min(((metricsSafe.total_volume || 0) / 10000) * 30, 30),
+          price_strength: Math.min(Math.abs(metricsSafe.pressure_index || 0) / 2.5, 20),
+          consistency:
+            (Number(metricsSafe.haka_count || 0) / ((Number(metricsSafe.haka_count || 0) + Number(metricsSafe.haki_count || 0)) || 1)) * 10,
         }
       },
       data_source: dataSource,

@@ -8,7 +8,13 @@ import { StatusBadge } from '@/components/common/StatusBadge';
 
 interface Section4Props {
   symbol: string;
-  trades?: any[];
+  trades?: Array<{
+    symbol?: string;
+    price?: number;
+    volume?: number;
+    time?: number | string;
+    [key: string]: unknown;
+  }>;
   unrealizedPnL?: number;
   maxLot?: number;
   stopLossPercent?: number;
@@ -31,7 +37,6 @@ export const Section4_RiskDock: React.FC<Section4Props> = ({
   volatilityLevel = 'HIGH',
 }) => {
   const atrValue = 145.5;
-  const accountRisk = 5000000; // 5M IDR
 
   // Example beta value, in real use this should come from props or context
   const portfolioBeta = 1.62;
@@ -69,7 +74,7 @@ export const Section4_RiskDock: React.FC<Section4Props> = ({
                 <span className="text-gray-400 font-semibold">Recommended:</span>
                 <span className="text-2xl font-bold text-green-400">{maxLot}</span>
               </div>
-              <p className="text-xs text-gray-400">Max lot @ 2.5% stop loss</p>
+              <p className="text-xs text-gray-400">Max lot @ {stopLossPercent}% stop loss</p>
             </div>
 
             <button className="w-full mt-4 px-4 py-2 bg-cyan-600 hover:bg-cyan-500 rounded-lg text-white text-sm font-semibold transition-colors">
@@ -135,7 +140,17 @@ export const Section4_RiskDock: React.FC<Section4Props> = ({
 
       {/* Real-time Trades Feed */}
       <Card title="📈 Real-time Trades" subtitle={`Live trades for ${symbol}`}>
-        <RealtimeTrades trades={trades.filter((t) => t.symbol === symbol)} />
+        <RealtimeTrades
+          trades={trades
+            .filter((t) => String(t.symbol) === symbol)
+            .map((t) => ({
+              symbol: String(t.symbol ?? ''),
+              price: Number(t.price ?? 0),
+              volume: Number(t.volume ?? 0),
+              trade_type: (String((t as any).trade_type ?? (t as any).type ?? '') as 'HAKA' | 'HAKI' | 'NORMAL') || 'NORMAL',
+              timestamp: typeof t.time === 'number' ? new Date(t.time).toISOString() : String(t.time ?? new Date().toISOString()),
+            }))}
+        />
       </Card>
     </div>
   );

@@ -1,13 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import {
-  TrendingUp,
-  TrendingDown,
-  Zap,
-  Target,
-  AlertCircle,
-} from 'lucide-react';
+import { useEffect, useState, useCallback } from 'react';
+import { AlertCircle } from 'lucide-react';
 
 interface StockScore {
   symbol: string;
@@ -75,7 +69,7 @@ export const AdvancedScreener = () => {
   const [minScore, setMinScore] = useState(60);
   const [error, setError] = useState<string | null>(null);
 
-  const runScreening = async () => {
+  const runScreening = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -117,12 +111,12 @@ export const AdvancedScreener = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [mode, minScore]);
 
   // Auto-run screening on mode change
   useEffect(() => {
     runScreening();
-  }, [mode]);
+  }, [runScreening]);
 
   return (
     <div className="w-full space-y-6 bg-gray-800/50 border border-gray-700 rounded-lg p-6">

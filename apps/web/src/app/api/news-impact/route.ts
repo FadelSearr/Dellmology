@@ -100,7 +100,10 @@ export async function GET(request: Request) {
     const googleTitles = extractTitles(googleRss, 'google');
     const redditTitles = extractTitles(redditRss, 'reddit');
     const stocktwitsTitles = Array.isArray(stocktwitsPayload?.messages)
-      ? stocktwitsPayload.messages.slice(0, 15).map((msg: any) => String(msg?.body || '').toLowerCase()).filter((v: string) => v.length > 0)
+      ? stocktwitsPayload.messages.slice(0, 15).map((msg: unknown) => {
+          const m = msg as Record<string, unknown>;
+          return String(m?.body ?? '').toLowerCase();
+        }).filter((v: string) => v.length > 0)
       : [];
 
     const titles = [...googleTitles, ...redditTitles, ...stocktwitsTitles].slice(0, 40);

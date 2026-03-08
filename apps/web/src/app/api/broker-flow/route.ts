@@ -149,19 +149,39 @@ export async function GET(request: Request) {
 
     const result = await db.query(query, [symbol, `${days} days`]);
 
-    const brokers = result.rows.map((row: any) => ({
-      broker_id: row.broker_id,
-      net_buy_value: row.total_net_buy,
-      active_days: row.active_days,
-      consistency_score: (row.active_days / days) * 100,
-      avg_buy_price: row.avg_buy_price,
-      daily_heatmap: row.daily_data,
-      character_profile: classifyBrokerCharacter(row.daily_data || [], Number(row.active_days || 0)),
-      whale_cluster: classifyWhaleCluster(row.daily_data || []),
-      behavior_correlation: calculateBehaviorCorrelation(row.daily_data || []),
-      is_whale: Math.abs(row.total_net_buy) > 5000000000, // > 5T IDR
-      is_retail: Math.abs(row.total_net_buy) < 500000000, // < 500M IDR
-    }));
+    interface RawRow {
+      broker_id?: string | null;
+      total_net_buy?: number | string | null;
+      active_days?: number | string | null;
+      avg_buy_price?: number | string | null;
+      daily_data?: unknown;
+    }
+
+    const rows = (result.rows as RawRow[]) || [];
+    const brokers = rows.map((row) => {
+      const broker_id = String(row.broker_id ?? '');
+      const total_net_buy = Number(row.total_net_buy ?? 0);
+      const active_days = Number(row.active_days ?? 0);
+      const avg_buy_price = Number(row.avg_buy_price ?? 0);
+      const daily_data_raw = row.daily_data;
+      const daily_data: number[] = Array.isArray(daily_data_raw)
+        ? (daily_data_raw as unknown[]).map((v) => Number(v || 0))
+        : [];
+
+      return {
+        broker_id,
+        net_buy_value: total_net_buy,
+        active_days,
+        consistency_score: (active_days / days) * 100,
+        avg_buy_price,
+        daily_heatmap: daily_data,
+        character_profile: classifyBrokerCharacter(daily_data || [], active_days),
+        whale_cluster: classifyWhaleCluster(daily_data || []),
+        behavior_correlation: calculateBehaviorCorrelation(daily_data || []),
+        is_whale: Math.abs(total_net_buy) > 5000000000, // > 5T IDR
+        is_retail: Math.abs(total_net_buy) < 500000000, // < 500M IDR
+      };
+    });
 
     let mean = 0;
     let stdDev = 0;
@@ -174,31 +194,33 @@ export async function GET(request: Request) {
       );
     }
 
-    const brokersWithZScore = brokers.map((b: any) => ({
+    const brokersWithZScore = brokers.map((b) => ({
       ...b,
       z_score: stdDev === 0 ? 0 : (b.net_buy_value - mean) / stdDev,
-      is_anomalous: stdDev === 0 ? false : Math.abs((b.net_buy_value - mean) / stdDev) > 2
+      is_anomalous: stdDev === 0 ? false : Math.abs((b.net_buy_value - mean) / stdDev) > 2,
     }));
 
-    const bcpRiskCount = brokersWithZScore.filter((broker: any) => ['ONE_DAY_TRADER', 'CONSISTENT_DISTRIBUTOR'].includes(String(broker.character_profile))).length;
+    const bcpRiskCount = brokersWithZScore.filter((broker) =>
+      ['ONE_DAY_TRADER', 'CONSISTENT_DISTRIBUTOR'].includes(String(broker.character_profile))
+    ).length;
     const bcpRiskWarning = bcpRiskCount >= Math.max(2, Math.ceil(brokersWithZScore.length * 0.25));
     const dominantRiskProfile = bcpRiskWarning
       ? brokersWithZScore
-          .filter((broker: any) => ['ONE_DAY_TRADER', 'CONSISTENT_DISTRIBUTOR'].includes(String(broker.character_profile)))
+          .filter((broker) => ['ONE_DAY_TRADER', 'CONSISTENT_DISTRIBUTOR'].includes(String(broker.character_profile)))
           .slice(0, 3)
-          .map((broker: any) => `${broker.broker_id}:${broker.character_profile}`)
+          .map((broker) => `${broker.broker_id}:${broker.character_profile}`)
           .join(', ')
       : null;
 
     const netBuyers = brokersWithZScore
-      .filter((broker: any) => Number(broker.net_buy_value || 0) > 0)
-      .sort((a: any, b: any) => Number(b.net_buy_value || 0) - Number(a.net_buy_value || 0));
-    const netSellers = brokersWithZScore.filter((broker: any) => Number(broker.net_buy_value || 0) < 0);
+      .filter((broker) => Number(broker.net_buy_value || 0) > 0)
+      .sort((a, b) => Number(b.net_buy_value || 0) - Number(a.net_buy_value || 0));
+    const netSellers = brokersWithZScore.filter((broker) => Number(broker.net_buy_value || 0) < 0);
 
-    const totalPositiveNet = netBuyers.reduce((sum: number, broker: any) => sum + Number(broker.net_buy_value || 0), 0);
+    const totalPositiveNet = netBuyers.reduce((sum: number, broker) => sum + Number(broker.net_buy_value || 0), 0);
     const topBuyerNet = Number(netBuyers[0]?.net_buy_value || 0);
     const topBuyerSharePct = totalPositiveNet > 0 ? (topBuyerNet / totalPositiveNet) * 100 : 0;
-    const supportingBuyers = netBuyers.filter((broker: any) => Number(broker.net_buy_value || 0) >= topBuyerNet * 0.25).length;
+    const supportingBuyers = netBuyers.filter((broker) => Number(broker.net_buy_value || 0) >= topBuyerNet * 0.25).length;
     const concentrationRatio = netBuyers.length > 0 ? supportingBuyers / netBuyers.length : 0;
 
     const artificialLiquidityWarning =
@@ -222,7 +244,6 @@ export async function GET(request: Request) {
 
     // Detect wash sales
     const totalVolume = result.rows.length;
-    const avgNetValue = Math.abs(mean);
     // use brokers list for accumulation to avoid reference errors
     const totalAccumulation = Math.abs(
       brokers.reduce((acc, b) => acc + (b.net_buy_value || 0), 0)

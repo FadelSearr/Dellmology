@@ -12,6 +12,14 @@ interface AlertConfig {
   backtest_reports: boolean;
 }
 
+interface AlertRecord {
+  id?: string | number;
+  type: string;
+  symbol?: string;
+  success?: boolean;
+  timestamp?: string | number;
+}
+
 const TelegramSettings: React.FC = () => {
   const [isConfigured, setIsConfigured] = useState(false);
   const [alertConfig, setAlertConfig] = useState<AlertConfig>({
@@ -23,7 +31,7 @@ const TelegramSettings: React.FC = () => {
     backtest_reports: false,
   });
   const [loading, setLoading] = useState(false);
-  const [alertHistory, setAlertHistory] = useState<any[]>([]);
+  const [alertHistory, setAlertHistory] = useState<AlertRecord[]>([]);
   const [successCount, setSuccessCount] = useState(0);
   const [copied, setCopied] = useState(false);
   const [saveMessage, setSaveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -38,8 +46,8 @@ const TelegramSettings: React.FC = () => {
     try {
       const response = await fetch('/api/telegram-alert');
       if (response.ok) {
-        const data = await response.json();
-        setIsConfigured(data.alerts?.length > 0 || false);
+        const data = (await response.json()) as { alerts?: AlertRecord[] };
+        setIsConfigured((data.alerts && data.alerts.length > 0) || false);
       }
     } catch (error) {
       console.error('Error checking Telegram config:', error);
@@ -50,9 +58,10 @@ const TelegramSettings: React.FC = () => {
     try {
       const response = await fetch('/api/telegram-alert?limit=10');
       if (response.ok) {
-        const data = await response.json();
-        setAlertHistory(data.alerts || []);
-        setSuccessCount(data.alerts?.filter((a: any) => a.success).length || 0);
+        const data = (await response.json()) as { alerts?: AlertRecord[] };
+        const alerts = data.alerts || [];
+        setAlertHistory(alerts);
+        setSuccessCount(alerts.filter((a) => !!a.success).length || 0);
       }
     } catch (error) {
       console.error('Error fetching alert history:', error);
@@ -192,7 +201,7 @@ const TelegramSettings: React.FC = () => {
         <div className="space-y-3">
           <h3 className="text-lg font-semibold text-slate-100">Recent Alerts</h3>
           <div className="max-h-64 overflow-y-auto space-y-2">
-            {alertHistory.slice().reverse().map((alert, idx) => (
+            {alertHistory.slice().reverse().map((alert: AlertRecord, idx: number) => (
               <div
                 key={idx}
                 className={`p-3 rounded text-sm ${
@@ -205,7 +214,7 @@ const TelegramSettings: React.FC = () => {
                   {alert.type.toUpperCase()} - {alert.symbol}
                 </div>
                 <div className="text-xs opacity-75 mt-1">
-                  {new Date(alert.timestamp).toLocaleTimeString()}
+                    {alert.timestamp ? new Date(alert.timestamp).toLocaleTimeString() : ''}
                 </div>
               </div>
             ))}

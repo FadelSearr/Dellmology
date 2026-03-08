@@ -100,9 +100,7 @@ export function OrderFlowHeatmap({
     );
   }
 
-  const minPrice = Math.min(...data.map(d => d.price));
-  const maxPrice = Math.max(...data.map(d => d.price));
-  const priceRange = maxPrice - minPrice;
+  // price bounds computed but not currently used in UI
 
   const HeatmapCell = ({ bin }: { bin: HeatmapBin }) => {
     const intensity = bin.intensity || 0;

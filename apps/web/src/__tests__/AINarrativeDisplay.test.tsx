@@ -8,7 +8,10 @@ beforeAll(() => {
 });
 
 afterAll(() => {
-  (global.fetch as jest.Mock).mockRestore && (global.fetch as jest.Mock).mockRestore();
+  const mock = (global.fetch as jest.Mock);
+  if (mock && typeof mock.mockRestore === 'function') {
+    mock.mockRestore();
+  }
 });
 
 describe('AINarrativeDisplay', () => {

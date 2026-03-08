@@ -3,7 +3,7 @@
 
 -- Results table: Stores validation check results for each data point
 CREATE TABLE IF NOT EXISTS data_validation_results (
-    id BIGSERIAL PRIMARY KEY,
+    id BIGSERIAL,
     timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     symbol VARCHAR(10) NOT NULL,
     is_valid BOOLEAN NOT NULL DEFAULT true,
@@ -11,13 +11,33 @@ CREATE TABLE IF NOT EXISTS data_validation_results (
     issues TEXT, -- Semicolon-separated list of issues found
     recommendations TEXT, -- Semicolon-separated list of recommendations
     validation_score FLOAT8 NOT NULL DEFAULT 100.0, -- 0-100, higher is better
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (id, timestamp)
 );
 
--- Create hypertable for time-series optimization
-SELECT create_hypertable('data_validation_results', 'timestamp', if_not_exists => TRUE);
+-- Ensure primary key includes partitioning column for data_validation_results
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_class WHERE relname = 'data_validation_results') THEN
+        IF NOT EXISTS (
+            SELECT 1 FROM pg_index i
+            JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
+            WHERE i.indrelid = 'data_validation_results'::regclass
+              AND i.indisprimary
+              AND a.attname = 'timestamp'
+        ) THEN
+            ALTER TABLE data_validation_results DROP CONSTRAINT IF EXISTS data_validation_results_pkey;
+            ALTER TABLE data_validation_results ADD PRIMARY KEY (id, timestamp);
+        END IF;
+    END IF;
+END$$;
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'timescaledb') THEN
+        PERFORM create_hypertable('data_validation_results', 'timestamp', if_not_exists => TRUE);
+    END IF;
+END$$;
 
--- Create index for fast symbol + timestamp queries
 CREATE INDEX IF NOT EXISTS idx_validation_results_symbol_timestamp 
     ON data_validation_results (symbol, timestamp DESC);
 
@@ -26,7 +46,7 @@ CREATE INDEX IF NOT EXISTS idx_validation_results_severity
 
 -- Statistics table: Aggregated validation statistics per symbol
 CREATE TABLE IF NOT EXISTS data_validation_statistics (
-    id BIGSERIAL PRIMARY KEY,
+    id BIGSERIAL,
     timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     symbol VARCHAR(10) NOT NULL,
     min_price FLOAT8,
@@ -42,11 +62,33 @@ CREATE TABLE IF NOT EXISTS data_validation_statistics (
     gap_violation_count BIGINT NOT NULL DEFAULT 0, -- Count of gaps >5 seconds
     poisoning_indicators BIGINT NOT NULL DEFAULT 0, -- Count of poisoning detections
     validation_score FLOAT8 NOT NULL DEFAULT 100.0,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (id, timestamp)
 );
 
 -- Create hypertable for time-series optimization
-SELECT create_hypertable('data_validation_statistics', 'timestamp', if_not_exists => TRUE);
+-- Ensure primary key includes partitioning column for data_validation_statistics
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_class WHERE relname = 'data_validation_statistics') THEN
+        IF NOT EXISTS (
+            SELECT 1 FROM pg_index i
+            JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
+            WHERE i.indrelid = 'data_validation_statistics'::regclass
+              AND i.indisprimary
+              AND a.attname = 'timestamp'
+        ) THEN
+            ALTER TABLE data_validation_statistics DROP CONSTRAINT IF EXISTS data_validation_statistics_pkey;
+            ALTER TABLE data_validation_statistics ADD PRIMARY KEY (id, timestamp);
+        END IF;
+    END IF;
+END$$;
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'timescaledb') THEN
+        PERFORM create_hypertable('data_validation_statistics', 'timestamp', if_not_exists => TRUE);
+    END IF;
+END$$;
 
 -- Create index for fast lookups
 CREATE INDEX IF NOT EXISTS idx_validation_statistics_symbol_timestamp 
