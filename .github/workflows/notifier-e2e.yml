@@ -7,6 +7,9 @@ on:
         description: 'Run the notifier E2E test (mock server)'
         required: false
         default: 'true'
+  schedule:
+    # Daily at 02:00 UTC
+    - cron: '0 2 * * *'
 
 jobs:
   notifier-e2e:
@@ -24,6 +27,11 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r apps/ml-engine/requirements.txt
+
+      - name: Run unit tests (TelegramService)
+        run: |
+          python -m pytest -q apps/ml-engine/tests/test_telegram_service.py -q
+        timeout-minutes: 5
 
       - name: Run notifier E2E (mock Telegram)
         run: |
