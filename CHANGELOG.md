@@ -1,3 +1,22 @@
+# Changelog
+
+## Unreleased (2026-03-09)
+
+### Added
+- Telegram UPS-based notifier with UPS tailing and mock E2E harness.
+- `TelegramService` unit test and `notifier_e2e.py` (mock server).
+- `apps/ml-engine/NOTIFIER_RUN.md` — run & debug guide for notifier locally and CI.
+
+### Changed
+- Hardened DB migrations runner (`apps/ml-engine/scripts/run_migrations.py`) to handle TimescaleDB and Supabase-specific migrations more gracefully.
+- CI: `migrations-smoke` and `notifier-e2e` workflows updated with diagnostics, artifact uploads, scheduled runs, and push triggers for `release/**` and `ci/**`.
+- Notifier debug logging to `apps/ml-engine/logs/notifier_debug.log` for E2E troubleshooting.
+
+### Fixed
+- Scheduler start/stop race conditions and added scheduler tests.
+
+### Notes
+- See `RELEASE_DRAFT.md` for the full release draft and review checklist.
 # 📝 Implementation Changelog - Phase 1+
 
 ## Session: [March 1, 2026 - Phase 5 Enhancements]
