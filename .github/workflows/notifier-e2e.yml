@@ -40,7 +40,9 @@ jobs:
 
       - name: Upload CI health check artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        run: |
+          echo "Listing ci_health_check.log:" && ls -la ci_health_check.log || true
+        uses: actions/upload-artifact@v3
         with:
           name: ci_health_check
           path: ci_health_check.log
@@ -94,7 +96,11 @@ jobs:
 
       - name: Upload notifier artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        run: |
+          echo "Artifacts listing:" && ls -la artifacts || true
+          echo "Logs listing:" && ls -la apps/ml-engine/logs || true
+          echo "Other files:" && ls -la ci_health_check.log ci_debug.txt || true
+        uses: actions/upload-artifact@v3
         with:
           name: notifier-e2e-artifacts
           path: |

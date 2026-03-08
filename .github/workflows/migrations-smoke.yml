@@ -56,7 +56,9 @@ jobs:
           tar -czf workspace.tar.gz . || true
 
       - name: Upload workspace tarball
-        uses: actions/upload-artifact@v4
+        run: |
+          echo "workspace.tar.gz exists:" && ls -la workspace.tar.gz || true
+        uses: actions/upload-artifact@v3
         with:
           name: workspace.tar.gz
           path: workspace.tar.gz
@@ -139,27 +141,35 @@ jobs:
 
       - name: Upload RLS smoke log
         if: always()
-        uses: actions/upload-artifact@v4
+        run: |
+          echo "rls_smoke.log listing:" && ls -la rls_smoke.log || true
+        uses: actions/upload-artifact@v3
         with:
           name: rls_smoke.log
           path: rls_smoke.log
 
       - name: Upload docker logs
         if: always()
-        uses: actions/upload-artifact@v4
+        run: |
+          echo "docker_logs.tar.gz listing:" && ls -la docker_logs.tar.gz || true
+        uses: actions/upload-artifact@v3
         with:
           name: docker_logs
           path: docker_logs.tar.gz
 
       - name: Upload CI debug marker
         if: always()
-        uses: actions/upload-artifact@v4
+        run: |
+          echo "ci_debug.txt listing:" && ls -la ci_debug.txt || true
+        uses: actions/upload-artifact@v3
         with:
           name: ci_debug
           path: ci_debug.txt
 
       - name: Upload migrations log
-        uses: actions/upload-artifact@v4
+        run: |
+          echo "run_migrations.log listing:" && ls -la run_migrations.log || true
+        uses: actions/upload-artifact@v3
         with:
           name: run_migrations.log
           path: run_migrations.log
@@ -194,7 +204,9 @@ PY
           fi
 
       - name: Upload smoke insert log
-        uses: actions/upload-artifact@v4
+        run: |
+          echo "smoke_insert.log listing:" && ls -la smoke_insert.log || true
+        uses: actions/upload-artifact@v3
         with:
           name: smoke_insert.log
           path: smoke_insert.log
