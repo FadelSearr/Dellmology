@@ -70,6 +70,18 @@ jobs:
           echo "TimescaleDB logs (last 200 lines):" && docker logs --tail 200 idx_test_timescaledb || true
           echo "pg_isready check:" && docker exec idx_test_timescaledb pg_isready -U admin -d dellmology || true
 
+      - name: Collect Docker container logs
+        if: always()
+        run: |
+          mkdir -p docker_logs
+          # Collect logs from known containers; tolerate missing containers
+          for c in $(docker ps -aq); do
+            name=$(docker inspect --format='{{.Name}}' $c 2>/dev/null | sed 's#/##') || name=$c
+            docker logs --tail 500 $c > docker_logs/${name:-container}_${c}.log 2>&1 || true
+          done
+          tar -czf docker_logs.tar.gz docker_logs || true
+
+
       - name: Wait for Postgres to be ready
         run: |
           for i in $(seq 1 30); do
@@ -111,6 +123,13 @@ jobs:
         with:
           name: rls_smoke.log
           path: rls_smoke.log
+
+      - name: Upload docker logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker_logs
+          path: docker_logs.tar.gz
 
       - name: Upload migrations log
         uses: actions/upload-artifact@v4
