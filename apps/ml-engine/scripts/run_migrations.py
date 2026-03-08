@@ -124,8 +124,46 @@ if __name__ == '__main__':
         with engine.connect() as conn:
             conn.execute(text('SELECT 1'))
     except Exception as e:
-        print('Database init failed:', e)
-        sys.exit(3)
+        # If the target database doesn't exist, attempt to create it by
+        # connecting to the server 'postgres' database and issuing CREATE DATABASE.
+        msg = str(e)
+        if 'does not exist' in msg or 'database "' in msg:
+            try:
+                from sqlalchemy.engine.url import make_url
+                url = make_url(db_url)
+                target_db = url.database
+                url = url.set(database='postgres')
+                print(f"Attempting to create missing database '{target_db}' by connecting to 'postgres' database")
+                bootstrap_engine = create_engine(str(url))
+                try:
+                    raw = bootstrap_engine.raw_connection()
+                    try:
+                        # psycopg2-style autocommit
+                        if hasattr(raw, 'autocommit'):
+                            raw.autocommit = True
+                        cur = raw.cursor()
+                        cur.execute(f"CREATE DATABASE \"{target_db}\"")
+                        cur.close()
+                        print('Created database', target_db)
+                    finally:
+                        try:
+                            raw.close()
+                        except Exception:
+                            pass
+                finally:
+                    try:
+                        bootstrap_engine.dispose()
+                    except Exception:
+                        pass
+                engine = create_engine(db_url)
+                with engine.connect() as conn:
+                    conn.execute(text('SELECT 1'))
+            except Exception as e2:
+                print('Database init failed (could not create DB):', e2)
+                sys.exit(3)
+        else:
+            print('Database init failed:', e)
+            sys.exit(3)
 
     # Detect whether TimescaleDB extension is available. Some migrations
     # target Timescale-specific features; when missing, warn and allow
