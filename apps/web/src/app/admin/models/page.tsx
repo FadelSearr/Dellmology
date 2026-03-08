@@ -29,7 +29,7 @@ export default function AdminModelsPage() {
       const res = await fetch('/api/ml/retrain', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ epochs: 5 }) })
       if (!res.ok) throw new Error(await res.text())
       const json = await res.json()
-      setStatus(prev => ({...prev, retrain: json}))
+      setStatus((prev: any) => ({...prev, retrain: json}))
     } catch (err: any) {
       setError(err?.message || 'Failed')
     } finally {
@@ -44,7 +44,7 @@ export default function AdminModelsPage() {
       const res = await fetch('/api/ml/promote', { method: 'POST' , headers: {'Content-Type':'application/json'}, body: JSON.stringify({ require_backtest: true }) })
       if (!res.ok) throw new Error(await res.text())
       const json = await res.json()
-      setStatus(prev => ({...prev, promote: json}))
+      setStatus((prev: any) => ({...prev, promote: json}))
     } catch (err: any) {
       setError(err?.message || 'Failed')
     } finally {

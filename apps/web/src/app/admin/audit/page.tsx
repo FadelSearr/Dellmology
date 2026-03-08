@@ -60,7 +60,7 @@ export default function AuditPage() {
       <div style={{ marginBottom: 12 }}>
         <button onClick={loadAudit} disabled={loading} style={{ marginLeft: 8 }}>Load</button>
         <button onClick={verifyChain} disabled={loading} style={{ marginLeft: 8 }}>Verify Chain</button>
-        <button onClick={clearOld} disabled={loading} style={{ marginLeft: 8 }}>Clear >365d</button>
+        <button onClick={clearOld} disabled={loading} style={{ marginLeft: 8 }}>{"Clear >365d"}</button>
       </div>
       {error && <div style={{ color: 'red' }}>{error}</div>}
       <div>
