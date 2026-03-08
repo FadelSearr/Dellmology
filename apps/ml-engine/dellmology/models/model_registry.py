@@ -144,20 +144,20 @@ class ModelRegistry:
             logger.info(f"Promoted new champion: {self.champion}")
 
         # Persist role change to DB if available (best-effort)
-                try:
-                    with get_db_connection() as conn:
-                        # Ensure session user for audit triggers (background promote)
-                        try:
-                            cur = conn.execute("SELECT current_setting('app.current_user', true) AS cu")
-                            row = cur.fetchone()
-                            if not row or not row[0]:
-                                try:
-                                    conn.execute("SELECT set_config('app.current_user','system', true)")
-                                except Exception:
-                                    pass
-                        except Exception:
-                            pass
-                try:
+            try:
+                with get_db_connection() as conn:
+                    # Ensure session user for audit triggers (background promote)
+                    try:
+                        cur = conn.execute("SELECT current_setting('app.current_user', true) AS cu")
+                        row = cur.fetchone()
+                        if not row or not row[0]:
+                            try:
+                                conn.execute("SELECT set_config('app.current_user','system', true)")
+                            except Exception:
+                                pass
+                    except Exception:
+                        pass
+
                     trans = conn.begin()
                     try:
                         conn.execute("UPDATE ml_models SET role='archived' WHERE role='champion'")
@@ -178,17 +178,15 @@ class ModelRegistry:
                             )
                         except Exception:
                             pass
+
                         trans.commit()
                     except Exception:
                         try:
                             trans.rollback()
                         except Exception:
                             pass
-                except Exception:
-                    # Best-effort: ignore DB failures
-                    pass
-        except Exception:
-            logger.debug("DB not available or failed to persist promotion")
+            except Exception:
+                logger.debug("DB not available or failed to persist promotion")
 
         return True
 
