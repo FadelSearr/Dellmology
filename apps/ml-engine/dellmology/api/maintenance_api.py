@@ -87,8 +87,9 @@ def refresh_continuous_aggregates(view: str | None = None):
                     results[v] = {'skipped': True, 'reason': 'unknown_view'}
                     continue
                 try:
-                    # Call TimescaleDB refresh continuous aggregate; use NULL bounds to trigger full refresh
-                    conn.execute(text("SELECT refresh_continuous_aggregate(:view, NULL, NULL)"), {'view': v})
+                    # refresh_continuous_aggregate is a PROCEDURE in newer TimescaleDB
+                    # Use CALL to invoke it and handle per-view errors gracefully.
+                    conn.execute(text("CALL refresh_continuous_aggregate(:view, NULL, NULL)"), {'view': v})
                     results[v] = {'refreshed': True}
                 except Exception as ie:
                     logger.exception('Failed to refresh %s', v)
