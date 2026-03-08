@@ -43,9 +43,9 @@ export default function AuditPage() {
     setLoading(true)
     setVerifyResult(null)
     try {
-      const res = await fetch('/api/maintenance/audit/verify')
+      const res = await fetch('/api/admin/audit/verify')
       const json = await res.json()
-      if (res.ok) setVerifyResult(json.result)
+      if (res.ok) setVerifyResult(json)
       else setVerifyResult({ error: json.error || 'verify failed' })
     } catch (err: any) {
       setVerifyResult({ error: err?.message || 'failed' })
