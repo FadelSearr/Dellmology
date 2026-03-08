@@ -1,5 +1,5 @@
 -- 11-rls-models-brokerflow.sql
--- Apply Row-Level Security policies for `model_registry` and `broker_flow` tables.
+-- SUPABASE-ONLY: Apply Row-Level Security policies for `model_registry` and `broker_flow` tables.
 -- Intended to be safe: enables RLS and creates conservative policies that
 -- allow read access for non-sensitive queries but restrict write operations
 -- to the service role (or explicit owners where applicable).

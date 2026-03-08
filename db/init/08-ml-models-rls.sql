@@ -1,5 +1,5 @@
 -- Migration: 08-ml-models-rls.sql
--- Row-Level Security (RLS) skeleton for `ml_models` and audit table.
+-- SUPABASE-ONLY: Row-Level Security (RLS) skeleton for `ml_models` and audit table.
 -- NOTE: these policies are examples for Supabase/Postgres. Review and adapt
 -- to your deployment and service role strategy before applying.
 
