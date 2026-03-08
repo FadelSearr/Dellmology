@@ -14,10 +14,7 @@ on:
   schedule:
     # Daily at 02:00 UTC
     - cron: '0 2 * * *'
-  push:
-    branches:
-      - 'release/**'
-      - 'ci/**'
+  # Note: duplicate `push` removed to avoid workflow parse errors
 
 jobs:
   notifier-e2e:
