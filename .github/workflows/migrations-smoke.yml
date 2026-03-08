@@ -37,11 +37,34 @@ jobs:
         run: |
           python apps/ml-engine/scripts/run_migrations.py
 
-      - name: Run smoke insert
+      - name: Run smoke insert (script or inline fallback)
         env:
           DATABASE_URL: postgresql://admin:password@localhost:5433/dellmology
         run: |
-          python apps/ml-engine/scripts/smoke_insert_evaluation.py
+          if [ -f apps/ml-engine/scripts/smoke_insert_evaluation.py ]; then
+            python apps/ml-engine/scripts/smoke_insert_evaluation.py
+          else
+            echo "smoke_insert_evaluation.py not found — running inline fallback"
+            python - <<'PY'
+import os
+from sqlalchemy import create_engine, text
+
+db_url = os.getenv('DATABASE_URL') or 'postgresql://admin:password@localhost:5433/dellmology'
+engine = create_engine(db_url)
+sample = {
+    'name': 'challenger_test',
+    'champ': 'champion_v1',
+    'challenger': 'challenger_test',
+    'metrics': '{"net_return": 0.12, "trades": 42}',
+    'passed': True,
+}
+with engine.begin() as conn:
+    conn.execute(text(
+        "INSERT INTO public.ml_model_evaluations (model_name, champion, challenger, metrics, passed) VALUES (:name, :champ, :challenger, CAST(:metrics AS jsonb), :passed)"
+    ), sample)
+print('Inserted sample evaluation (inline)')
+PY
+          fi
 
       - name: Tear down
         if: always()
