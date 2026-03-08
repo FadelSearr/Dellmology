@@ -7,12 +7,19 @@ type Row = { symbol: string; score: number; z_score: number; volume: number; las
 export default function ScreenerPage(){
   const [rows, setRows] = useState<Row[]>([])
   const [mode, setMode] = useState<'swing'|'daytrade'|'custom'>('swing')
+  const [minPrice, setMinPrice] = useState<number | ''>('')
+  const [maxPrice, setMaxPrice] = useState<number | ''>('')
   const [loading, setLoading] = useState(false)
 
   const fetchRows = async () => {
     setLoading(true)
     try{
-      const res = await fetch(`/api/market/screener?mode=${mode}&limit=25`)
+      let url = `/api/market/screener?mode=${mode}&limit=25`
+      if(mode === 'custom'){
+        if(minPrice !== '') url += `&min_price=${minPrice}`
+        if(maxPrice !== '') url += `&max_price=${maxPrice}`
+      }
+      const res = await fetch(url)
       const j = await res.json()
       setRows(j.results || [])
     }catch(e){
@@ -31,6 +38,16 @@ export default function ScreenerPage(){
         <button onClick={()=>setMode('daytrade')} className={`px-3 py-1 rounded ${mode==='daytrade'?'bg-cyan-600 text-white':'bg-gray-800 text-gray-200'}`}>Daytrade</button>
         <button onClick={()=>setMode('custom')} className={`px-3 py-1 rounded ${mode==='custom'?'bg-cyan-600 text-white':'bg-gray-800 text-gray-200'}`}>Custom</button>
       </div>
+
+      {mode === 'custom' && (
+        <div className="mb-4 flex items-center gap-3">
+          <label className="text-sm text-gray-300">Price range (Rp)</label>
+          <input type="number" value={minPrice as any} onChange={e=>setMinPrice(e.target.value === '' ? '' : Number(e.target.value))} placeholder="min" className="bg-gray-800 text-gray-200 px-2 py-1 rounded w-28" />
+          <span className="text-gray-400">—</span>
+          <input type="number" value={maxPrice as any} onChange={e=>setMaxPrice(e.target.value === '' ? '' : Number(e.target.value))} placeholder="max" className="bg-gray-800 text-gray-200 px-2 py-1 rounded w-28" />
+          <button onClick={fetchRows} className="ml-3 px-3 py-1 bg-cyan-600 rounded text-white">Apply</button>
+        </div>
+      )}
 
       <div className="bg-gray-900 p-3 rounded">
         {loading && <div className="text-sm text-gray-400">Loading...</div>}

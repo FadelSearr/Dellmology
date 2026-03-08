@@ -47,3 +47,20 @@ async def narrative(payload: Dict[str, Any]):
         raise
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
+
+
+
+@router.post("/narrative_detailed")
+async def narrative_detailed(payload: Dict[str, Any]):
+    try:
+        symbol = str(payload.get("symbol", "")).upper()
+        if not symbol:
+            raise HTTPException(status_code=400, detail="symbol required")
+
+        analysis = payload.get("analysis", {})
+        detailed = generate_narrative_detailed(analysis, symbol=symbol)
+        return {"success": True, "symbol": symbol, "narrative": detailed}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
