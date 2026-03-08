@@ -3,7 +3,6 @@
 import { useState } from 'react'
 
 export default function AuditPage() {
-  const [token, setToken] = useState('')
   const [entries, setEntries] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -12,7 +11,7 @@ export default function AuditPage() {
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch('/api/admin/audit', { headers: { 'x-admin-token': token } })
+      const res = await fetch('/api/admin/audit')
       if (!res.ok) {
         const txt = await res.text()
         throw new Error(txt || 'failed')
@@ -29,7 +28,7 @@ export default function AuditPage() {
   async function clearOld() {
     setLoading(true)
     try {
-      const res = await fetch('/api/admin/audit/clear?older_than_days=365', { method: 'POST', headers: { 'x-admin-token': token } })
+      const res = await fetch('/api/admin/audit?older_than_days=365', { method: 'POST' })
       const json = await res.json()
       setEntries([])
     } catch (err: any) {
@@ -43,9 +42,8 @@ export default function AuditPage() {
     <div style={{ padding: 16 }}>
       <h2>Audit Log</h2>
       <div style={{ marginBottom: 12 }}>
-        <label style={{ marginRight: 8 }}>Admin token: <input type="password" value={token} onChange={(e) => setToken(e.target.value)} /></label>
-        <button onClick={loadAudit} disabled={loading || !token} style={{ marginLeft: 8 }}>Load</button>
-        <button onClick={clearOld} disabled={loading || !token} style={{ marginLeft: 8 }}>Clear >365d</button>
+        <button onClick={loadAudit} disabled={loading} style={{ marginLeft: 8 }}>Load</button>
+        <button onClick={clearOld} disabled={loading} style={{ marginLeft: 8 }}>Clear >365d</button>
       </div>
       {error && <div style={{ color: 'red' }}>{error}</div>}
       <div>
