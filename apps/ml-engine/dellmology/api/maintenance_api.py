@@ -1,6 +1,9 @@
 from fastapi import APIRouter, HTTPException
 import logging
 from sqlalchemy import text
+import os
+import json
+import requests
 
 from dellmology.utils.db_utils import init_db, get_db_connection
 
@@ -216,10 +219,35 @@ def evaluate_promote(body: dict | None = None):
                 'type': 'evaluation',
                 'payload': result
             }
-            with out_file.open('a', encoding='utf-8') as fh:
-                fh.write(json.dumps(ups_entry, ensure_ascii=False) + '\n')
-        except Exception:
-            logger.exception('Failed to write UPS event for evaluation')
+            try:
+                with out_file.open('a', encoding='utf-8') as fh:
+                    fh.write(json.dumps(ups_entry, ensure_ascii=False) + '\n')
+            except Exception:
+                logger.exception('Failed to write UPS event for evaluation')
+
+            # Best-effort: send Telegram notification if configured
+            try:
+                bot_token = os.getenv('TELEGRAM_BOT_TOKEN')
+                chat_id = os.getenv('TELEGRAM_CHAT_ID')
+                if bot_token and chat_id:
+                    # Compose a concise message
+                    champ = result.get('champion')
+                    chall = result.get('challenger')
+                    passed = result.get('passed')
+                    metrics = result.get('challenger_metrics') or {}
+                    metric_snippet = ''
+                    if isinstance(metrics, dict) and metrics:
+                        metric_snippet = ' | ' + ', '.join(f"{k}={v}" for k, v in list(metrics.items())[:5])
+                    msg = f"Model evaluation: challenger={chall} champion={champ} passed={passed}{metric_snippet}"
+                    try:
+                        requests.post(f"https://api.telegram.org/bot{bot_token}/sendMessage", json={
+                            'chat_id': chat_id,
+                            'text': msg
+                        }, timeout=10)
+                    except Exception:
+                        logger.exception('Telegram notify failed')
+            except Exception:
+                logger.exception('Failed to prepare/send Telegram notification')
 
         return result
     except Exception as e:
