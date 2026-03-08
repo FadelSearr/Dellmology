@@ -72,6 +72,7 @@ Recent progress (2026-03-08):
 - Patched `apps/ml-engine/scripts/run_migrations.py` to execute Timescale/PLpgSQL migration files as a single autocommit statement (preserves dollar-quoted DO blocks). Re-ran migrations successfully; Timescale-specific continuous-aggregate statements are skipped when Supabase credentials are not set.
 - Ran frontend unit/smoke tests in `apps/web` — installed missing test dependency and executed the test suite: 20 test suites passed (51 tests total).
 - Reviewed and updated `ROADMAP_STATUS.md` with current repository findings and timestamp.
+ - Added an audit verification API and wired it into the admin audit UI so verification results display in `apps/web/src/app/admin/audit/page.tsx`.
 
 Next recommended steps:
 - Validate Supabase RLS & continuous-aggregate policies once `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are available.
