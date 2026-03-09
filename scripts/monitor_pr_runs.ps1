@@ -37,7 +37,24 @@ try {
         $wf = $r.workflowName
         $conclusion = $r.conclusion
         Write-Output "Downloading run $id ($wf) with conclusion $conclusion"
-        gh run download $id -D (Join-Path $outDir $id) 2>$null
+        $dest = Join-Path $outDir $id
+        gh run download $id -D $dest 2>$null
+
+        # Telemetry: list downloaded files and sizes, warn on zero-length
+        if (Test-Path $dest) {
+            $files = Get-ChildItem -Path $dest -Recurse -File -ErrorAction SilentlyContinue
+            if ($files) {
+                Write-Output "Files downloaded for run $id:"
+                foreach ($f in $files) {
+                    Write-Output "  $($f.FullName) - $($f.Length) bytes"
+                    if ($f.Length -eq 0) { Write-Warning "Zero-length file: $($f.FullName)" }
+                }
+            } else {
+                Write-Warning "No files found under $dest after download"
+            }
+        } else {
+            Write-Warning "Download target $dest not created for run $id"
+        }
     }
 
     Write-Output "Download complete. Check the pr-logs/ directory."
