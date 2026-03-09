@@ -1,0 +1,54 @@
+name: CI Force Artifacts
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  force-artifacts:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Create early CI marker
+        run: |
+          echo "ci-force-artifacts: $(date)" > ci_force_artifacts.txt
+
+      - name: Upload early CI marker
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci_force_early_marker
+          path: ci_force_artifacts.txt
+
+      - name: Run CI health check
+        run: |
+          python apps/ml-engine/scripts/ci_health_check.py 2>&1 | tee ci_health_check.log
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r apps/ml-engine/requirements.txt
+
+      - name: Run Telegram unit test
+        run: |
+          python -m pytest -q apps/ml-engine/tests/test_telegram_service.py -q || true
+
+      - name: Archive artifacts
+        run: |
+          mkdir -p artifacts
+          tar -czf artifacts/ci_force_workspace.tar.gz --exclude='.git' --exclude='venv' . || true
+          tar -czf artifacts/ci_force_logs.tar.gz -C apps/ml-engine logs || true
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci_force_artifacts
+          path: |
+            artifacts/*.tar.gz
+            ci_health_check.log
+            ci_force_artifacts.txt
