@@ -1,0 +1,44 @@
+name: CI Diagnostics
+
+on:
+  push:
+    branches:
+      - 'release/**'
+  workflow_dispatch:
+
+jobs:
+  diagnostics:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Create early marker
+        run: |
+          echo "ci-diagnostics: $(date)" > ci_diagnostics.txt
+
+      - name: Environment dump
+        run: |
+          env > env.txt
+          echo "GITHUB_WORKSPACE=$GITHUB_WORKSPACE" >> env.txt || true
+
+      - name: Disk usage
+        run: |
+          df -h > df.txt || true
+          du -sh . > du.txt || true
+
+      - name: List workspace
+        run: |
+          ls -la > ls_top.txt || true
+          ls -R | sed -n '1,500p' > ls_recursive.txt || true
+
+      - name: Pack diagnostics
+        run: |
+          mkdir -p artifacts
+          tar -czf artifacts/ci_diagnostics.tar.gz ci_diagnostics.txt env.txt df.txt du.txt ls_top.txt ls_recursive.txt || true
+
+      - name: Upload diagnostics
+        uses: actions/upload-artifact@v3
+        with:
+          name: ci_diagnostics
+          path: artifacts/ci_diagnostics.tar.gz
