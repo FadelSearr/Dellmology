@@ -14,6 +14,18 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Create immediate migrations artifact
+        if: always()
+        run: |
+          echo "migrations-smoke early: $(date)" > ci_migrations_early.txt
+
+      - name: Upload immediate migrations artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: migrations_early
+          path: ci_migrations_early.txt
+
       - name: Create early CI marker
         if: always()
         run: |
