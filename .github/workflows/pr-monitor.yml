@@ -1,0 +1,40 @@
+name: PR Monitor
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number to monitor'
+        required: false
+        default: '11'
+  schedule:
+    - cron: '0 * * * *' # hourly
+
+permissions: read-all
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install gh CLI
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl ca-certificates
+          curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+          sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg
+          echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+          sudo apt-get update
+          sudo apt-get install -y gh
+
+      - name: Authenticate gh CLI
+        env:
+          MONITOR_GITHUB_TOKEN: ${{ secrets.MONITOR_GITHUB_TOKEN }}
+        run: echo "$MONITOR_GITHUB_TOKEN" | gh auth login --with-token
+
+      - name: Run PR monitor
+        uses: actions/checkout@v4
+        run: |
+          pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/monitor_pr_runs.ps1 -PrNumber ${{ github.event.inputs.pr_number || '11' }}
