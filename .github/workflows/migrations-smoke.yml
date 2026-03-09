@@ -118,9 +118,23 @@ jobs:
 
       - name: Wait for Postgres to be ready
         run: |
-          for i in $(seq 1 30); do
-            docker exec idx_test_timescaledb pg_isready -U admin -d dellmology && break || sleep 2
+          echo "Waiting for Postgres to be ready..."
+          READY=0
+          for i in $(seq 1 120); do
+            if docker exec idx_test_timescaledb pg_isready -U admin -d dellmology >/dev/null 2>&1; then
+              READY=1
+              echo "Postgres ready after $i attempts"
+              break
+            fi
+            echo "Waiting for Postgres... ($i/120)"
+            sleep 2
           done
+          if [ "$READY" -ne 1 ]; then
+            echo "Postgres did not become reachable after waiting. Dumping docker logs and ps:"
+            docker ps -a || true
+            docker compose -f apps/ml-engine/docker-compose.test-db.yml logs --no-color || true
+            exit 1
+          fi
 
       - name: Install Python deps
         run: |

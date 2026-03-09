@@ -25,10 +25,22 @@ jobs:
       - name: Wait for TimescaleDB
         run: |
           echo "Waiting for TimescaleDB to become healthy..."
-          for i in {1..60}; do
-            docker compose -f apps/ml-engine/docker-compose.test-db.yml exec -T timescaledb pg_isready -U admin -d dellmology && break || true
+          set -e
+          READY=0
+          for i in $(seq 1 120); do
+            if docker compose -f apps/ml-engine/docker-compose.test-db.yml exec -T timescaledb pg_isready -U admin -d dellmology >/dev/null 2>&1; then
+              READY=1
+              echo "TimescaleDB ready after $i attempts"
+              break
+            fi
+            echo "Waiting for TimescaleDB... ($i/120)"
             sleep 2
           done
+          if [ "$READY" -ne 1 ]; then
+            echo "Postgres did not become reachable after waiting. Dumping docker logs:"
+            docker compose -f apps/ml-engine/docker-compose.test-db.yml logs --no-color || true
+            exit 1
+          fi
 
       - name: Run migrations
         env:

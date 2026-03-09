@@ -24,33 +24,43 @@ if (-not (Test-Path $composeFile)) {
 Write-Host "Bringing up compose stack..."
 docker compose -f $composeFile up -d
 
-# Wait for Postgres on port 5433
-Write-Host "Waiting for Postgres to accept connections on 127.0.0.1:5433..."
-$maxAttempts = 60
-$attempt = 0
-while ($attempt -lt $maxAttempts) {
-  $attempt++
-  # Prefer Test-NetConnection when available (Windows), otherwise use a TcpClient fallback (cross-platform pwsh)
-  $conn = $null
-  if (Get-Command -Name Test-NetConnection -ErrorAction SilentlyContinue) {
-    $conn = Test-NetConnection -ComputerName 127.0.0.1 -Port 5433 -WarningAction SilentlyContinue
-    if ($conn -and $conn.TcpTestSucceeded) { break }
-  } else {
-    try {
-      $tcp = New-Object System.Net.Sockets.TcpClient
-      $async = $tcp.BeginConnect('127.0.0.1', 5433, $null, $null)
-      $wait = $async.AsyncWaitHandle.WaitOne(1000)
-      if ($wait -and $tcp.Connected) { $tcp.EndConnect($async); $tcp.Close(); break }
-      $tcp.Close()
-    } catch {
-      # ignore and retry
+try {
+  # Wait for Postgres on port 5433
+  Write-Host "Waiting for Postgres to accept connections on 127.0.0.1:5433..."
+  $maxAttempts = 120
+  $attempt = 0
+  while ($attempt -lt $maxAttempts) {
+    $attempt++
+    # Prefer Test-NetConnection when available (Windows), otherwise use a TcpClient fallback (cross-platform pwsh)
+    $conn = $null
+    if (Get-Command -Name Test-NetConnection -ErrorAction SilentlyContinue) {
+      $conn = Test-NetConnection -ComputerName 127.0.0.1 -Port 5433 -WarningAction SilentlyContinue
+      if ($conn -and $conn.TcpTestSucceeded) { break }
+    } else {
+      try {
+        $tcp = New-Object System.Net.Sockets.TcpClient
+        $async = $tcp.BeginConnect('127.0.0.1', 5433, $null, $null)
+        $wait = $async.AsyncWaitHandle.WaitOne(1000)
+        if ($wait -and $tcp.Connected) { $tcp.EndConnect($async); $tcp.Close(); break }
+        $tcp.Close()
+      } catch {
+        # ignore and retry
+      }
     }
+    Start-Sleep -Seconds 2
   }
-  Start-Sleep -Seconds 2
-}
-if ($attempt -ge $maxAttempts) {
-  Write-Error "Postgres did not become reachable after waiting."
-  exit 2
+  if ($attempt -ge $maxAttempts) {
+    Write-Error "Postgres did not become reachable after waiting. Printing docker compose logs..."
+    try {
+      docker compose -f apps/ml-engine/docker-compose.test.yml logs --no-color || true
+    } catch {
+      Write-Error "Failed to collect docker logs: $_"
+    }
+    exit 2
+  }
+} catch {
+  Write-Error "Unexpected error while waiting for Postgres: $_"
+  exit 99
 }
 
 Write-Host "Postgres is up. Running migrations..."
