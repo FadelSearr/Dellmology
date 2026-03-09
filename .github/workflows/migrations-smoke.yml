@@ -58,7 +58,7 @@ jobs:
       - name: Upload workspace tarball
         run: |
           echo "workspace.tar.gz exists:" && ls -la workspace.tar.gz || true
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: workspace.tar.gz
           path: workspace.tar.gz
@@ -143,7 +143,7 @@ jobs:
         if: always()
         run: |
           echo "rls_smoke.log listing:" && ls -la rls_smoke.log || true
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: rls_smoke.log
           path: rls_smoke.log
@@ -152,7 +152,7 @@ jobs:
         if: always()
         run: |
           echo "docker_logs.tar.gz listing:" && ls -la docker_logs.tar.gz || true
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: docker_logs
           path: docker_logs.tar.gz
@@ -161,7 +161,7 @@ jobs:
         if: always()
         run: |
           echo "ci_debug.txt listing:" && ls -la ci_debug.txt || true
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ci_debug
           path: ci_debug.txt
@@ -169,7 +169,7 @@ jobs:
       - name: Upload migrations log
         run: |
           echo "run_migrations.log listing:" && ls -la run_migrations.log || true
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: run_migrations.log
           path: run_migrations.log

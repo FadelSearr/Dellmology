@@ -38,7 +38,7 @@ jobs:
           tar -czf artifacts/ci_diagnostics.tar.gz ci_diagnostics.txt env.txt df.txt du.txt ls_top.txt ls_recursive.txt || true
 
       - name: Upload diagnostics
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ci_diagnostics
           path: artifacts/ci_diagnostics.tar.gz
