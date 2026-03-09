@@ -73,6 +73,13 @@ jobs:
         run: |
           python apps/ml-engine/scripts/notifier_e2e.py
         timeout-minutes: 5
+      - name: Ensure logs exist before archiving
+        if: always()
+        run: |
+          mkdir -p apps/ml-engine/logs
+          if [ ! -f apps/ml-engine/logs/ups_events.jsonl ]; then echo "[]" > apps/ml-engine/logs/ups_events.jsonl; fi
+          if [ -z "$(ls -A apps/ml-engine/logs 2>/dev/null)" ]; then echo "placeholder log" > apps/ml-engine/logs/ci_placeholder.log; fi
+
       - name: Archive logs
         if: always()
         run: |
