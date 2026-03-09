@@ -139,6 +139,13 @@ jobs:
             echo "rls_smoke_check.py not found"
           fi
 
+      - name: Ensure logs exist before upload
+        if: always()
+        run: |
+          mkdir -p apps/ml-engine/logs
+          if [ ! -f apps/ml-engine/logs/ups_events.jsonl ]; then echo "[]" > apps/ml-engine/logs/ups_events.jsonl; fi
+          if [ -z "$(ls -A apps/ml-engine/logs 2>/dev/null)" ]; then echo "placeholder log" > apps/ml-engine/logs/ci_placeholder.log; fi
+
       - name: Upload RLS smoke log
         if: always()
         run: |
@@ -206,7 +213,7 @@ PY
       - name: Upload smoke insert log
         run: |
           echo "smoke_insert.log listing:" && ls -la smoke_insert.log || true
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: smoke_insert.log
           path: smoke_insert.log
