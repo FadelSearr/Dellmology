@@ -38,9 +38,26 @@ jobs:
         run: |
           pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/monitor_pr_runs.ps1 -PrNumber ${{ github.event.inputs.pr_number || '11' }}
 
+      - name: Ensure pr-logs directory exists
+        run: |
+          # Create a placeholder so artifact upload always has something to upload
+          if [ ! -d pr-logs ] || [ -z "$(ls -A pr-logs 2>/dev/null)" ]; then
+            mkdir -p pr-logs
+            echo "No pr-logs produced for run $GITHUB_RUN_ID on $(date -u)" > pr-logs/placeholder.txt
+            echo "Created placeholder in pr-logs/"
+            ls -lah pr-logs || true
+          else
+            echo "pr-logs contains files; no placeholder needed"
+          fi
+
       - name: Package pr-logs (if any)
         run: |
           if [ -d pr-logs ]; then
+            # Show files and sizes for telemetry before packaging
+            echo "Listing pr-logs contents with sizes:"
+            find pr-logs -type f -print0 | xargs -0 ls -lah --full-time || true
+            echo "Total size of pr-logs directory:"
+            du -sh pr-logs || true
             ts=$(date -u +"%Y%m%d-%H%M%SZ")
             out="pr-logs-${ts}.tar.gz"
             tar -czf "$out" pr-logs
