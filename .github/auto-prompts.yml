@@ -1,4 +1,5 @@
 enabled: true
+allow_auto_commit: true
 max_chain_depth: 2
 hooks:
   - name: "roadmap-check"
@@ -6,3 +7,5 @@ hooks:
     prompt: "Lanjutkan sesuai roadmap"
     run_once_per_invocation: true
     requires_confirmation_for_commits: true
+    auto_commit: true
+    auto_push: false

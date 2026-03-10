@@ -8,6 +8,10 @@ on:
 jobs:
   run-hooks:
     runs-on: ubuntu-latest
+    env:
+      # Must explicitly allow auto-commit in the workflow environment to enable commits
+      AUTO_PROMPTS_ALLOW_COMMIT: "true"
+      AUTO_PROMPTS_ALLOW_PUSH: "false"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
