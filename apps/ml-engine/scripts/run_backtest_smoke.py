@@ -9,6 +9,11 @@ os.environ['ML_ENGINE_KEY'] = os.environ.get('ML_ENGINE_KEY', 'testkey')
 
 from fastapi.testclient import TestClient
 
+# Ensure the ml-engine package directory is on sys.path so "from main import app"
+# works when this script is executed from the scripts/ subdirectory in CI.
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 from main import app
 
 client = TestClient(app)
