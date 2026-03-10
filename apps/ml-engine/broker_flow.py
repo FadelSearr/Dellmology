@@ -106,6 +106,28 @@ def store_entries(conn, symbol: str, entries: List[BrokerFlowEntry]):
                     e.avg_sell_price,
                 ),
             )
+            # Also persist into broker_flow (hypertable) including z_score and consistency
+            try:
+                cur.execute(
+                    "INSERT INTO broker_flow(time, symbol, broker_code, buy_volume, sell_volume, net_value, consistency_score, z_score) "
+                    "VALUES (%s,%s,%s,%s,%s,%s,%s,%s) "
+                    "ON CONFLICT (time,symbol,broker_code) DO UPDATE SET "
+                    "buy_volume=EXCLUDED.buy_volume, sell_volume=EXCLUDED.sell_volume, net_value=EXCLUDED.net_value, "
+                    "consistency_score=EXCLUDED.consistency_score, z_score=EXCLUDED.z_score",
+                    (
+                        today,
+                        symbol,
+                        e.broker_code,
+                        e.buy_volume,
+                        e.sell_volume,
+                        e.net_value,
+                        e.consistency_score,
+                        e.z_score,
+                    ),
+                )
+            except Exception:
+                # best-effort: if broker_flow table doesn't exist or permission denied, continue
+                pass
     conn.commit()
 
 
