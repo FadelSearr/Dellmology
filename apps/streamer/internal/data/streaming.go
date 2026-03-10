@@ -6,8 +6,8 @@ import (
 	"log"
 	"time"
 
-	"github.com/gorilla/websocket"
 	"github.com/dellmology/streamer/internal/validator"
+	"github.com/gorilla/websocket"
 )
 
 // StreamHandler manages WebSocket connections
@@ -92,6 +92,21 @@ func ProcessTradeMessage(data json.RawMessage) (map[string]interface{}, error) {
 	} else if agg == validator.HAKI {
 		trade["aggression"] = "HAKI"
 	}
+
+	// persist to database (best-effort, non-blocking)
+	go func(sym string, p float64, v int64, tt string) {
+		if err := StoreRawTrade(sym, p, v, tt); err != nil {
+			log.Printf("Warning: failed to persist trade %s @ %v: %v", sym, p, err)
+		}
+	}(tr.Symbol, tr.Price, tr.Volume, func() string {
+		if agg == validator.HAKA {
+			return "HAKA"
+		}
+		if agg == validator.HAKI {
+			return "HAKI"
+		}
+		return "NORMAL"
+	}())
 
 	return trade, nil
 }
