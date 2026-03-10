@@ -21,7 +21,8 @@ jobs:
       - name: Check DB migrations exist and include trades table
         run: |
           echo "Checking db/init for trades table creation..."
-          if ! grep -Eiq 'CREATE TABLE\s+trades' db/init/*.sql; then
+          # allow optional IF NOT EXISTS or other clauses between CREATE TABLE and the table name
+          if ! grep -Eiq "CREATE TABLE\s+(IF NOT EXISTS\s+)?trades\b" db/init/*.sql; then
             echo "ERROR: 'trades' table creation not found in db/init/*.sql"
             echo "List files:"; ls -la db/init || true
             exit 1
