@@ -34,15 +34,19 @@ jobs:
         env:
           DATABASE_URL: postgresql://admin:password@localhost:5433/dellmology
         run: |
-          python -m pip install -r apps/ml-engine/requirements.txt
-          python apps/ml-engine/scripts/run_migrations.py
+          mkdir -p apps/ml-engine/logs
+          python -m pip install -r apps/ml-engine/requirements.txt 2>&1 | tee apps/ml-engine/logs/migrations_install.log
+          python apps/ml-engine/scripts/run_migrations.py 2>&1 | tee apps/ml-engine/logs/migrations.log
 
       - name: Run ml-engine tests
         env:
           DATABASE_URL: postgresql://admin:password@localhost:5433/dellmology
         run: |
-          python -m pip install -r apps/ml-engine/requirements.txt
-          python -m pytest apps/ml-engine/tests -q
+          mkdir -p apps/ml-engine/logs
+          python -m pip install -r apps/ml-engine/requirements.txt 2>&1 | tee apps/ml-engine/logs/pytest_install.log
+          set -o pipefail
+          python -m pytest apps/ml-engine/tests -q --junitxml=apps/ml-engine/logs/test-results.xml 2>&1 | tee apps/ml-engine/logs/pytest.log
+          exit ${PIPESTATUS[0]}
 
       - name: Build frontend
         run: |
