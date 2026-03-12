@@ -2630,6 +2630,35 @@ function LeftSidebar({
     onWatchlistUpdate(watchlist);
   }, [onWatchlistUpdate, watchlist]);
 
+  // Enrich watchlist with Unified Power values from backend
+  useEffect(() => {
+    let cancelled = false;
+    const enrich = async () => {
+      if (!watchlist || watchlist.length === 0) return;
+      try {
+        const body = { entries: watchlist.map((w) => ({ symbol: w.symbol, score: w.score })) };
+        const r = await fetch('/api/ai/watchlist/unified_power', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        if (!r.ok) return;
+        const data = await r.json();
+        if (cancelled) return;
+        const mapping: Record<string, number> = data.mapping || {};
+        const enriched = watchlist.map((w) => ({ ...w, unified_power: mapping[w.symbol] ?? w.score }));
+        setWatchlist(enriched);
+      } catch (err) {
+        // best-effort: ignore enrichment failures
+        // console.error('Failed to fetch unified power', err);
+      }
+    };
+    void enrich();
+    return () => {
+      cancelled = true;
+    };
+  }, [watchlist]);
+
   const watchlistScores = watchlist
     .map((item) => Number(item.score || 0))
     .filter((value) => Number.isFinite(value));
