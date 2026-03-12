@@ -9,6 +9,7 @@ from datetime import datetime
 import random
 
 from dellmology.utils.db_utils import fetch_ohlc_data
+from dellmology.analysis.unified_power import compute_unified_power
 
 
 def _compute_metrics_from_ohlc(ohlc: List[Dict]) -> Dict:
@@ -203,8 +204,43 @@ def run_backtest(model_name: str, start_date: str, end_date: str) -> Dict:
         ohlc = fetch_ohlc_data(model_name, interval_minutes=5, lookback_hours=24 * 30)
         if ohlc and len(ohlc) >= 5:
             metrics = _compute_metrics_from_ohlc(ohlc)
-            metrics.update({'model_name': model_name, 'start_date': start_date, 'end_date': end_date})
-            return metrics
+                metrics.update({'model_name': model_name, 'start_date': start_date, 'end_date': end_date})
+
+                # Build a simple watchlist entry from OHLC to compute a Unified Power summary.
+                try:
+                    closes = [float(x['close']) for x in reversed(ohlc)]
+                    start_price = closes[0]
+                    end_price = closes[-1]
+                    # volatility metric: std dev of returns * 100
+                    returns = []
+                    for i in range(1, len(closes)):
+                        prev = closes[i - 1]
+                        cur = closes[i]
+                        if prev > 0:
+                            returns.append((cur - prev) / prev)
+                    import math
+                    vol = (sum((r - (sum(returns)/len(returns)))**2 for r in returns)/len(returns))**0.5 if returns else 0.0
+                    momentum = (end_price - start_price) / start_price * 100.0 if start_price > 0 else 0.0
+
+                    wl_entry = {
+                        'symbol': model_name,
+                        'score': metrics.get('net_return_pct', 0.0),
+                        'metrics': {
+                            'volatility': abs(vol) * 100.0,
+                            'momentum': momentum,
+                        }
+                    }
+                    ups_list = compute_unified_power([wl_entry], score_key='score')
+                    ups_val = ups_list[0].get('unified_power') if ups_list else None
+                    metrics['unified_power_overview'] = {
+                        'avg_unified_power': ups_val,
+                        'model_unified_power': ups_val,
+                    }
+                except Exception:
+                    # best-effort; do not fail backtest if UPS computation errors
+                    metrics['unified_power_overview'] = None
+
+                return metrics
     except Exception:
         # fall through to mock
         pass
