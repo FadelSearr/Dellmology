@@ -24,17 +24,27 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from config import Config, validate_config, setup_logging
 from dellmology.analysis.screener_api import router as screener_router
+from dellmology.api.ai_screener_api import router as ai_screener_router
 from dellmology.analysis.runtime_api import router as runtime_router
 from dellmology.intelligence.api import router as xai_router
 from dellmology.api.audit_api import router as audit_router
 from dellmology.api.aggregates_api import router as aggregates_router
 from dellmology.api.maintenance_api import router as maintenance_router
+from dellmology.api.telegram_api import router as telegram_api_router
+from dellmology.api.exit_whale_api import router as exit_whale_router
+from dellmology.api.admin_api import router as admin_router
+from dellmology.api.narrative_api import router as narrative_router
 from broker_flow import main as broker_flow_main
 from exit_whale import main as exit_whale_main
 from apscheduler.schedulers.background import BackgroundScheduler
 from dellmology.utils.model_retrain_scheduler import start_scheduler, get_status, reschedule
 from dellmology.utils.model_retrain_scheduler import start_eval_scheduler, get_eval_status, reschedule_eval
 from dellmology.utils.db_utils import init_db, get_db_connection, get_db_health
+from dellmology.utils.data_reconciler import run_reconciler_job
+from dellmology.analysis.zscore_job import compute_and_store_zscores
+from dellmology.analysis.heatmap import aggregate_one_minute
+from dellmology.alerts.dispatcher import run_dispatch_once
+from dellmology.intelligence import llm_backend
 try:
     import boto3
 except Exception:
@@ -100,6 +110,45 @@ async def lifespan(app: FastAPI):
         logger.exception("Failed to initialize model retraining scheduler")
 
     try:
+        # Schedule data integrity reconciler (every 5 minutes)
+        scheduler.add_job(lambda: run_reconciler_job(None, int(os.getenv('DATA_GAP_THRESHOLD_SECONDS', '60'))), 'interval', minutes=5, id='data_integrity_reconciler')
+        logger.info("Data integrity reconciler scheduled every 5 minutes")
+    except Exception:
+        logger.exception("Failed to schedule data integrity reconciler")
+
+    try:
+        # If LLM local provider is enabled, preload the model to reduce first-call latency
+        if Config.LLM_ENABLED and Config.LLM_PROVIDER == 'local':
+            ok = llm_backend.preload_local_model(os.getenv('LLM_MODEL'))
+            if ok:
+                logger.info('Local LLM model preloaded successfully')
+            else:
+                logger.warning('Local LLM model not preloaded (file may be missing or load failed)')
+    except Exception:
+        logger.exception('Failed during local LLM preload')
+
+    try:
+        # Schedule broker z-score computation shortly after market close (18:10 daily)
+        scheduler.add_job(lambda: compute_and_store_zscores(None, int(os.getenv('ZSCORE_LOOKBACK_DAYS', '30'))), 'cron', hour=18, minute=10, id='broker_zscore_job')
+        logger.info("Broker z-score job scheduled at 18:10 daily")
+    except Exception:
+        logger.exception("Failed to schedule broker z-score job")
+
+    try:
+        # Schedule heatmap aggregation every minute
+        scheduler.add_job(lambda: aggregate_one_minute(None), 'interval', minutes=1, id='heatmap_aggregator')
+        logger.info("Heatmap aggregator scheduled every 1 minute")
+    except Exception:
+        logger.exception("Failed to schedule heatmap aggregator")
+
+    try:
+        # Schedule exit-whale alert dispatcher every 2 minutes
+        scheduler.add_job(lambda: run_dispatch_once(), 'interval', minutes=2, id='exit_whale_dispatcher')
+        logger.info("Exit-whale alert dispatcher scheduled every 2 minutes")
+    except Exception:
+        logger.exception("Failed to schedule exit-whale dispatcher")
+
+    try:
         # Start evaluation scheduler (default daily 19:00) — read cron from env or use default
         eval_cron = os.getenv('RETRAIN_EVAL_CRON', '0 19 * * *')
         # By default do not auto-promote on scheduled runs; use API to enable
@@ -110,10 +159,14 @@ async def lifespan(app: FastAPI):
 
     # Start Telegram UPS notifier if configured
     try:
-        from dellmology.telegram.notifier import UPSNotifier
-        notifier = UPSNotifier()
-        notifier.start()
-        logger.info('Telegram UPS notifier started (if credentials present)')
+        # Allow disabling Telegram notifier in local/dev via TELEGRAM_DISABLE env var
+        if os.getenv('TELEGRAM_DISABLE', '').lower() in ('1', 'true', 'yes'):
+            logger.info('TELEGRAM_DISABLE set; skipping UPS notifier')
+        else:
+            from dellmology.telegram.notifier import UPSNotifier
+            notifier = UPSNotifier()
+            notifier.start()
+            logger.info('Telegram UPS notifier started (if credentials present)')
     except Exception:
         logger.exception('Failed to start UPS notifier')
 
@@ -384,6 +437,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Register routers
+app.include_router(screener_router)
+app.include_router(runtime_router)
+app.include_router(xai_router)
+app.include_router(audit_router)
+app.include_router(aggregates_router)
+app.include_router(maintenance_router)
+app.include_router(telegram_api_router)
+app.include_router(exit_whale_router)
+app.include_router(admin_router)
+app.include_router(narrative_router)
+app.include_router(ai_screener_router)
+
 # Include routers
 app.include_router(screener_router)
 app.include_router(runtime_router)
@@ -391,6 +457,8 @@ app.include_router(xai_router)
 app.include_router(audit_router)
 app.include_router(aggregates_router)
 app.include_router(maintenance_router)
+app.include_router(telegram_api_router)
+app.include_router(exit_whale_router)
 
 
 
