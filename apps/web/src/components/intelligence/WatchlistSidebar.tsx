@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 
 interface WatchlistItem {
   symbol: string;
@@ -14,10 +14,68 @@ export const WatchlistSidebar: React.FC = () => {
   const addToWatchlist = () => {
     if (!input.trim()) return;
     if (watchlist.find(w => w.symbol === input.trim().toUpperCase())) return;
-    // Dummy: fetch unified power score from backend
-    setWatchlist([...watchlist, { symbol: input.trim().toUpperCase(), unifiedPowerScore: Math.floor(Math.random() * 101) }]);
+    const symbol = input.trim().toUpperCase();
     setInput('');
+    (async () => {
+      try {
+        const body = { entries: [{ symbol }] };
+        const r = await fetch('/api/ai/watchlist/unified_power', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        if (r.ok) {
+          const data = await r.json();
+          const mapping: Record<string, number> = data.mapping || {};
+          const score = mapping[symbol] ?? Math.floor(Math.random() * 101);
+          setWatchlist([...watchlist, { symbol, unifiedPowerScore: Math.round(score) }]);
+          return;
+        }
+      } catch (err) {
+        // ignore and fallback
+      }
+      // Fallback local score
+      setWatchlist([...watchlist, { symbol, unifiedPowerScore: Math.floor(Math.random() * 101) }]);
+    })();
   };
+
+  const refreshScores = async () => {
+    const current = watchlistRef.current;
+    if (!current || current.length === 0) return;
+    try {
+      const body = { entries: current.map((w) => ({ symbol: w.symbol })) };
+      const r = await fetch('/api/ai/watchlist/unified_power', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!r.ok) return;
+      const data = await r.json();
+      const mapping: Record<string, number> = data.mapping || {};
+      const updated = current.map((w) => ({
+        ...w,
+        unifiedPowerScore: Math.round(mapping[w.symbol] ?? w.unifiedPowerScore),
+      }));
+      setWatchlist(updated);
+    } catch {
+      // best-effort: ignore errors
+    }
+  };
+
+  const watchlistRef = useRef<WatchlistItem[]>(watchlist);
+  useEffect(() => {
+    watchlistRef.current = watchlist;
+  }, [watchlist]);
+
+  useEffect(() => {
+    // Periodic background refresh of UPS scores every 60s
+    const id = setInterval(() => {
+      void refreshScores();
+    }, 60000);
+    // initial one-time refresh on mount
+    void refreshScores();
+    return () => clearInterval(id);
+  }, []);
 
   const removeFromWatchlist = (symbol: string) => {
     setWatchlist(watchlist.filter(w => w.symbol !== symbol));
@@ -38,6 +96,10 @@ export const WatchlistSidebar: React.FC = () => {
           onClick={addToWatchlist}
           className="px-3 py-1 rounded bg-cyan-600 text-white font-semibold hover:bg-cyan-700"
         >Add</button>
+        <button
+          onClick={() => { void refreshScores(); }}
+          className="px-3 py-1 rounded bg-slate-700 text-white font-semibold hover:bg-slate-600"
+        >Refresh</button>
       </div>
       <ul className="space-y-2">
         {watchlist.map(item => (

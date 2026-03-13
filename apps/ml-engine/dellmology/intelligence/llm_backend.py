@@ -84,6 +84,30 @@ def local_model_status(model_path: Optional[str] = None) -> Dict:
     }
 
 
+def shutdown_llm():
+    """Safely close and clear the cached LLM instance.
+
+    Call this from application shutdown to avoid relying on Llama.__del__ during
+    interpreter teardown which can cause deallocator errors.
+    """
+    global _cached_llm
+    if _cached_llm is None:
+        return
+    try:
+        # If _cached_llm is a real Llama instance, attempt to close it.
+        if hasattr(_cached_llm, 'close') and callable(getattr(_cached_llm, 'close')):
+            try:
+                _cached_llm.close()
+            except Exception:
+                # Best-effort close; swallow exceptions during shutdown
+                logger.debug('Exception while closing _cached_llm during shutdown', exc_info=True)
+    except Exception:
+        # Protect shutdown from any unexpected errors
+        logger.debug('Unexpected error during shutdown_llm', exc_info=True)
+    finally:
+        _cached_llm = None
+
+
 def _build_prompt(payload: Dict, symbol: Optional[str]) -> str:
     stats = payload.get('stats', {})
     top = payload.get('top_pick') or {}

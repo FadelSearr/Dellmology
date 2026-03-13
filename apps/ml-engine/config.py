@@ -105,6 +105,9 @@ class Config:
     LLM_API_KEY = os.getenv('LLM_API_KEY', '')
     LLM_ENDPOINT = os.getenv('LLM_ENDPOINT', '')  # optional custom endpoint
     LLM_TIMEOUT = int(os.getenv('LLM_TIMEOUT', '8'))  # seconds
+    # Whether to attempt preloading a local model on application startup.
+    # Defaults to false to avoid blocking startup when large GGUF models are present.
+    LLM_PRELOAD_ON_STARTUP = os.getenv('LLM_PRELOAD_ON_STARTUP', 'false').lower() in ('1', 'true', 'yes')
     
     @classmethod
     def to_dict(cls) -> Dict[str, Any]:

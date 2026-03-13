@@ -49,7 +49,11 @@ def generate_narrative(payload: Dict, symbol: Optional[str] = None, use_llm: Opt
 
     # Try LLM first if enabled (packaged path)
     try:
-        attempt_llm = use_llm if use_llm is not None else cfg.Config.LLM_ENABLED
+        # Only call the LLM if explicitly requested via `use_llm=True` and
+        # the global config also enables LLMs. This avoids non-deterministic
+        # behavior during tests and local/dev runs where LLM_PROVIDER may be
+        # configured at runtime by other tests.
+        attempt_llm = bool(use_llm) and bool(cfg.Config.LLM_ENABLED)
         if attempt_llm:
             text = llm_backend.call_llm(payload, symbol)
             if text:

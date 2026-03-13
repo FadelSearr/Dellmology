@@ -46,6 +46,7 @@ from dellmology.analysis.zscore_job import compute_and_store_zscores
 from dellmology.analysis.heatmap import aggregate_one_minute
 from dellmology.alerts.dispatcher import run_dispatch_once
 from dellmology.intelligence import llm_backend
+import threading
 try:
     import boto3
 except Exception:
@@ -118,15 +119,27 @@ async def lifespan(app: FastAPI):
         logger.exception("Failed to schedule data integrity reconciler")
 
     try:
-        # If LLM local provider is enabled, preload the model to reduce first-call latency
+        # If LLM local provider is enabled, optionally preload the model.
+        # Move preload to a background thread to avoid blocking startup.
         if Config.LLM_ENABLED and Config.LLM_PROVIDER == 'local':
-            ok = llm_backend.preload_local_model(os.getenv('LLM_MODEL'))
-            if ok:
-                logger.info('Local LLM model preloaded successfully')
+            if getattr(Config, 'LLM_PRELOAD_ON_STARTUP', False):
+                def _bg_preload():
+                    try:
+                        ok = llm_backend.preload_local_model(os.getenv('LLM_MODEL'))
+                        if ok:
+                            logger.info('Local LLM model preloaded (background)')
+                        else:
+                            logger.warning('Local LLM model not preloaded (file missing or load failed)')
+                    except Exception:
+                        logger.exception('Background LLM preload failed')
+
+                t = threading.Thread(target=_bg_preload, name='llm-preload-thread', daemon=True)
+                t.start()
+                logger.info('Started background thread to preload local LLM model')
             else:
-                logger.warning('Local LLM model not preloaded (file may be missing or load failed)')
+                logger.info('LLM local provider configured but LLM_PRELOAD_ON_STARTUP is false; skipping preload')
     except Exception:
-        logger.exception('Failed during local LLM preload')
+        logger.exception('Failed to schedule background local LLM preload')
 
     try:
         # Schedule broker z-score computation shortly after market close (18:10 daily)
@@ -177,6 +190,16 @@ async def lifespan(app: FastAPI):
         try:
             scheduler.shutdown(wait=False)
             logger.info("Scheduler shut down")
+        except Exception:
+            pass
+        try:
+            # Ensure any preloaded local LLM is closed cleanly to avoid destructor
+            # errors during Python interpreter shutdown.
+            try:
+                llm_backend.shutdown_llm()
+                logger.info('LLM backend shutdown complete')
+            except Exception:
+                logger.debug('Error while shutting down LLM backend', exc_info=True)
         except Exception:
             pass
 
@@ -486,6 +509,17 @@ async def health_check():
         health['database'] = {'connected': False}
         health['status'] = 'degraded'
 
+    # Include LLM/local model status if LLM provider is configured
+    try:
+        try:
+            llm_status = llm_backend.local_model_status()
+        except Exception:
+            llm_status = {'ok': False, 'model_path': None, 'preloaded': False}
+        health['llm'] = llm_status
+        # Do not mark service degraded solely because LLM is not preloaded
+    except Exception:
+        health['llm'] = {'ok': False, 'model_path': None, 'preloaded': False}
+
     # Check S3/MinIO if configured
     try:
         bucket = os.getenv('AWS_S3_BUCKET') or os.getenv('S3_BUCKET')
@@ -508,6 +542,18 @@ async def health_check():
         health['status'] = 'degraded'
 
     return health
+
+
+@app.get('/ready')
+async def ready_check():
+    """Readiness probe: returns 200 if essential dependencies are available (DB)."""
+    try:
+        dbh = get_db_health()
+        if dbh.get('connected'):
+            return {'ready': True}
+        return {'ready': False}
+    except Exception:
+        return {'ready': False}
 
 
 @app.get("/config")
