@@ -48,32 +48,37 @@ export function useStockData(emiten: string, from?: string, to?: string) {
 }
 
 // ── useWatchlist ─────────────────────────────────────────────
-export function useWatchlist(mode = 'daytrade', minPrice = 0, maxPrice = 999999) {
+// mode = 'watchlist' | 'daytrade' | 'swing'
+// sortBy = 'score' | 'price_asc' | 'price_desc' | 'change'
+export function useWatchlist(mode = 'watchlist', minPrice = 0, maxPrice = 999999, searchQuery = '', sortBy = 'score') {
   const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    async function fetchWatchlist() {
-      setLoading(true);
-      try {
-        const params = new URLSearchParams({ mode, minPrice: minPrice.toString(), maxPrice: maxPrice.toString() });
-        const result = await apiFetch<any>(`/api/screener?${params}`);
-        setData(result.results || []);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to fetch watchlist');
-      } finally {
-        setLoading(false);
-      }
+  const fetchWatchlist = useCallback(async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams({ mode, minPrice: minPrice.toString(), maxPrice: maxPrice.toString() });
+      if (searchQuery.trim()) params.set('q', searchQuery.trim());
+      if (sortBy !== 'score') params.set('sortBy', sortBy);
+      const result = await apiFetch<any>(`/api/screener?${params}`);
+      setData(result.results || []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch watchlist');
+    } finally {
+      setLoading(false);
     }
-    fetchWatchlist();
-  }, [mode, minPrice, maxPrice]);
+  }, [mode, minPrice, maxPrice, searchQuery, sortBy]);
 
-  return { data, loading, error };
+  useEffect(() => {
+    fetchWatchlist();
+  }, [fetchWatchlist]);
+
+  return { data, loading, error, refetch: fetchWatchlist };
 }
 
 // ── useChartData ──────────────────────────────────────────────
-export function useChartData(emiten: string) {
+export function useChartData(emiten: string, timeframe: string = '1D') {
   const [data, setData] = useState<any[]>([]);
   const [atr, setAtr] = useState<number>(0);
   const [loading, setLoading] = useState(false);
@@ -84,7 +89,7 @@ export function useChartData(emiten: string) {
       if (!emiten) return;
       setLoading(true);
       try {
-        const result = await apiFetch<any>(`/api/chart?emiten=${emiten}`);
+        const result = await apiFetch<any>(`/api/chart?emiten=${emiten}&tf=${timeframe}`);
         setData(result.chartData || []);
         setAtr(result.atr || 0);
       } catch (err) {
@@ -94,7 +99,7 @@ export function useChartData(emiten: string) {
       }
     }
     fetchChart();
-  }, [emiten]);
+  }, [emiten, timeframe]);
 
   return { data, atr, loading, error };
 }
@@ -105,14 +110,49 @@ export function useNarrative(params: {
   price?: number;
   change?: number;
   changePercent?: number;
+  ups?: number;
+  regime?: string;
+  zScore?: number;
+  atr?: number;
   topBrokers?: any[];
 }) {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const lastFetched = useRef<string>('');
 
-  const fetchAnalysis = useCallback(async () => {
-    if (!params.emiten) return;
+  useEffect(() => {
+    // Only fetch when we have real price data loaded
+    if (!params.emiten || !params.price || params.price <= 0) return;
+
+    // Avoid re-fetching for same emiten (debounce)
+    const key = `${params.emiten}-${params.price}`;
+    if (lastFetched.current === key) return;
+    lastFetched.current = key;
+
+    async function fetchNarrative() {
+      setLoading(true);
+      setError(null);
+      try {
+        const result = await apiFetch<any>('/api/narrative', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(params),
+        });
+        setData(result);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Narrative failed');
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchNarrative();
+  }, [params.emiten, params.price, params.ups, params.zScore]);
+
+  const refetch = useCallback(async () => {
+    lastFetched.current = ''; // force refresh
+    if (!params.emiten || !params.price) return;
     setLoading(true);
     try {
       const result = await apiFetch<any>('/api/narrative', {
@@ -126,11 +166,9 @@ export function useNarrative(params: {
     } finally {
       setLoading(false);
     }
-  }, [JSON.stringify(params)]);
+  }, [params.emiten, params.price]);
 
-  useEffect(() => { fetchAnalysis(); }, [fetchAnalysis]);
-
-  return { data, loading, error, refetch: fetchAnalysis };
+  return { data, loading, error, refetch };
 }
 
 // ── useTokenHealth ───────────────────────────────────────────

@@ -1,13 +1,18 @@
 'use client';
-import { Users, Activity, AlertTriangle } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Users, Activity, AlertTriangle, Newspaper, ShieldAlert } from 'lucide-react';
 import { mockZScores } from '@/lib/mock-data';
 import { fmtCompact } from '@/lib/utils';
+import { getBrokerProfile } from '@/lib/broker-profiles';
+import { detectVolumeAnomalies } from '@/lib/analysis';
 
 interface BrokerData {
   netbs_broker_code: string;
   type?: string;
   bvalv?: number | string;
   svalv?: number | string;
+  bval?: number | string;
+  sval?: number | string;
 }
 
 interface TapeProps {
@@ -17,17 +22,79 @@ interface TapeProps {
   zScore?: number;
   spoofingAlert?: boolean;
   washSaleAlert?: boolean;
+  chartData?: any[];
 }
 
-export default function Tape({ selectedEmiten, topBuyers, topSellers, zScore = 0, spoofingAlert = false, washSaleAlert = false }: TapeProps) {
-  // Combine top buyers and sellers into a unified list
+export default function Tape({ selectedEmiten, topBuyers, topSellers, zScore = 0, spoofingAlert = false, washSaleAlert = false, chartData = [] }: TapeProps) {
+  const [sentiment, setSentiment] = useState<any>(null);
+
+  // Fetch sentiment data filtered by selected emiten
+  useEffect(() => {
+    async function fetchSentiment() {
+      try {
+        const res = await fetch(`/api/sentiment?emiten=${selectedEmiten}&zScore=${zScore}&whaleNetValue=0`);
+        const json = await res.json();
+        if (json.success) setSentiment(json.data);
+      } catch { /* ignore */ }
+    }
+    fetchSentiment();
+  }, [selectedEmiten, zScore]);
+
+  // Combine top buyers and sellers into a unified list with broker profiles
   const flow = [
-    ...topBuyers.map(b => ({ code: b.netbs_broker_code, type: b.type || 'Unknown', netValue: Number(b.bvalv || 0) })),
-    ...topSellers.map(s => ({ code: s.netbs_broker_code, type: s.type || 'Unknown', netValue: -Number(s.svalv || 0) }))
+    ...topBuyers.map(b => {
+      const profile = getBrokerProfile(b.netbs_broker_code);
+      return {
+        code: b.netbs_broker_code,
+        type: profile.label,
+        typeColor: profile.color,
+        character: profile.character,
+        reliability: profile.reliability,
+        netValue: Number(b.bvalv || b.bval || 0),
+      };
+    }),
+    ...topSellers.map(s => {
+      const profile = getBrokerProfile(s.netbs_broker_code);
+      return {
+        code: s.netbs_broker_code,
+        type: profile.label,
+        typeColor: profile.color,
+        character: profile.character,
+        reliability: profile.reliability,
+        netValue: -Number(s.svalv || s.sval || 0),
+      };
+    }),
   ].sort((a, b) => Math.abs(b.netValue) - Math.abs(a.netValue)).slice(0, 8);
 
-  // Inject real live zScore into the end of the visual sparkline
-  const liveZScores = [...mockZScores.slice(1), { date: 'Today', zScore: zScore, volume: 0, isAnomaly: Math.abs(zScore) > 1.5 }];
+  // Generate real Z-Scores from chartData if available
+  let liveZScores: any[] = [];
+  if (chartData && chartData.length > 0) {
+    const recent = chartData.slice(-20);
+    const anomalies = detectVolumeAnomalies(
+      recent.map(d => d.value || 0),
+      recent.map(d => {
+        const date = new Date(d.time * 1000);
+        return `${date.getMonth() + 1}/${date.getDate()}`;
+      })
+    );
+    liveZScores = anomalies.map((z, i) => {
+      // Determine if accumulation or distribution based on price action
+      const priceChange = recent[i].close - recent[i].open;
+      const sign = priceChange >= 0 ? 1 : -1;
+      return {
+        ...z,
+        zScore: z.zScore * sign, // Positive for accum, negative for dist
+        isAnomaly: Math.abs(z.zScore) > 1.5
+      };
+    });
+  } else {
+    liveZScores = [...mockZScores.slice(1), { date: 'Today', zScore: zScore, volume: 0, isAnomaly: Math.abs(zScore) > 1.5 }];
+  }
+
+  // Concentration ratio check
+  const totalFlow = flow.reduce((s, b) => s + Math.abs(b.netValue), 0);
+  const top1Flow = flow.length > 0 ? Math.abs(flow[0].netValue) : 0;
+  const concentrationRatio = totalFlow > 0 ? top1Flow / totalFlow : 0;
 
   return (
     <aside className="tape" id="tape">
@@ -51,8 +118,12 @@ export default function Tape({ selectedEmiten, topBuyers, topSellers, zScore = 0
               <tr key={b.code}>
                 <td style={{ fontWeight: 700 }}>{b.code}</td>
                 <td>
-                  <span className={`broker-badge broker-badge--${b.type === 'Asing' ? 'whale' : 'retail'}`}>
-                    {b.type === 'Asing' ? 'Whale' : b.type}
+                  <span style={{
+                    fontSize: 9, fontWeight: 600, padding: '1px 5px', borderRadius: 3,
+                    color: b.typeColor, background: `${b.typeColor}18`,
+                    border: `1px solid ${b.typeColor}33`,
+                  }}>
+                    {b.type}
                   </span>
                 </td>
                 <td style={{ color: b.netValue >= 0 ? 'var(--color-bullish)' : 'var(--color-bearish)', fontWeight: 600 }}>
@@ -70,6 +141,12 @@ export default function Tape({ selectedEmiten, topBuyers, topSellers, zScore = 0
             )}
           </tbody>
         </table>
+        {/* Concentration warning */}
+        {concentrationRatio > 0.6 && (
+          <div style={{ marginTop: 6, fontSize: 9, color: '#f59e0b', display: 'flex', alignItems: 'center', gap: 4, padding: '3px 6px', background: 'rgba(245,158,11,0.08)', borderRadius: 3 }}>
+            <ShieldAlert size={10} /> Concentration Ratio: {(concentrationRatio * 100).toFixed(0)}% — Artificial Liquidity Warning
+          </div>
+        )}
       </div>
 
       {/* Z-Score Section */}
@@ -91,7 +168,7 @@ export default function Tape({ selectedEmiten, topBuyers, topSellers, zScore = 0
         </div>
       </div>
 
-      {/* Wash Sale Alerts */}
+      {/* Alerts Section */}
       <div className="section-header">
         <div className="section-header__title"><AlertTriangle size={14} /> Live Alerts</div>
       </div>
@@ -99,7 +176,7 @@ export default function Tape({ selectedEmiten, topBuyers, topSellers, zScore = 0
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           {washSaleAlert && (
             <div className="tag tag--warning" style={{ fontSize: 10, padding: '4px 8px', display: 'block' }}>
-              ⚠️ Wash Sale Detected — Flat price with massive volume cross
+              ⚠️ Wash Sale Detected — High Churn / Low Accumulation
             </div>
           )}
           {spoofingAlert && (
@@ -116,6 +193,60 @@ export default function Tape({ selectedEmiten, topBuyers, topSellers, zScore = 0
             <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>No critical anomalies detected today.</div>
           )}
         </div>
+      </div>
+
+      {/* Sentiment Divergence */}
+      <div className="section-header">
+        <div className="section-header__title"><Newspaper size={14} /> Sentiment Feed</div>
+        <span className="tag tag--info" style={{ fontSize: 9 }}>{selectedEmiten}</span>
+      </div>
+      <div style={{ padding: '8px 14px' }}>
+        {sentiment ? (
+          <>
+            {/* Divergence Alert */}
+            {sentiment.divergenceAlert && (
+              <div style={{
+                fontSize: 10, padding: '6px 8px', marginBottom: 6, borderRadius: 4,
+                background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.3)',
+                color: '#ef4444', fontWeight: 600,
+              }}>
+                {sentiment.divergenceMessage}
+              </div>
+            )}
+            {/* Overall score */}
+            {(sentiment.items || []).length > 0 && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6, fontSize: 10 }}>
+                <span style={{ color: 'var(--text-muted)' }}>Sentiment {selectedEmiten}</span>
+                <span style={{
+                  fontWeight: 700, fontFamily: 'var(--font-mono)',
+                  color: sentiment.overallSentiment === 'bullish' ? '#2ebd85' : sentiment.overallSentiment === 'bearish' ? '#e0294a' : 'var(--text-muted)',
+                }}>
+                  {sentiment.overallSentiment.toUpperCase()} ({sentiment.overallScore > 0 ? '+' : ''}{sentiment.overallScore})
+                </span>
+              </div>
+            )}
+            {/* Headlines */}
+            {(sentiment.items || []).length > 0 ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {(sentiment.items || []).slice(0, 5).map((item: any, i: number) => (
+                  <div key={i} style={{ fontSize: 9, color: 'var(--text-secondary)', lineHeight: 1.4, display: 'flex', gap: 4, alignItems: 'flex-start' }}>
+                    <span style={{
+                      flexShrink: 0, width: 6, height: 6, borderRadius: '50%', marginTop: 3,
+                      background: item.sentiment === 'bullish' ? '#2ebd85' : item.sentiment === 'bearish' ? '#e0294a' : '#6b7280',
+                    }} />
+                    <span>{item.title}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{ fontSize: 10, color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                Tidak ada berita terbaru untuk {selectedEmiten}.
+              </div>
+            )}
+          </>
+        ) : (
+          <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Loading sentiment data...</div>
+        )}
       </div>
     </aside>
   );

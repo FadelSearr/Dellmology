@@ -24,13 +24,26 @@ export async function GET() {
     const engineUrl = process.env.ENGINE_HEALTH_URL || 'http://localhost:8080/health';
     const res = await fetch(engineUrl, { signal: AbortSignal.timeout(3000) });
     if (res.ok) {
-      const data = await res.json();
       checks.engine = { status: 'online', latency: Date.now() - engineStart };
     } else {
       checks.engine = { status: 'offline', latency: Date.now() - engineStart };
     }
   } catch {
     checks.engine = { status: 'offline', latency: Date.now() - engineStart };
+  }
+
+  // Check CNN Worker (Python FastAPI on port 8000)
+  const cnnStart = Date.now();
+  try {
+    const cnnUrl = process.env.CNN_HEALTH_URL || 'http://localhost:8000/health';
+    const res = await fetch(cnnUrl, { signal: AbortSignal.timeout(3000) });
+    if (res.ok) {
+      checks.cnnWorker = { status: 'online', latency: Date.now() - cnnStart };
+    } else {
+      checks.cnnWorker = { status: 'offline', latency: Date.now() - cnnStart };
+    }
+  } catch {
+    checks.cnnWorker = { status: 'offline', latency: Date.now() - cnnStart };
   }
 
   // Data integrity: check if we have recent data

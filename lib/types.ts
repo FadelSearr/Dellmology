@@ -43,7 +43,7 @@ export interface EmitenSummary {
 
 // ── Watchlist Item ───────────────────────────────────────────
 export interface WatchlistItem {
-  id: number;
+  id: number | string;
   code: string;
   name: string;
   price: number;
@@ -51,6 +51,7 @@ export interface WatchlistItem {
   changePercent: number;
   ups: number;
   sector?: string;
+  inWatchlist?: boolean;
 }
 
 // ── Broker Flow Entry ────────────────────────────────────────

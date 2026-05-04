@@ -1,6 +1,5 @@
 'use client';
 import { Search, Zap, Globe2 } from 'lucide-react';
-import { mockInfraHealth } from '@/lib/mock-data';
 import { useState, useEffect } from 'react';
 
 interface NavbarProps {
@@ -10,9 +9,31 @@ interface NavbarProps {
 }
 
 export default function Navbar({ searchQuery, onSearchChange, onCombatMode }: NavbarProps) {
-  const health = mockInfraHealth;
+  const [health, setHealth] = useState<Record<string, { status: string }>>({
+    engine: { status: 'offline' },
+    database: { status: 'offline' },
+    token: { status: 'offline' },
+    dataIntegrity: { status: 'offline' },
+  });
   const [macros, setMacros] = useState<any[]>([]);
 
+  // Fetch real health status
+  useEffect(() => {
+    async function fetchHealth() {
+      try {
+        const res = await fetch('/api/health');
+        const json = await res.json();
+        if (json.success && json.checks) setHealth(json.checks);
+      } catch {
+        // Keep current status
+      }
+    }
+    fetchHealth();
+    const interval = setInterval(fetchHealth, 30000); // Every 30s
+    return () => clearInterval(interval);
+  }, []);
+
+  // Fetch macros
   useEffect(() => {
     async function fetchMacros() {
       try {
@@ -24,6 +45,18 @@ export default function Navbar({ searchQuery, onSearchChange, onCombatMode }: Na
       }
     }
     fetchMacros();
+    const interval = setInterval(fetchMacros, 300000); // Every 5 min
+    return () => clearInterval(interval);
+  }, []);
+
+  // Send heartbeat periodically
+  useEffect(() => {
+    async function heartbeat() {
+      try { await fetch('/api/heartbeat', { method: 'POST' }); } catch { /* ignore */ }
+    }
+    heartbeat();
+    const interval = setInterval(heartbeat, 5 * 60 * 1000); // Every 5 min
+    return () => clearInterval(interval);
   }, []);
 
   return (
@@ -79,10 +112,10 @@ export default function Navbar({ searchQuery, onSearchChange, onCombatMode }: Na
         )}
 
         <div className="navbar__health">
-          <HealthDot label="Engine" status={health.engine} />
-          <HealthDot label="DB" status={health.database} />
-          <HealthDot label="Token" status={health.token} />
-          <HealthDot label="Data" status={health.dataIntegrity} />
+          <HealthDot label="Engine" status={health.engine?.status || 'offline'} />
+          <HealthDot label="DB" status={health.database?.status || 'offline'} />
+          <HealthDot label="Token" status={health.token?.status || 'offline'} />
+          <HealthDot label="Data" status={health.dataIntegrity?.status || 'offline'} />
         </div>
       </div>
     </nav>

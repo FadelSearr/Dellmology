@@ -104,6 +104,44 @@ export function detectVolumeAnomalies(
   }));
 }
 
+// ── Beta-Weighting Analysis ──────────────────────────────────
+// Calculates the Beta of a stock relative to the market
+export function calculateBeta(stockCloses: number[], marketCloses: number[]): number {
+  if (stockCloses.length < 2 || marketCloses.length < 2) return 1;
+
+  // Align lengths if they differ
+  const minLength = Math.min(stockCloses.length, marketCloses.length);
+  const sCloses = stockCloses.slice(-minLength);
+  const mCloses = marketCloses.slice(-minLength);
+
+  const sReturns: number[] = [];
+  const mReturns: number[] = [];
+
+  // Calculate daily returns
+  for (let i = 1; i < minLength; i++) {
+    sReturns.push((sCloses[i] - sCloses[i - 1]) / sCloses[i - 1]);
+    mReturns.push((mCloses[i] - mCloses[i - 1]) / mCloses[i - 1]);
+  }
+
+  // Calculate means
+  const meanS = sReturns.reduce((a, b) => a + b, 0) / sReturns.length;
+  const meanM = mReturns.reduce((a, b) => a + b, 0) / mReturns.length;
+
+  // Calculate covariance and variance
+  let covariance = 0;
+  let varianceM = 0;
+
+  for (let i = 0; i < sReturns.length; i++) {
+    const sDiff = sReturns[i] - meanS;
+    const mDiff = mReturns[i] - meanM;
+    covariance += sDiff * mDiff;
+    varianceM += mDiff * mDiff;
+  }
+
+  if (varianceM === 0) return 1;
+  return covariance / varianceM;
+}
+
 // ── Market Regime Detection ──────────────────────────────────
 // Per roadmap: "Smart system that knows when market is Uptrend/Downtrend/Sideways"
 export function detectMarketRegime(closes: number[], period = 20): MarketRegime {

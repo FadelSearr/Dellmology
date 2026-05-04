@@ -10,15 +10,18 @@ interface BrainProps {
   atr?: number;
   ups?: number;
   signal?: string;
+  beta?: number;
   onRunBacktest?: () => void;
 }
 
-export default function Brain({ selectedEmiten, narrativeData, loading, price, atr = 0, ups = 50, signal = 'neutral', onRunBacktest }: BrainProps) {
-  const n = narrativeData?.data || {
+export default function Brain({ selectedEmiten, narrativeData, loading, price, atr = 0, ups = 50, signal = 'neutral', beta = 1, onRunBacktest }: BrainProps) {
+  // narrativeData comes from apiFetch which already returns json.data
+  const n = narrativeData || {
     confidence: 'medium',
-    summary: loading ? 'Analyzing market structure with local LLM...' : 'No AI narrative available.',
+    summary: loading ? '⏳ Generating AI narrative...' : 'Menunggu data harga untuk analisis.',
     bullCase: loading ? '...' : '-',
     bearCase: loading ? '...' : '-',
+    keyPoints: [],
   };
 
   const p = price || 0;
@@ -31,15 +34,39 @@ export default function Brain({ selectedEmiten, narrativeData, loading, price, a
       <div className="brain__narrative">
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, color: 'var(--text-secondary)' }}>
-            <BrainIcon size={13} color={loading ? 'var(--text-muted)' : 'var(--accent-cyan)'} /> AI Narrative — {selectedEmiten}
+            <BrainIcon size={13} color={loading ? 'var(--text-muted)' : 'var(--accent-cyan)'} className={loading ? 'spin-slow' : ''} /> AI Narrative — {selectedEmiten}
           </div>
           <span className={`confidence-badge confidence-badge--${n.confidence}`}>
-            {n.confidence.toUpperCase()}
+            {(n.confidence || 'medium').toUpperCase()}
           </span>
         </div>
-        <div className="brain__narrative-text" dangerouslySetInnerHTML={{
-          __html: n.summary.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-        }} />
+
+        {loading ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div style={{ height: 12, background: 'var(--border-default)', borderRadius: 4, width: '100%', animation: 'shimmer 1.5s ease-in-out infinite' }} />
+            <div style={{ height: 12, background: 'var(--border-default)', borderRadius: 4, width: '80%', animation: 'shimmer 1.5s ease-in-out infinite 0.2s' }} />
+            <div style={{ height: 12, background: 'var(--border-default)', borderRadius: 4, width: '60%', animation: 'shimmer 1.5s ease-in-out infinite 0.4s' }} />
+          </div>
+        ) : (
+          <>
+            <div className="brain__narrative-text" dangerouslySetInnerHTML={{
+              __html: (n.summary || '').replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+            }} />
+
+            {/* Key Points */}
+            {n.keyPoints && n.keyPoints.length > 0 && (
+              <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 3 }}>
+                {n.keyPoints.map((kp: string, i: number) => (
+                  <div key={i} style={{ fontSize: 10, color: 'var(--text-secondary)', display: 'flex', gap: 6, alignItems: 'flex-start' }}>
+                    <span style={{ color: 'var(--accent-cyan)', fontWeight: 700, flexShrink: 0 }}>•</span>
+                    <span>{kp}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 10 }}>
           <div style={{ padding: 8, background: 'var(--color-bullish-glow)', borderRadius: 6, fontSize: 11 }}>
             <div style={{ fontWeight: 700, color: 'var(--color-bullish)', marginBottom: 4 }}>🐂 Bull Case</div>
@@ -51,6 +78,16 @@ export default function Brain({ selectedEmiten, narrativeData, loading, price, a
           </div>
         </div>
       </div>
+
+      <style>{`
+        @keyframes shimmer {
+          0% { opacity: 0.3; }
+          50% { opacity: 0.6; }
+          100% { opacity: 0.3; }
+        }
+        .spin-slow { animation: spin-slow 2s linear infinite; }
+        @keyframes spin-slow { 100% { transform: rotate(360deg); } }
+      `}</style>
 
       {/* Position Sizing */}
       <div className="brain__sizing">
@@ -81,10 +118,25 @@ export default function Brain({ selectedEmiten, narrativeData, loading, price, a
             <span className="position-sizer__value">1:2.0</span>
           </div>
           <div className="position-sizer__row">
+            <span className="position-sizer__label">Beta (Market Corr.)</span>
+            <span className="position-sizer__value" style={{ color: beta > 1.5 ? 'var(--color-bearish)' : 'var(--text-primary)' }}>
+              {beta.toFixed(2)}
+            </span>
+          </div>
+          <div className="position-sizer__row">
             <span className="position-sizer__label">Slippage</span>
             <span className="position-sizer__value">1%</span>
           </div>
         </div>
+
+        {beta > 1.5 && (
+          <div style={{ marginTop: 12, padding: '8px 10px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, display: 'flex', gap: 6, alignItems: 'flex-start' }}>
+            <span style={{ color: '#ef4444', marginTop: 2 }}>⚠️</span>
+            <div style={{ fontSize: 10, color: '#ef4444', fontWeight: 600, lineHeight: 1.4 }}>
+              Systemic Risk High: Portfolio too sensitive to Market Crash (Beta &gt; 1.5)
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Action Dock */}

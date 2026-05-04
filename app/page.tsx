@@ -8,33 +8,64 @@ import Tape from './components/Tape';
 import Brain from './components/Brain';
 import CombatMode from './components/CombatMode';
 import BacktestModal from './components/BacktestModal';
-import { useStockData, useWatchlist, useNarrative, useInfraHealth, useChartData } from '@/app/hooks/useData';
+import { useStockData, useWatchlist, useNarrative, useChartData, useAutoRefresh } from '@/app/hooks/useData';
 import { useSSETicks } from '@/app/hooks/useSSE';
+import { calculateBeta } from '@/lib/analysis';
 
 export default function Home() {
-  const [selectedEmiten, setSelectedEmiten] = useState('BBRI');
-  const [screenerMode, setScreenerMode] = useState<'daytrade' | 'swing' | 'custom'>('daytrade');
-  const [minPrice, setMinPrice] = useState(0);
-  const [maxPrice, setMaxPrice] = useState(999999);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [combatMode, setCombatMode] = useState(false);
-  const [showBacktest, setShowBacktest] = useState(false);
+  const [selectedEmiten, setSelectedEmiten]   = useState('BBRI');
+  const [screenerMode, setScreenerMode]       = useState<'daytrade' | 'swing'>('daytrade');
+  const [minPrice, setMinPrice]               = useState(0);
+  const [maxPrice, setMaxPrice]               = useState(999999);
+  const [searchQuery, setSearchQuery]         = useState('');
+  const [combatMode, setCombatMode]           = useState(false);
+  const [showBacktest, setShowBacktest]       = useState(false);
+  const [screenerSortBy, setScreenerSortBy]   = useState<'score' | 'price_asc' | 'price_desc' | 'change'>('score');
+  const [activeTab, setActiveTab]             = useState<'watchlist' | 'screener'>('watchlist');
+  const [chartTimeframe, setChartTimeframe]   = useState('1D');
 
-  // Real-time hooks
+  // ── Watchlist data (always fetches watchlist mode) ───────
+  const { data: watchlistData, refetch: refetchWatchlist } = useWatchlist(
+    'watchlist', 0, 999999, searchQuery
+  );
+  useAutoRefresh(refetchWatchlist, 30000); // 30s refresh for watchlist prices
+
+  // ── Screener data (fetches only when screener tab is active) ─
+  const { data: screenerData, loading: screenerLoading, refetch: refetchScreener } = useWatchlist(
+    screenerMode, minPrice, maxPrice, '', screenerSortBy
+  );
+
+  // ── Selected stock data ───────────────────────────────────
   const { data: stockData, loading: stockLoading, error: stockError } = useStockData(selectedEmiten);
-  const { data: watchlistData, loading: watchlistLoading } = useWatchlist(screenerMode, minPrice, maxPrice);
-  const { data: chartData, atr, loading: chartLoading } = useChartData(selectedEmiten);
-  const sse = useSSETicks(50); // Get real-time HAKA/HAKI ticks
+  const { data: chartData, atr, loading: chartLoading } = useChartData(selectedEmiten, chartTimeframe);
+  const { data: ihsgData } = useChartData('^JKSE', chartTimeframe);
+  const sse = useSSETicks(50);
 
-  const topBuyers = (stockData?.topBuyers as any[]) || [];
+  const topBuyers  = (stockData?.topBuyers  as any[]) || [];
   const topSellers = (stockData?.topSellers as any[]) || [];
-  const price = (stockData?.price as number) || 0;
+  const price      = (stockData?.price as number) || 0;
+
+  // Calculate Beta
+  let beta = 1;
+  if (chartData.length > 0 && ihsgData.length > 0) {
+    beta = calculateBeta(
+      chartData.map(d => d.close),
+      ihsgData.map(d => d.close)
+    );
+  }
 
   const { data: aiNarrative, loading: aiLoading } = useNarrative({
-    emiten: selectedEmiten,
-    price: price,
-    topBrokers: [...topBuyers, ...topSellers]
+    emiten:        selectedEmiten,
+    price:         price,
+    change:        (stockData?.change as number) || 0,
+    changePercent: (stockData?.changePercent as number) || 0,
+    ups:           (stockData?.ups as number) || 50,
+    regime:        (stockData?.ups as number) >= 60 ? 'uptrend' : (stockData?.ups as number) <= 40 ? 'downtrend' : 'sideways',
+    zScore:        (stockData?.zScore as number) || 0,
+    atr:           atr,
+    topBrokers:    [...topBuyers, ...topSellers],
   });
+
   if (stockError) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', background: 'var(--bg-canvas)', color: 'var(--text-main)', padding: 20, textAlign: 'center' }}>
@@ -51,7 +82,7 @@ export default function Home() {
     );
   }
 
-  if (stockLoading || watchlistLoading || !stockData) {
+  if (stockLoading || !stockData) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: 'var(--bg-canvas)', color: 'var(--text-main)' }}>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
@@ -63,16 +94,15 @@ export default function Home() {
     );
   }
 
-  // Strictly use real data
   const selectedStock = {
-    id: 1,
-    code: selectedEmiten,
-    name: (stockData.name as string) || selectedEmiten,
-    sector: (stockData.sector as string) || 'IDX',
-    price: (stockData.price as number) || 0,
-    change: (stockData.change as number) || 0,
+    id:            1,
+    code:          selectedEmiten,
+    name:          (stockData.name          as string) || selectedEmiten,
+    sector:        (stockData.sector        as string) || 'IDX',
+    price:         (stockData.price         as number) || 0,
+    change:        (stockData.change        as number) || 0,
     changePercent: (stockData.changePercent as number) || 0,
-    ups: (stockData.ups as number) || 50
+    ups:           (stockData.ups           as number) || 50,
   };
 
   return (
@@ -109,7 +139,9 @@ export default function Home() {
           onCombatMode={() => setCombatMode(true)}
         />
         <Sidebar
-          watchlist={watchlistData.length > 0 ? watchlistData : [{ code: selectedEmiten, name: selectedEmiten, price: stockData.price || 0, change: 0, ups: 50 }]}
+          watchlistData={watchlistData}
+          screenerData={screenerData}
+          screenerLoading={screenerLoading}
           selectedEmiten={selectedEmiten}
           onSelectEmiten={setSelectedEmiten}
           screenerMode={screenerMode}
@@ -119,15 +151,29 @@ export default function Home() {
           maxPrice={maxPrice}
           setMinPrice={setMinPrice}
           setMaxPrice={setMaxPrice}
+          sortBy={screenerSortBy}
+          onSortByChange={setScreenerSortBy}
+          activeTab={activeTab}
+          onTabChange={setActiveTab}
+          onRunScreener={refetchScreener}
         />
-        <Canvas selectedEmiten={selectedEmiten} selectedStock={selectedStock} stockData={stockData} chartData={chartData} chartLoading={chartLoading} />
-        <Tape 
+        <Canvas 
           selectedEmiten={selectedEmiten} 
-          topBuyers={topBuyers} 
-          topSellers={topSellers} 
+          selectedStock={selectedStock} 
+          stockData={stockData} 
+          chartData={chartData} 
+          chartLoading={chartLoading} 
+          timeframe={chartTimeframe}
+          onTimeframeChange={setChartTimeframe}
+        />
+        <Tape
+          selectedEmiten={selectedEmiten}
+          topBuyers={topBuyers}
+          topSellers={topSellers}
           zScore={stockData.zScore as number}
           spoofingAlert={stockData.spoofingAlert as boolean}
           washSaleAlert={stockData.washSaleAlert as boolean}
+          chartData={chartData}
         />
         <Brain
           selectedEmiten={selectedEmiten}
@@ -136,6 +182,7 @@ export default function Home() {
           price={price}
           atr={atr}
           ups={selectedStock.ups}
+          beta={beta}
           signal={selectedStock.ups >= 70 ? 'buy' : selectedStock.ups <= 30 ? 'sell' : 'neutral'}
           onRunBacktest={() => setShowBacktest(true)}
         />
