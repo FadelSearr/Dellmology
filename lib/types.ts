@@ -6,7 +6,7 @@
 export type MarketRegime = 'uptrend' | 'downtrend' | 'sideways';
 
 // ── Screener Mode ────────────────────────────────────────────
-export type ScreenerMode = 'daytrade' | 'swing' | 'custom';
+export type ScreenerMode = 'daytrade' | 'swing' | 'whale' | 'ai' | 'custom';
 
 // ── Broker Identity ──────────────────────────────────────────
 export type BrokerIdentity = 'Whale' | 'Retail' | 'Mix' | 'Bandar';

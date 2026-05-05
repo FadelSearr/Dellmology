@@ -14,7 +14,7 @@ import { calculateBeta } from '@/lib/analysis';
 
 export default function Home() {
   const [selectedEmiten, setSelectedEmiten]   = useState('BBRI');
-  const [screenerMode, setScreenerMode]       = useState<'daytrade' | 'swing'>('daytrade');
+  const [screenerMode, setScreenerMode] = useState<'daytrade' | 'swing' | 'whale' | 'ai'>('daytrade');
   const [minPrice, setMinPrice]               = useState(0);
   const [maxPrice, setMaxPrice]               = useState(999999);
   const [searchQuery, setSearchQuery]         = useState('');

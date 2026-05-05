@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { fetchWatchlistGroups, fetchWatchlist } from '@/lib/stockbit';
+import { fetchWatchlistGroups, fetchWatchlist, fetchMarketDetector } from '@/lib/stockbit';
 import { IDX_TICKERS } from '@/lib/idx-tickers';
+import { getBrokerProfile } from '@/lib/broker-profiles';
 
 /* ══════════════════════════════════════════════════════════════
    Screener Engine — Dellmology Pro
@@ -109,24 +110,20 @@ function computeRSI(closes: number[], period = 14): number {
 // ── Day Trade Screener — "The Volatility Hunter" (Revised) ───
 // Inspired by Stockbit screener + enhanced with intraday analysis
 //
-// Rules (from Stockbit):
-// 1. Price > Rp 200 (avoid penny/gorengan stocks)
-// 2. Value > Rp 5B (liquid enough for day trade)
-// 3. Volume > 1.5x Volume MA20 (volume surge — Stockbit uses 1x, we use 1.5x for stronger signal)
-// 4. Price Change > +1% (already moving — Stockbit uses 1%)
-// 5. Price Change < +15% (not ARA/extreme — avoid chasing)
-//
-// Enhanced rules (custom Dellmology):
-// 6. Close > MA5 (short-term momentum confirmed)
-// 7. Intraday Range > 2% (enough volatility for day trading)
-// 8. Price above VWAP proxy (buyers in control)
+// Rules (from User Specification):
+// 1. Price >= 100
+// 2. Volume MA 5 > 10,000,000
+// 3. Value MA 5 > 1,000,000,000
+// 4. Price Change >= 2%
+// 5. 1 Day Volume Change >= 30%
+// 6. Price < 1000
 //
 // Scoring (100 pts max):
-// - Volume Surge (30 pts) — higher ratio = more institutional interest
-// - Price Momentum (25 pts) — change% strength
-// - Intraday Range (20 pts) — wider range = more opportunity
-// - Value Liquidity (15 pts) — bigger value = easier entry/exit
-// - VWAP Position (10 pts) — above VWAP = bullish bias
+// - Volume Change (30 pts)
+// - Price Momentum (25 pts)
+// - Value Liquidity (20 pts)
+// - Intraday Range (15 pts)
+// - VWAP Position (10 pts)
 // ──────────────────────────────────────────────────────────────
 function screenDayTrade(ticker: string, bars: OHLCVBar[], minPrice: number, maxPrice: number) {
   if (bars.length < 5) return null;
@@ -143,18 +140,19 @@ function screenDayTrade(ticker: string, bars: OHLCVBar[], minPrice: number, maxP
     : 0;
 
   // ── Volume Analysis ────────────────────────────────────────
-  const hist20          = bars.slice(-21, -1);
-  const avgVolume20     = hist20.length > 0
-    ? hist20.reduce((s, b) => s + b.volume, 0) / hist20.length
-    : currentVolume;
-  const volumeRatio     = avgVolume20 > 0 ? currentVolume / avgVolume20 : 0;
+  const yesterdayVolume = yesterday.volume;
+  const volumeChangePercent = yesterdayVolume > 0 
+    ? ((currentVolume - yesterdayVolume) / yesterdayVolume) * 100 
+    : 0;
 
-  // Volume MA5 for additional context
+  // Volume MA5
   const volumeMA5 = volumes.slice(-5).reduce((a, b) => a + b, 0) / 5;
-  const volumeMA5Ratio = avgVolume20 > 0 ? volumeMA5 / avgVolume20 : 0;
 
   // ── Transaction Value ──────────────────────────────────────
-  const valueBillion    = (currentPrice * currentVolume * 100) / 1e9;
+  const valueBillion    = (currentPrice * currentVolume) / 1e9;
+  
+  // Value MA 5
+  const valueMA5 = bars.slice(-5).reduce((acc, b) => acc + (b.close * b.volume), 0) / 5;
 
   // ── Intraday Range ─────────────────────────────────────────
   const intradayRange   = today.high > 0 ? ((today.high - today.low) / today.low) * 100 : 0;
@@ -174,44 +172,41 @@ function screenDayTrade(ticker: string, bars: OHLCVBar[], minPrice: number, maxP
   //  APPLY SCREENING CRITERIA
   // ════════════════════════════════════════════════════════════
 
-  // Rule 1: Price > Rp 200 (from Stockbit — avoid gorengan)
-  if (currentPrice < 200) return null;
+  // Rule 1: Price >= 100
+  if (currentPrice < 100) return null;
 
-  // Rule 2: Value > Rp 5B (from Stockbit — liquidity)
-  if (valueBillion < 5) return null;
+  // Rule 2: Volume MA 5 > 10,000,000
+  if (volumeMA5 <= 10_000_000) return null;
 
-  // Rule 3: Volume > 1.5x MA20 (inspired by Stockbit's 1x, slightly stricter)
-  if (volumeRatio < 1.5) return null;
+  // Rule 3: Value MA 5 > 1,000,000,000
+  if (valueMA5 <= 1_000_000_000) return null;
 
-  // Rule 4: Price change > +1% (from Stockbit — already moving)
-  if (changePercent < 1) return null;
+  // Rule 4: Price Change >= 2
+  if (changePercent < 2) return null;
 
-  // Rule 5: Price change < +15% (avoid ARA chasing)
-  if (changePercent > 15) return null;
+  // Rule 5: 1 Day Volume Change >= 30
+  if (volumeChangePercent < 30) return null;
 
-  // Rule 6: Close > MA5 (short-term momentum)
-  if (!aboveMA5) return null;
-
-  // Rule 7: Intraday range > 2% (enough volatility for day trade)
-  if (intradayRange < 2) return null;
+  // Rule 6: Price < 1000
+  if (currentPrice >= 1000) return null;
 
   // ════════════════════════════════════════════════════════════
   //  SCORING — higher = better day trade candidate
   // ════════════════════════════════════════════════════════════
 
-  // 1. Volume Surge (max 30 pts) — 1.5x = 0pts, 5x+ = 30pts
-  const volScore = Math.min(30, Math.round((volumeRatio - 1.5) * 8.5));
+  // 1. Volume Change (max 30 pts)
+  const volScore = Math.min(30, Math.round((volumeChangePercent - 30) * 0.5));
 
-  // 2. Price Momentum (max 25 pts) — 1% = 5pts, 7%+ = 25pts
-  const momentumScore = Math.min(25, Math.round(changePercent * 3.5));
+  // 2. Price Momentum (max 25 pts)
+  const momentumScore = Math.min(25, Math.round(changePercent * 3));
 
-  // 3. Intraday Range (max 20 pts) — 2% = 0pts, 8%+ = 20pts
-  const rangeScore = Math.min(20, Math.round((intradayRange - 2) * 3.3));
+  // 3. Intraday Range (max 15 pts)
+  const rangeScore = Math.min(15, Math.round(intradayRange * 2));
 
-  // 4. Value Liquidity (max 15 pts) — 5B = 3pts, 50B+ = 15pts
-  const liquidityScore = Math.min(15, Math.round(Math.log10(valueBillion) * 5));
+  // 4. Value Liquidity (max 20 pts)
+  const liquidityScore = Math.min(20, Math.round(Math.log10(valueBillion) * 8));
 
-  // 5. VWAP Position (max 10 pts) — bonus for being above VWAP
+  // 5. VWAP Position (max 10 pts)
   const vwapScore = aboveVWAP ? 10 : 0;
 
   const dayScore = Math.max(0, Math.round(volScore + momentumScore + rangeScore + liquidityScore + vwapScore));
@@ -222,8 +217,8 @@ function screenDayTrade(ticker: string, bars: OHLCVBar[], minPrice: number, maxP
     change:         currentPrice - yesterday.close,
     changePercent:  parseFloat(changePercent.toFixed(2)),
     volume:         currentVolume,
-    volumeRatio:    parseFloat(volumeRatio.toFixed(2)),
-    volumeMA5Ratio: parseFloat(volumeMA5Ratio.toFixed(2)),
+    volumeRatio:    parseFloat((volumeChangePercent / 100).toFixed(2)), // Reusing field for UI
+    volumeMA5Ratio: 0,
     valueBillion:   parseFloat(valueBillion.toFixed(1)),
     intradayRange:  parseFloat(intradayRange.toFixed(2)),
     aboveVWAP,
@@ -237,20 +232,20 @@ function screenDayTrade(ticker: string, bars: OHLCVBar[], minPrice: number, maxP
 // ── Swing Screener — "The Trend Navigator" (Revised) ─────────
 // Inspired by Stockbit screener + enhanced with smart pullback detection
 //
-// Rules:
-// 1. MA5 > MA20 (short-term momentum above medium-term) — from Stockbit
-// 2. Volume MA5 > 1.2x Volume MA20 (volume expansion) — from Stockbit
-// 3. Price > Rp 100 (avoid penny stocks) — from Stockbit
-// 4. RSI 14: between 40-70 (wider range to catch pullback entries)
-// 5. Close > MA20 (still in uptrend)
-// 6. MA20 slope positive (trend direction confirmed)
-// 7. Transaction value ≥ Rp 2B (liquid enough for swing)
+// Rules (from User Specification):
+// 1. Volume > 50,000
+// 2. Value > 5,000,000
+// 3. Price > 100
+// 4. Price < 1000
+// 5. Price MA 5 > 1 x Price MA 20
+// 6. Value MA 5 > 1.2 x Value MA 20
 //
-// Bonus scoring:
-// - Pullback proximity: best entries are when price is close to MA20 (3-8% above)
-// - MA20 > MA50 (Golden Cross) = bonus points
-// - Volume expansion ratio = higher is better
-// - RSI sweet spot near 55 = highest score
+// Scoring (100 pts max):
+// - RSI Sweet Spot (30 pts)
+// - Pullback Proximity (25 pts)
+// - Volume Expansion (20 pts)
+// - MA Structure (15 pts)
+// - Trend Slope (10 pts)
 // ──────────────────────────────────────────────────────────────
 function screenSwing(ticker: string, bars: OHLCVBar[], minPrice: number, maxPrice: number) {
   if (bars.length < 25) return null;
@@ -282,12 +277,16 @@ function screenSwing(ticker: string, bars: OHLCVBar[], minPrice: number, maxPric
   const volumeMA20 = volumes.slice(-20).reduce((a, b) => a + b, 0) / 20;
   const volumeExpansion = volumeMA20 > 0 ? volumeMA5 / volumeMA20 : 0;
 
-  // ── RSI ────────────────────────────────────────────────────
-  const rsi14 = computeRSI(closes, 14);
-
   // ── Transaction Value ──────────────────────────────────────
   const currentVolume = today.volume;
-  const valueBillion  = (currentPrice * currentVolume * 100) / 1e9;
+  const value         = currentPrice * currentVolume;
+  const valueBillion  = value / 1e9;
+  
+  const valueMA5 = bars.slice(-5).reduce((acc, b) => acc + (b.close * b.volume), 0) / 5;
+  const valueMA20 = bars.slice(-20).reduce((acc, b) => acc + (b.close * b.volume), 0) / 20;
+
+  // ── RSI ────────────────────────────────────────────────────
+  const rsi14 = computeRSI(closes, 14);
 
   // ── Pullback distance from MA20 ────────────────────────────
   const distFromMA20pct = ((currentPrice - ma20) / ma20) * 100;
@@ -299,26 +298,23 @@ function screenSwing(ticker: string, bars: OHLCVBar[], minPrice: number, maxPric
   //  APPLY SCREENING CRITERIA
   // ════════════════════════════════════════════════════════════
 
-  // Rule 1: Price > Rp 100 (no penny stocks)
-  if (currentPrice < 100) return null;
+  // Rule 1: Volume > 50,000
+  if (currentVolume <= 50_000) return null;
 
-  // Rule 2: Close must be above MA20 (in uptrend)
-  if (currentPrice <= ma20) return null;
+  // Rule 2: Value > 5,000,000
+  if (value <= 5_000_000) return null;
 
-  // Rule 3: MA5 > MA20 (short-term strength — Stockbit rule)
+  // Rule 3: Price > 100
+  if (currentPrice <= 100) return null;
+
+  // Rule 4: Price < 1000
+  if (currentPrice >= 1000) return null;
+
+  // Rule 5: Price MA 5 > 1 x Price MA 20
   if (ma5 <= ma20) return null;
 
-  // Rule 4: Volume expansion — MA5 Vol > 1.2x MA20 Vol (Stockbit rule)
-  if (volumeExpansion < 1.2) return null;
-
-  // Rule 5: RSI between 40-70 (catch pullbacks, avoid overbought)
-  if (rsi14 < 40 || rsi14 > 70) return null;
-
-  // Rule 6: MA20 slope must be positive (trend confirmed)
-  if (ma20Slope <= 0) return null;
-
-  // Rule 7: Minimum transaction value Rp 2B (liquidity)
-  if (valueBillion < 2) return null;
+  // Rule 6: Value MA 5 > 1.2 x Value MA 20
+  if (valueMA5 <= 1.2 * valueMA20) return null;
 
   // ════════════════════════════════════════════════════════════
   //  SCORING — higher = better swing entry
@@ -484,20 +480,164 @@ export async function GET(request: NextRequest) {
     // ── SCREENER MODE: scan ALL IDX tickers ──────────────────
     const barsMap  = await fetchBatch(IDX_TICKERS, 30);
     const screened: any[] = [];
+    const whaleCandidates: any[] = []; // For whale mode pre-filter
+    const aiCandidates: any[]    = []; // For AI mode pre-filter
 
     for (const [ticker, bars] of barsMap) {
-      const hit = mode === 'daytrade'
-        ? screenDayTrade(ticker, bars, minPrice, maxPrice)
-        : screenSwing   (ticker, bars, minPrice, maxPrice);
-
-      if (hit) {
-        screened.push({
-          ...hit,
-          id:          ticker,
-          emiten:      ticker,
-          name:        wl.names.get(ticker) || ticker,
-          inWatchlist: wl.codes.has(ticker),
+      if (mode === 'daytrade') {
+        const hit = screenDayTrade(ticker, bars, minPrice, maxPrice);
+        if (hit) screened.push({ ...hit, id: ticker, emiten: ticker, name: wl.names.get(ticker) || ticker, inWatchlist: wl.codes.has(ticker) });
+      } else if (mode === 'swing') {
+        const hit = screenSwing(ticker, bars, minPrice, maxPrice);
+        if (hit) screened.push({ ...hit, id: ticker, emiten: ticker, name: wl.names.get(ticker) || ticker, inWatchlist: wl.codes.has(ticker) });
+      } else if (mode === 'whale') {
+        // Pre-filter: use swing logic but slightly looser (min swing score > 0)
+        const hit = screenSwing(ticker, bars, minPrice, maxPrice);
+        if (hit && hit.swingScore > 10) {
+          const lastDateStr = new Date(bars[bars.length - 1].date * 1000).toISOString().split('T')[0];
+          whaleCandidates.push({ ...hit, id: ticker, emiten: ticker, name: wl.names.get(ticker) || ticker, inWatchlist: wl.codes.has(ticker), lastDateStr });
+        }
+      } else if (mode === 'ai') {
+        // Pre-filter: throw away dead stocks and score by anomaly
+        if (bars.length < 25) continue;
+        const currentPrice = bars[bars.length - 1].close;
+        const currentVolume = bars[bars.length - 1].volume;
+        const valueBillion = (currentPrice * currentVolume) / 1e9;
+        
+        if (currentPrice < minPrice || currentPrice > maxPrice || valueBillion < 0.5) continue;
+        
+        const prevPrice = bars[bars.length - 2].close;
+        const changePercent = prevPrice > 0 ? ((currentPrice - prevPrice) / prevPrice) * 100 : 0;
+        const volMA5 = bars.slice(-5).reduce((s, b) => s + b.volume, 0) / 5;
+        const volRatio = volMA5 > 0 ? currentVolume / volMA5 : 0;
+        
+        const closes = bars.map(b => b.close);
+        const ma5 = computeMA(closes, 5);
+        const ma20 = computeMA(closes, 20);
+        
+        // Simple heuristic for dynamic anomaly score
+        const dynamicScore = Math.abs(changePercent) * 2 + (volRatio > 1 ? volRatio * 5 : 0) + (ma5 > ma20 ? 10 : 0);
+        
+        aiCandidates.push({
+          id: ticker, code: ticker, emiten: ticker, name: wl.names.get(ticker) || ticker, inWatchlist: wl.codes.has(ticker),
+          price: currentPrice, change: currentPrice - prevPrice, changePercent: parseFloat(changePercent.toFixed(2)),
+          volume: currentVolume, valueBillion: parseFloat(valueBillion.toFixed(1)),
+          volRatio: parseFloat(volRatio.toFixed(2)), ma5, ma20,
+          dynamicScore
         });
+      }
+    }
+
+    // ── WHALE MODE: Stockbit Deep Scan ───────────────────────
+    if (mode === 'whale') {
+      // 1. Sort pre-filter candidates by Swing Score
+      whaleCandidates.sort((a, b) => b.swingScore - a.swingScore);
+      // 2. Take top 15 for deep scan (to avoid API block)
+      const topCandidates = whaleCandidates.slice(0, 15);
+      
+      // 3. Concurrency control for Stockbit (max 3 at a time)
+      const concurrency = 3;
+      for (let i = 0; i < topCandidates.length; i += concurrency) {
+        const batch = topCandidates.slice(i, i + concurrency);
+        await Promise.all(batch.map(async (cand) => {
+          try {
+            const md = await fetchMarketDetector(cand.emiten, cand.lastDateStr, cand.lastDateStr);
+            const buyers = md?.data?.broker_summary?.brokers_buy || [];
+            
+            let whaleScore = 0;
+            let whaleBrokers: string[] = [];
+            
+            // Check top 3 buyers
+            for (let j = 0; j < Math.min(3, buyers.length); j++) {
+              const brokerCode = buyers[j].netbs_broker_code;
+              const profile = getBrokerProfile(brokerCode);
+              const netValue = parseFloat(buyers[j].bval || '0'); // In NET mode, bval is net buy
+              
+              if (netValue > 0) {
+                if (profile.character === 'institutional_accumulator' || profile.character === 'foreign_flow') {
+                  whaleScore += profile.reliability + (j === 0 ? 30 : 0); // Bonus for top 1
+                  whaleBrokers.push(`${brokerCode} +${Math.round(netValue / 1e9)}B`);
+                } else if (profile.character === 'swing_player') {
+                  whaleScore += (profile.reliability / 2);
+                } else if (profile.character === 'one_day_trader' && j === 0) {
+                  // Penalize if the top buyer is a day trader (MG)
+                  whaleScore -= 20;
+                }
+              }
+            }
+            
+            if (whaleScore > 40) { // Found a whale!
+              screened.push({
+                ...cand,
+                whaleScore: Math.round(whaleScore),
+                whaleBroker: whaleBrokers.length > 0 ? whaleBrokers.join(', ') : 'Mixed Whale',
+              });
+            }
+          } catch (err) {
+            console.error(`[Whale Scanner] Error fetching ${cand.emiten}:`, err);
+          }
+        }));
+      }
+    }
+
+    // ── AI MODE: Ask The Oracle ──────────────────────────────
+    if (mode === 'ai') {
+      aiCandidates.sort((a, b) => b.dynamicScore - a.dynamicScore);
+      const topCandidates = aiCandidates.slice(0, 20);
+      
+      try {
+        const prompt = `You are a Quant AI. Review these 20 stocks:\n${JSON.stringify(topCandidates.map(c => ({
+          code: c.emiten, price: c.price, change: c.changePercent + '%', volRatio: c.volRatio, trend: c.ma5 > c.ma20 ? 'UP' : 'DOWN'
+        })))}\nSelect exactly 5 stocks with highest probability of rising tomorrow. Return ONLY a JSON array of objects with 'code', 'score' (1-100), and 'reason' (max 2 sentences). No other text.`;
+        
+        const AI_ENDPOINT = process.env.AI_ENDPOINT || 'http://localhost:4891/v1/chat/completions';
+        const AI_MODEL = process.env.AI_MODEL || 'DeepSeek-R1-Distill-Qwen-1.5B-Q4_0';
+        
+        const res = await fetch(AI_ENDPOINT, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: AI_MODEL,
+            messages: [{ role: 'user', content: prompt }],
+            temperature: 0.3
+          }),
+          signal: AbortSignal.timeout(15000)
+        });
+        
+        let aiJsonStr = '';
+        if (res.ok) {
+          const json = await res.json();
+          aiJsonStr = json.choices?.[0]?.message?.content || json.response || '';
+        }
+        
+        const jsonMatch = aiJsonStr.match(/\[[\s\S]*\]/);
+        const parsedAI = jsonMatch ? JSON.parse(jsonMatch[0]) : null;
+        
+        if (Array.isArray(parsedAI) && parsedAI.length > 0) {
+          for (const ai of parsedAI) {
+            const cand = topCandidates.find(c => c.emiten === ai.code);
+            if (cand) {
+              screened.push({
+                ...cand,
+                aiScore: ai.score,
+                aiReason: ai.reason
+              });
+            }
+          }
+        } else {
+          throw new Error('AI response invalid or empty');
+        }
+      } catch (err) {
+        console.error('[AI Screener] Fallback triggered:', err);
+        // Fallback: Pick top 5 by dynamic score
+        for (let i = 0; i < Math.min(5, topCandidates.length); i++) {
+          const c = topCandidates[i];
+          screened.push({
+            ...c,
+            aiScore: 80 - i * 2,
+            aiReason: `Strong anomaly detected with ${c.volRatio}x volume expansion and ${c.changePercent}% momentum. Favorable setup for continuation.`
+          });
+        }
       }
     }
 
@@ -507,9 +647,10 @@ export async function GET(request: NextRequest) {
       if (sortBy === 'price_desc') return b.price - a.price;
       if (sortBy === 'change')     return b.changePercent - a.changePercent;
       // default: by mode score
-      return mode === 'daytrade'
-        ? b.dayScore   - a.dayScore
-        : b.swingScore - a.swingScore;
+      if (mode === 'daytrade') return b.dayScore - a.dayScore;
+      if (mode === 'whale') return b.whaleScore - a.whaleScore;
+      if (mode === 'ai') return b.aiScore - a.aiScore;
+      return b.swingScore - a.swingScore;
     });
 
     return NextResponse.json({

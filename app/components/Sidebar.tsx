@@ -29,6 +29,12 @@ interface ScreenerItem {
   volumeExpansion?: number;
   goldenCross?:     boolean;
   distFromMA20pct?: number;
+  // Whale
+  whaleScore?:      number;
+  whaleBroker?:     string;
+  // AI
+  aiScore?:         number;
+  aiReason?:        string;
 }
 
 interface SidebarProps {
@@ -37,8 +43,8 @@ interface SidebarProps {
   screenerLoading:        boolean;
   selectedEmiten:         string;
   onSelectEmiten:         (code: string) => void;
-  screenerMode:           'daytrade' | 'swing';
-  onScreenerModeChange:   (mode: 'daytrade' | 'swing') => void;
+  screenerMode:           'daytrade' | 'swing' | 'whale' | 'ai';
+  onScreenerModeChange:   (mode: 'daytrade' | 'swing' | 'whale' | 'ai') => void;
   searchQuery:            string;
   minPrice:               number;
   maxPrice:               number;
@@ -169,6 +175,20 @@ export default function Sidebar({
             >
               📈 Swing
             </button>
+            <button
+              className={`screener-tab ${screenerMode === 'whale' ? 'screener-tab--active' : ''}`}
+              onClick={() => onScreenerModeChange('whale')}
+              style={{ flex: 1, fontSize: 10 }}
+            >
+              🐋 Whale
+            </button>
+            <button
+              className={`screener-tab ${screenerMode === 'ai' ? 'screener-tab--active' : ''}`}
+              onClick={() => onScreenerModeChange('ai')}
+              style={{ flex: 1, fontSize: 10 }}
+            >
+              🤖 AI
+            </button>
           </div>
 
           {/* Mode info box */}
@@ -176,7 +196,7 @@ export default function Sidebar({
             <div style={{ background: 'rgba(250,204,21,0.07)', border: '1px solid rgba(250,204,21,0.25)', borderRadius: 5, padding: '7px 8px', marginBottom: 8 }}>
               <div style={{ fontSize: 9, fontWeight: 700, color: '#fbbf24', marginBottom: 3 }}>⚡ THE VOLATILITY HUNTER</div>
               <div style={{ fontSize: 9, color: 'var(--text-muted)', lineHeight: 1.6 }}>
-                Volume ≥ <b style={{ color: '#fbbf24' }}>2× avg 20d</b> · Change <b style={{ color: '#fbbf24' }}>3–10%</b> · Value ≥ <b style={{ color: '#fbbf24' }}>Rp 5B</b>
+                Vol MA5 &gt; <b style={{ color: '#fbbf24' }}>10M</b> · Value MA5 &gt; <b style={{ color: '#fbbf24' }}>Rp 1B</b> · Change <b style={{ color: '#fbbf24' }}>≥ 2%</b>
               </div>
             </div>
           )}
@@ -185,7 +205,25 @@ export default function Sidebar({
             <div style={{ background: 'rgba(74,222,128,0.07)', border: '1px solid rgba(74,222,128,0.25)', borderRadius: 5, padding: '7px 8px', marginBottom: 8 }}>
               <div style={{ fontSize: 9, fontWeight: 700, color: '#4ade80', marginBottom: 3 }}>📈 THE TREND NAVIGATOR</div>
               <div style={{ fontSize: 9, color: 'var(--text-muted)', lineHeight: 1.6 }}>
-                Close &gt; <b style={{ color: '#4ade80' }}>MA20 &gt; MA50</b> · RSI <b style={{ color: '#4ade80' }}>50–65</b> · Value ≥ <b style={{ color: '#4ade80' }}>Rp 1B</b>
+                Price MA5 &gt; <b style={{ color: '#4ade80' }}>MA20</b> · Val MA5 &gt; <b style={{ color: '#4ade80' }}>1.2× Val MA20</b>
+              </div>
+            </div>
+          )}
+
+          {screenerMode === 'whale' && (
+            <div style={{ background: 'rgba(56,189,248,0.07)', border: '1px solid rgba(56,189,248,0.25)', borderRadius: 5, padding: '7px 8px', marginBottom: 8 }}>
+              <div style={{ fontSize: 9, fontWeight: 700, color: '#38bdf8', marginBottom: 3 }}>🐋 THE WHALE SHADOW</div>
+              <div style={{ fontSize: 9, color: 'var(--text-muted)', lineHeight: 1.6 }}>
+                Swing Pre-filter + <b style={{ color: '#38bdf8' }}>Institutional Accumulation</b> · Stockbit Validated
+              </div>
+            </div>
+          )}
+
+          {screenerMode === 'ai' && (
+            <div style={{ background: 'rgba(168,85,247,0.07)', border: '1px solid rgba(168,85,247,0.25)', borderRadius: 5, padding: '7px 8px', marginBottom: 8 }}>
+              <div style={{ fontSize: 9, fontWeight: 700, color: '#a855f7', marginBottom: 3 }}>🤖 THE AI ORACLE</div>
+              <div style={{ fontSize: 9, color: 'var(--text-muted)', lineHeight: 1.6 }}>
+                Analyze Top 20 Candidates using <b style={{ color: '#a855f7' }}>Flexible AI Reasoning</b> for next-day breakout.
               </div>
             </div>
           )}
@@ -230,9 +268,9 @@ export default function Sidebar({
             disabled={screenerLoading}
             style={{
               width: '100%', padding: '6px 0', borderRadius: 4,
-              background: screenerMode === 'daytrade' ? 'rgba(251,191,36,0.15)' : 'rgba(74,222,128,0.15)',
-              border: `1px solid ${screenerMode === 'daytrade' ? '#fbbf2466' : '#4ade8066'}`,
-              color: screenerMode === 'daytrade' ? '#fbbf24' : '#4ade80',
+              background: screenerMode === 'daytrade' ? 'rgba(251,191,36,0.15)' : screenerMode === 'whale' ? 'rgba(56,189,248,0.15)' : screenerMode === 'ai' ? 'rgba(168,85,247,0.15)' : 'rgba(74,222,128,0.15)',
+              border: `1px solid ${screenerMode === 'daytrade' ? '#fbbf2466' : screenerMode === 'whale' ? '#38bdf866' : screenerMode === 'ai' ? '#a855f766' : '#4ade8066'}`,
+              color: screenerMode === 'daytrade' ? '#fbbf24' : screenerMode === 'whale' ? '#38bdf8' : screenerMode === 'ai' ? '#a855f7' : '#4ade80',
               fontSize: 11, fontWeight: 700, cursor: 'pointer',
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
               opacity: screenerLoading ? 0.6 : 1,
@@ -265,8 +303,8 @@ export default function Sidebar({
             </span>
           )}
           {activeTab === 'screener' && !screenerLoading && screenerData.length > 0 && (
-            <span style={{ color: screenerMode === 'daytrade' ? '#fbbf24' : '#4ade80', fontWeight: 700 }}>
-              {screenerMode === 'daytrade' ? 'VOL·SCORE' : 'RSI·SCORE'}
+            <span style={{ color: screenerMode === 'daytrade' ? '#fbbf24' : screenerMode === 'whale' ? '#38bdf8' : screenerMode === 'ai' ? '#a855f7' : '#4ade80', fontWeight: 700 }}>
+              {screenerMode === 'daytrade' ? 'VOL·SCORE' : screenerMode === 'whale' ? 'WHALE·SCORE' : screenerMode === 'ai' ? 'AI·SCORE' : 'RSI·SCORE'}
             </span>
           )}
         </div>
@@ -277,8 +315,8 @@ export default function Sidebar({
             <div style={{ marginBottom: 12 }}>
               <RefreshCw size={20} style={{ animation: 'spin 1s linear infinite', opacity: 0.5 }} />
             </div>
-            <div style={{ fontSize: 11, fontWeight: 600 }}>Scanning {screenerMode === 'daytrade' ? '⚡ Volatility Hunters' : '📈 Trend Navigators'}...</div>
-            <div style={{ fontSize: 9, marginTop: 6, opacity: 0.6 }}>Menganalisis seluruh emiten IDX</div>
+            <div style={{ fontSize: 11, fontWeight: 600 }}>Scanning {screenerMode === 'daytrade' ? '⚡ Volatility Hunters' : screenerMode === 'whale' ? '🐋 Whale Accumulation' : screenerMode === 'ai' ? '🤖 AI Predictions' : '📈 Trend Navigators'}...</div>
+            <div style={{ fontSize: 9, marginTop: 6, opacity: 0.6 }}>{screenerMode === 'whale' ? 'Menarik data bandarmology dari Stockbit (bisa butuh 5 detik)' : screenerMode === 'ai' ? 'Meminta prediksi dari AI Model (bisa butuh 10-15 detik)' : 'Menganalisis seluruh emiten IDX'}</div>
             <div style={{ fontSize: 9, opacity: 0.5, marginTop: 4 }}>Mungkin 10–20 detik untuk pertama kali</div>
           </div>
         )}
@@ -320,7 +358,7 @@ export default function Sidebar({
                 <div style={{
                   width: 16, flexShrink: 0, textAlign: 'center', marginRight: 4,
                   fontSize: 9, fontWeight: 700,
-                  color: rank < 3 ? (screenerMode === 'daytrade' ? '#fbbf24' : '#4ade80') : 'var(--text-muted)',
+                  color: rank < 3 ? (screenerMode === 'daytrade' ? '#fbbf24' : screenerMode === 'whale' ? '#38bdf8' : screenerMode === 'ai' ? '#a855f7' : '#4ade80') : 'var(--text-muted)',
                   fontFamily: 'var(--font-mono)',
                 }}>
                   {rank + 1}
@@ -391,6 +429,27 @@ export default function Sidebar({
                       ) : null}
                     </div>
                   )}
+                  {/* Screener Whale: show broker and score */}
+                  {activeTab === 'screener' && screenerMode === 'whale' && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 3, flexWrap: 'wrap' }}>
+                      <span style={{
+                        fontSize: 8, fontWeight: 700, fontFamily: 'var(--font-mono)',
+                        color: '#38bdf8', background: '#38bdf81a', border: '1px solid #38bdf844',
+                        padding: '1px 3px', borderRadius: 3,
+                      }}>
+                        🐋 {item.whaleBroker}
+                      </span>
+                    </div>
+                  )}
+                  {/* Screener AI: show reason */}
+                  {activeTab === 'screener' && screenerMode === 'ai' && item.aiReason && (
+                    <div style={{ 
+                      fontSize: 8, color: '#a855f7', marginTop: 4, lineHeight: 1.4, 
+                      background: 'rgba(168,85,247,0.05)', padding: '4px 6px', borderRadius: 4, borderLeft: '2px solid #a855f7' 
+                    }}>
+                      "{item.aiReason}"
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -408,6 +467,12 @@ export default function Sidebar({
                   )}
                   {activeTab === 'screener' && screenerMode === 'swing' && item.swingScore !== undefined && (
                     <ScoreBadge score={item.swingScore} color="#4ade80" />
+                  )}
+                  {activeTab === 'screener' && screenerMode === 'whale' && item.whaleScore !== undefined && (
+                    <ScoreBadge score={item.whaleScore} color="#38bdf8" />
+                  )}
+                  {activeTab === 'screener' && screenerMode === 'ai' && item.aiScore !== undefined && (
+                    <ScoreBadge score={item.aiScore} color="#a855f7" />
                   )}
                 </div>
               </div>
