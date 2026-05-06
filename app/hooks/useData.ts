@@ -178,10 +178,15 @@ export function useTokenHealth(intervalMs = 30000) {
   useEffect(() => {
     const check = async () => {
       try {
-        const result = await apiFetch<Record<string, unknown>>('/api/token-status');
-        setStatus(result);
+        const res = await fetch('/api/health');
+        const json = await res.json();
+        if (json.success && json.checks?.token) {
+          setStatus(json.checks.token.metadata || { status: json.checks.token.status });
+        } else {
+          setStatus({ status: 'offline', expiresInMinutes: 0 });
+        }
       } catch {
-        setStatus({ exists: false, isValid: false, isExpired: true });
+        setStatus({ status: 'offline', expiresInMinutes: 0 });
       }
     };
 
@@ -211,20 +216,20 @@ export function useInfraHealth(intervalMs = 10000): InfraHealth {
         dataIntegrity: 'warning',
       };
 
-      // Check API availability
       try {
-        const res = await fetch('/api/token-status', { signal: AbortSignal.timeout(5000) });
+        const res = await fetch('/api/health', { signal: AbortSignal.timeout(5000) });
         if (res.ok) {
-          results.engine = 'online';
           const json = await res.json();
-          if (json.success) {
-            results.database = 'online';
-            results.token = json.data?.isValid ? 'online' : json.data?.isExpiringSoon ? 'warning' : 'offline';
-            results.dataIntegrity = json.data?.exists ? 'online' : 'warning';
+          if (json.success && json.checks) {
+            results.engine = json.checks.engine?.status || 'offline';
+            results.database = json.checks.database?.status || 'offline';
+            const tStatus = json.checks.token?.status;
+            results.token = tStatus === 'online' ? 'online' : tStatus === 'expiring' ? 'warning' : 'offline';
+            results.dataIntegrity = json.checks.dataIntegrity?.status || 'warning';
           }
         }
       } catch {
-        results.engine = 'offline';
+        // keep defaults
       }
 
       setHealth(results);
@@ -236,6 +241,30 @@ export function useInfraHealth(intervalMs = 10000): InfraHealth {
   }, [intervalMs]);
 
   return health;
+}
+
+// ── useOracle ───────────────────────────────────────────────
+export function useOracle() {
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchOracle = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await apiFetch<any>('/api/oracle');
+      setData(result);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch AI Oracle');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchOracle(); }, [fetchOracle]);
+
+  return { data, loading, error, refetch: fetchOracle };
 }
 
 // ── useAutoRefresh ───────────────────────────────────────────
@@ -273,4 +302,52 @@ export function useCombatMode() {
   const toggle = useCallback(() => setCombatMode(prev => !prev), []);
 
   return { combatMode, volatilityLevel, activate, toggle };
+}
+
+// ── usePortfolio ─────────────────────────────────────────────
+export function usePortfolio() {
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchPortfolio = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await apiFetch<any>('/api/portfolio');
+      setData(result);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch portfolio');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchPortfolio(); }, [fetchPortfolio]);
+
+  return { data, loading, error, refetch: fetchPortfolio };
+}
+
+// ── useBrokerHistory ─────────────────────────────────────────
+// Fetches multi-day broker flow data for heatmap visualization
+export function useBrokerHistory(emiten: string) {
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+
+  const fetchHistory = useCallback(async () => {
+    if (!emiten) return;
+    setLoading(true);
+    try {
+      const result = await apiFetch<any>(`/api/broker-history?emiten=${emiten}`);
+      setData(result);
+    } catch {
+      setData(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [emiten]);
+
+  useEffect(() => { fetchHistory(); }, [fetchHistory]);
+
+  return { data, loading, refetch: fetchHistory };
 }

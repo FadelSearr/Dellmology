@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { generateNarrative } from '@/lib/ai-narrative';
 import type { BrokerFlowEntry, MarketRegime, UnifiedPowerScore } from '@/lib/types';
 import { getBrokerProfile } from '@/lib/broker-profiles';
+import { rateLimit } from '@/lib/rateLimit';
 
 /* ══════════════════════════════════════════════════════════════
    AI Narrative Route
@@ -43,6 +44,10 @@ function transformBrokers(rawBrokers: any[]): BrokerFlowEntry[] {
 }
 
 export async function POST(request: NextRequest) {
+  // ── Rate Limit Guard (15 req/60s — AI call is expensive) ──
+  const rateLimitResponse = rateLimit(request, 15, 60);
+  if (rateLimitResponse) return rateLimitResponse;
+
   try {
     const body = await request.json();
     const {

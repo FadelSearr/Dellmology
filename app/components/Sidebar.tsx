@@ -1,7 +1,8 @@
 'use client';
 import { useEffect } from 'react';
-import { Eye, Crosshair, Star, TrendingUp, TrendingDown, Minus, Zap, RefreshCw, SlidersHorizontal } from 'lucide-react';
+import { Eye, Crosshair, Star, TrendingUp, TrendingDown, Minus, Zap, RefreshCw, SlidersHorizontal, Briefcase, Sparkles } from 'lucide-react';
 import { fmt } from '@/lib/utils';
+import Portfolio from './Portfolio';
 
 type SortBy = 'score' | 'price_asc' | 'price_desc' | 'change';
 
@@ -52,9 +53,14 @@ interface SidebarProps {
   setMaxPrice:            (v: number) => void;
   sortBy:                 SortBy;
   onSortByChange:         (s: SortBy) => void;
-  activeTab:              'watchlist' | 'screener';
-  onTabChange:            (t: 'watchlist' | 'screener') => void;
+  activeTab:              'watchlist' | 'screener' | 'portfolio' | 'oracle';
+  onTabChange:            (t: 'watchlist' | 'screener' | 'portfolio' | 'oracle') => void;
   onRunScreener:          () => void;
+  // Portfolio
+  portfolioData?:         any;
+  portfolioLoading?:      boolean;
+  portfolioError?:        string | null;
+  onPortfolioRefresh?:    () => void;
 }
 
 function fmtVol(v: number): string {
@@ -114,6 +120,7 @@ export default function Sidebar({
   sortBy, onSortByChange,
   activeTab, onTabChange,
   onRunScreener,
+  portfolioData, portfolioLoading = false, portfolioError = null, onPortfolioRefresh,
 }: SidebarProps) {
 
   const isSearching = !!searchQuery.trim();
@@ -151,6 +158,18 @@ export default function Sidebar({
             onClick={() => onTabChange('screener')}
           >
             <Crosshair size={11} style={{ marginRight: 4, verticalAlign: -1 }} />Screener
+          </button>
+          <button
+            className={`screener-tab ${activeTab === 'portfolio' ? 'screener-tab--active' : ''}`}
+            onClick={() => onTabChange('portfolio')}
+          >
+            <Briefcase size={11} style={{ marginRight: 4, verticalAlign: -1 }} />Portfolio
+          </button>
+          <button
+            className={`screener-tab ${activeTab === 'oracle' ? 'screener-tab--active' : ''}`}
+            onClick={() => onTabChange('oracle')}
+          >
+            <Sparkles size={11} style={{ marginRight: 4, verticalAlign: -1, color: 'var(--accent-cyan)' }} />Oracle
           </button>
         </div>
       </div>
@@ -282,7 +301,22 @@ export default function Sidebar({
         </div>
       )}
 
+      {/* ── PORTFOLIO VIEW ──────────────────────────────────────── */}
+      {activeTab === 'portfolio' && (
+        <div style={{ flex: 1, overflowY: 'auto', borderTop: '1px solid var(--border-color)' }}>
+          <Portfolio
+            data={portfolioData}
+            loading={portfolioLoading}
+            error={portfolioError}
+            onRefresh={onPortfolioRefresh || (() => {})}
+            onSelectEmiten={onSelectEmiten}
+            selectedEmiten={selectedEmiten}
+          />
+        </div>
+      )}
+
       {/* ── LIST ─────────────────────────────────────────────── */}
+      {activeTab !== 'portfolio' && (
       <div style={{ flex: 1, overflowY: 'auto', borderTop: '1px solid var(--border-color)' }}>
 
         {/* List header */}
@@ -480,6 +514,7 @@ export default function Sidebar({
           );
         })}
       </div>
+      )}
 
       <style>{`
         @keyframes livePulse {

@@ -4,7 +4,11 @@ import {
   calculateUPS, rsi, macd, atr as computeAtr, detectMarketRegime,
   calculateZScore, detectWashSale, adjustUPSThreshold,
   checkRoCKillSwitch, multiTimeframeValidation,
+  detectUpperShadowDivergence, detectConcentrationAnomaly,
+  detectIcebergOrder, calculateMFI, fuseSentimentMFI,
 } from '@/lib/analysis';
+import { rateLimit } from '@/lib/rateLimit';
+import { processAlerts } from '@/lib/telegram';
 import rules from '@/app/config/rules.json';
 
 /* ══════════════════════════════════════════════════════════════
@@ -54,6 +58,10 @@ async function getIHSGChange(): Promise<number> {
 }
 
 export async function GET(request: NextRequest) {
+  // ── Rate Limit Guard ────────────────────────────────────────
+  const rateLimitResponse = rateLimit(request, 60, 60);
+  if (rateLimitResponse) return rateLimitResponse;
+
   const { searchParams } = new URL(request.url);
   const emiten = searchParams.get('emiten');
   const from = searchParams.get('from');
@@ -90,6 +98,7 @@ export async function GET(request: NextRequest) {
     // ── Extract raw data ──────────────────────────────────────
     const topBuyers = mdData?.data?.broker_summary?.brokers_buy?.slice(0, 5) || [];
     const topSellers = mdData?.data?.broker_summary?.brokers_sell?.slice(0, 5) || [];
+    const allBuyers = mdData?.data?.broker_summary?.brokers_buy || [];
     const detector = mdData?.data?.bandar_detector;
 
     // Cast to any — API response has dynamic fields not in our strict type
@@ -136,8 +145,14 @@ export async function GET(request: NextRequest) {
     const washSaleAlert = washSaleResult.isWashSale;
 
     // 4. Concentration Ratio (Artificial Liquidity Warning)
-    const concentrationRatio = totalMarketVol > 0 ? top1BuyerVol / totalMarketVol : 0;
-    const artificialLiquidity = concentrationRatio > 0.7;
+    //    Enhanced: compare top-1 broker vs ALL brokers + count opposing direction
+    const allBrokerEntries = [
+      ...topBuyers.map((b: any) => ({ code: b.netbs_broker_code || b.code || '', netValue: parseFloat(b.bval || '0') })),
+      ...topSellers.map((b: any) => ({ code: b.netbs_broker_code || b.code || '', netValue: -parseFloat(b.sval || b.bval || '0') })),
+    ];
+    const concentrationResult = detectConcentrationAnomaly(allBrokerEntries);
+    const concentrationRatio = concentrationResult.ratio;
+    const artificialLiquidity = concentrationResult.warning;
 
     // 5. Rate-of-Change Kill-Switch
     const history = priceHistory.get(emiten) || [];
@@ -193,6 +208,59 @@ export async function GET(request: NextRequest) {
     if (mtfResult.isValid && mtfResult.consensus.includes('BULLISH')) ups += 10;
     else if (mtfResult.isValid && mtfResult.consensus.includes('BEARISH')) ups -= 10;
 
+    // ── Volume-Profile Divergence (Upper Shadow Alert) ──
+    const open = ob.open || 0;
+    const low = ob.low || 0;
+    const upperShadowResult = detectUpperShadowDivergence({
+      open, high, low, close: price, netBuy,
+    });
+    if (upperShadowResult.alert) ups -= 5;
+
+    // ── Iceberg Order Detection ──
+    const icebergBrokers = allBuyers.map((b: any) => ({
+      code: b.netbs_broker_code || '',
+      netValue: parseFloat(b.bval || '0') - parseFloat(b.sval || '0'),
+      bfreq: parseInt(b.bfreq || b.blot_freq || '0', 10),
+      blot: parseInt(String(b.blot || '0').replace(/,/g, ''), 10),
+    }));
+    const icebergResult = detectIcebergOrder(icebergBrokers);
+    if (icebergResult.detected) ups += 5; // Stealth accumulation = bullish conviction
+
+    // ── Money Flow Index (MFI) ──
+    // Fetch mini OHLCV from Yahoo for MFI calculation
+    let mfiValue = 50;
+    let mfiLabel = 'N/A';
+    let mfiDivergence = false;
+    try {
+      const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${emiten}.JK?range=1mo&interval=1d`;
+      const yahooRes = await fetch(yahooUrl, {
+        headers: { 'User-Agent': 'Mozilla/5.0' },
+        signal: AbortSignal.timeout(4000),
+      });
+      if (yahooRes.ok) {
+        const yahooData = await yahooRes.json();
+        const q = yahooData.chart?.result?.[0]?.indicators?.quote?.[0];
+        if (q) {
+          const h = (q.high || []).filter((v: number | null) => v != null);
+          const l = (q.low || []).filter((v: number | null) => v != null);
+          const c = (q.close || []).filter((v: number | null) => v != null);
+          const v = (q.volume || []).filter((v: number | null) => v != null);
+          const minLen = Math.min(h.length, l.length, c.length, v.length);
+          if (minLen > 14) {
+            mfiValue = calculateMFI(
+              h.slice(-minLen), l.slice(-minLen), c.slice(-minLen), v.slice(-minLen)
+            );
+          }
+        }
+      }
+    } catch { /* MFI fetch failed, use default */ }
+
+    // Fuse MFI with stream sentiment (use 0 as placeholder for now since
+    // we don't have the sentiment score here; the frontend will handle fusion)
+    const mfiFusion = fuseSentimentMFI(mfiValue, 0);
+    mfiLabel = mfiFusion.label;
+    mfiDivergence = mfiFusion.divergence;
+
     // ── Data Integrity Shield (Gap Detection) ──
     // Incomplete Data if orderbook is completely empty during market hours
     const incompleteData = (totalBid === 0 && totalOffer === 0) || (obData === null);
@@ -205,6 +273,25 @@ export async function GET(request: NextRequest) {
     // Kill-switch flags
     const killSwitchActive = rocResult.triggered || globalKillSwitch;
 
+    // ── Fire Telegram Alerts (non-blocking) ──
+    processAlerts({
+      emiten,
+      zScore: parseFloat(zScore.toFixed(2)),
+      spoofingAlert,
+      washSaleAlert,
+      icebergDetected: icebergResult.detected,
+      icebergBroker: icebergResult.brokerCode,
+      concentrationLabel: concentrationResult.label,
+      concentrationTopBroker: concentrationResult.topBrokerCode,
+      upperShadowAlert: upperShadowResult.alert,
+      mfiDivergence,
+      mfiLabel,
+      mfi: mfiValue,
+      killSwitchActive,
+      price,
+      changePercent,
+    }).catch(() => {}); // fire and forget
+
     return NextResponse.json({
       success: true,
       data: {
@@ -215,7 +302,7 @@ export async function GET(request: NextRequest) {
         totalBid, totalOffer,
         topBuyers, topSellers, detector,
         ups,
-        upsThreshold, // dynamic threshold (70 normally, 90 if IHSG crash)
+        upsThreshold,
         zScore: parseFloat(zScore.toFixed(2)),
         spoofingAlert,
         washSaleAlert,
@@ -223,17 +310,28 @@ export async function GET(request: NextRequest) {
         churnRatio: washSaleResult.churnRatio,
         artificialLiquidity,
         concentrationRatio: parseFloat(concentrationRatio.toFixed(2)),
-        // Integrity Shield
+        concentrationLabel: concentrationResult.label,
+        concentrationTopBroker: concentrationResult.topBrokerCode,
+        opposingBrokerCount: concentrationResult.opposingBrokerCount,
+        upperShadowAlert: upperShadowResult.alert,
+        upperShadowLabel: upperShadowResult.label,
+        upperShadowPct: upperShadowResult.upperShadowPct,
         incompleteData,
-        // Kill-switches
         killSwitchActive,
         rocKillSwitch: rocResult,
         globalKillSwitch,
         ihsgChangePercent: parseFloat(ihsgPct.toFixed(2)),
-        // Multi-timeframe
         mtfConsensus: mtfResult.consensus,
         mtfValid: mtfResult.isValid,
         mtfSignals,
+        icebergDetected: icebergResult.detected,
+        icebergBroker: icebergResult.brokerCode,
+        icebergAvgLot: icebergResult.avgLotPerTx,
+        icebergFrequency: icebergResult.frequency,
+        icebergLabel: icebergResult.label,
+        mfi: mfiValue,
+        mfiLabel,
+        mfiDivergence,
         fromDate, toDate,
       },
     });

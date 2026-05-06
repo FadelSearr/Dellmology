@@ -130,3 +130,148 @@ ${signalLines || 'No strong signals detected'}
 
   return sendTelegramMessage(text);
 }
+
+// ── Anti-Spam Cooldown ───────────────────────────────────────
+const alertCooldown = new Map<string, number>();
+const COOLDOWN_MS = 15 * 60 * 1000; // 15 minutes between same alerts
+
+function canSendAlert(emiten: string, type: string): boolean {
+  const key = `${emiten}:${type}`;
+  const lastSent = alertCooldown.get(key) || 0;
+  if (Date.now() - lastSent < COOLDOWN_MS) return false;
+  alertCooldown.set(key, Date.now());
+  return true;
+}
+
+// ── Anomaly Alert (single) ───────────────────────────────────
+export async function sendAnomalyAlert(params: {
+  emiten: string;
+  type: string;
+  emoji: string;
+  title: string;
+  message: string;
+  data?: Record<string, any>;
+}) {
+  if (!canSendAlert(params.emiten, params.type)) return false;
+  
+  const time = new Date().toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' });
+  let text = `${params.emoji} <b>${params.title}</b>\n`;
+  text += `📌 <b>${params.emiten}</b> | ${time}\n\n`;
+  text += `${params.message}\n`;
+
+  if (params.data) {
+    text += `\n<code>`;
+    for (const [key, value] of Object.entries(params.data)) {
+      text += `${key}: ${value}\n`;
+    }
+    text += `</code>`;
+  }
+
+  text += `\n🔗 <i>Dellmology Pro — Live Alert</i>`;
+  return sendTelegramMessage(text);
+}
+
+// ── Batch Alert Processor ────────────────────────────────────
+// Call from stock/route.ts after all analysis engines finish
+export async function processAlerts(params: {
+  emiten: string;
+  zScore: number;
+  spoofingAlert: boolean;
+  washSaleAlert: boolean;
+  icebergDetected: boolean;
+  icebergBroker: string;
+  concentrationLabel: string;
+  concentrationTopBroker: string;
+  upperShadowAlert: boolean;
+  mfiDivergence: boolean;
+  mfiLabel: string;
+  mfi: number;
+  killSwitchActive: boolean;
+  price: number;
+  changePercent: number;
+}): Promise<void> {
+  const e = params.emiten;
+
+  // 1. Whale Z-Score
+  if (params.zScore > 2.5) {
+    sendAnomalyAlert({
+      emiten: e, type: 'whale_accum', emoji: '🐋',
+      title: 'WHALE ACCUMULATION',
+      message: `Volume anomaly! Z-Score ${params.zScore.toFixed(2)} menandakan akumulasi masif.`,
+      data: { 'Z-Score': params.zScore.toFixed(2), Price: `Rp ${params.price.toLocaleString()}`, Change: `${params.changePercent.toFixed(2)}%` },
+    }).catch(() => {});
+  } else if (params.zScore < -2.5) {
+    sendAnomalyAlert({
+      emiten: e, type: 'whale_dist', emoji: '🐋🔴',
+      title: 'WHALE DISTRIBUTION',
+      message: `Z-Score ${params.zScore.toFixed(2)} menandakan distribusi besar-besaran.`,
+      data: { 'Z-Score': params.zScore.toFixed(2), Price: `Rp ${params.price.toLocaleString()}` },
+    }).catch(() => {});
+  }
+
+  // 2. Spoofing
+  if (params.spoofingAlert) {
+    sendAnomalyAlert({
+      emiten: e, type: 'spoofing', emoji: '🚨',
+      title: 'SPOOFING ALERT',
+      message: 'Fake Bid Wall terdeteksi saat harga turun. Kemungkinan jebakan.',
+    }).catch(() => {});
+  }
+
+  // 3. Wash Sale
+  if (params.washSaleAlert) {
+    sendAnomalyAlert({
+      emiten: e, type: 'wash_sale', emoji: '⚠️',
+      title: 'WASH SALE DETECTED',
+      message: 'Volume besar tapi net akumulasi sangat kecil. Kemungkinan gorengan.',
+    }).catch(() => {});
+  }
+
+  // 4. Iceberg Order
+  if (params.icebergDetected) {
+    sendAnomalyAlert({
+      emiten: e, type: 'iceberg', emoji: '🧊',
+      title: 'STEALTH ACCUMULATION',
+      message: `Pola Iceberg Order terdeteksi oleh ${params.icebergBroker}. Institusi menyamarkan akumulasi.`,
+      data: { Broker: params.icebergBroker },
+    }).catch(() => {});
+  }
+
+  // 5. Concentration
+  if (params.concentrationLabel === 'Artificial Liquidity Warning') {
+    sendAnomalyAlert({
+      emiten: e, type: 'concentration', emoji: '🛡️',
+      title: 'ARTIFICIAL LIQUIDITY',
+      message: `${params.concentrationTopBroker} menguasai mayoritas volume. Likuiditas buatan.`,
+    }).catch(() => {});
+  }
+
+  // 6. Upper Shadow
+  if (params.upperShadowAlert) {
+    sendAnomalyAlert({
+      emiten: e, type: 'upper_shadow', emoji: '⚡',
+      title: 'LATE ENTRY WARNING',
+      message: 'Net Buy di harga pucuk (Upper Shadow besar). Rawan distribusi.',
+    }).catch(() => {});
+  }
+
+  // 7. MFI Divergence
+  if (params.mfiDivergence) {
+    sendAnomalyAlert({
+      emiten: e, type: 'mfi_div', emoji: '📊',
+      title: 'MFI DIVERGENCE',
+      message: params.mfiLabel,
+      data: { MFI: params.mfi.toFixed(0) },
+    }).catch(() => {});
+  }
+
+  // 8. Kill Switch
+  if (params.killSwitchActive) {
+    sendAnomalyAlert({
+      emiten: e, type: 'kill_switch', emoji: '🛑',
+      title: 'KILL SWITCH ACTIVATED',
+      message: 'Penurunan tajam terdeteksi. Semua sinyal beli dinonaktifkan.',
+      data: { Price: `Rp ${params.price.toLocaleString()}`, Drop: `${params.changePercent.toFixed(2)}%` },
+    }).catch(() => {});
+  }
+}

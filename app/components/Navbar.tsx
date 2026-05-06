@@ -9,7 +9,7 @@ interface NavbarProps {
 }
 
 export default function Navbar({ searchQuery, onSearchChange, onCombatMode }: NavbarProps) {
-  const [health, setHealth] = useState<Record<string, { status: string }>>({
+  const [health, setHealth] = useState<Record<string, { status: string; metadata?: any }>>({
     engine: { status: 'offline' },
     database: { status: 'offline' },
     token: { status: 'offline' },
@@ -114,7 +114,11 @@ export default function Navbar({ searchQuery, onSearchChange, onCombatMode }: Na
         <div className="navbar__health">
           <HealthDot label="Engine" status={health.engine?.status || 'offline'} />
           <HealthDot label="DB" status={health.database?.status || 'offline'} />
-          <HealthDot label="Token" status={health.token?.status || 'offline'} />
+          <HealthDot 
+            label="Token" 
+            status={health.token?.status || 'offline'} 
+            detail={health.token?.metadata?.expiresInMinutes ? `${health.token.metadata.expiresInMinutes}m` : undefined} 
+          />
           <HealthDot label="Data" status={health.dataIntegrity?.status || 'offline'} />
         </div>
       </div>
@@ -122,12 +126,12 @@ export default function Navbar({ searchQuery, onSearchChange, onCombatMode }: Na
   );
 }
 
-function HealthDot({ label, status }: { label: string; status: string }) {
-  const cls = status === 'online' ? 'online' : status === 'warning' ? 'warning' : 'offline';
+function HealthDot({ label, status, detail }: { label: string; status: string; detail?: string }) {
+  const cls = status === 'online' ? 'online' : status === 'expiring' ? 'warning' : status === 'warning' ? 'warning' : 'offline';
   return (
-    <div className="health-dot">
+    <div className="health-dot" title={detail ? `${label} expires in ${detail}` : label}>
       <div className={`health-dot__indicator health-dot__indicator--${cls}`} />
-      <span>{label}</span>
+      <span>{label}{detail ? ` (${detail})` : ''}</span>
     </div>
   );
 }

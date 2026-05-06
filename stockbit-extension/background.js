@@ -1,5 +1,6 @@
 // The backend endpoint where the token will be sent.
 const UPDATE_TOKEN_ENDPOINT = 'http://localhost:3000/api/update-token';
+const PORTFOLIO_TOKEN_ENDPOINT = 'http://localhost:3000/api/portfolio/set-token';
 const TOKEN_STATE_KEY = 'dellmology_token_state';
 const HEARTBEAT_ALARM = 'dellmology_token_heartbeat';
 const HEARTBEAT_INTERVAL_MINUTES = 5;
@@ -21,6 +22,10 @@ let latestToken = null;
 let latestExpiryMs = 0;
 let lastForcedRefreshAtMs = 0;
 let forcedRefreshCount = 0;
+
+// ── Carina (Portfolio) token tracking ─────────────────────
+let lastSyncedCarinaToken = null;
+let lastCarinaSyncAtMs = 0;
 
 /**
  * Decodes a JWT token to extract its payload, including the expiration time.
@@ -176,7 +181,7 @@ function scheduleHeartbeatAlarm() {
  * @param {string} token The bearer token.
  * @param {number} expiresAt The expiration timestamp (seconds).
  */
-function sendTokenToBackend(token, expiresAt, reason = 'capture') {
+function sendTokenToBackend(token, expiresAt, reason = 'capture', endpoint = UPDATE_TOKEN_ENDPOINT) {
   const expires_at = expiresAt ? new Date(expiresAt * 1000).toISOString() : null;
   const jitterMs = randomIntBetween(MIN_SYNC_JITTER_MS, MAX_SYNC_JITTER_MS);
 
@@ -191,8 +196,11 @@ function sendTokenToBackend(token, expiresAt, reason = 'capture') {
     },
   };
 
+  const isCarina = endpoint === PORTFOLIO_TOKEN_ENDPOINT;
+  const label = isCarina ? 'Carina/Portfolio' : 'Exodus';
+
   setTimeout(() => {
-    fetch(UPDATE_TOKEN_ENDPOINT, {
+    fetch(endpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -201,16 +209,21 @@ function sendTokenToBackend(token, expiresAt, reason = 'capture') {
     })
       .then((response) => {
         if (response.ok) {
-          console.log('Dellmology Auth Helper: Token successfully synced to backend.');
-          lastSyncedToken = token; // Update cache on success
-          lastSyncAtMs = Date.now();
-          persistTokenState(token, expiresAt);
+          console.log(`Dellmology Auth Helper: ${label} token successfully synced.`);
+          if (isCarina) {
+            lastSyncedCarinaToken = token;
+            lastCarinaSyncAtMs = Date.now();
+          } else {
+            lastSyncedToken = token;
+            lastSyncAtMs = Date.now();
+            persistTokenState(token, expiresAt);
+          }
         } else {
-          console.error('Dellmology Auth Helper: Failed to sync token. Status:', response.status);
+          console.error(`Dellmology Auth Helper: Failed to sync ${label} token. Status:`, response.status);
         }
       })
       .catch((error) => {
-        console.error('Dellmology Auth Helper: Error syncing token:', error);
+        console.error(`Dellmology Auth Helper: Error syncing ${label} token:`, error);
       });
   }, jitterMs);
 }
@@ -267,8 +280,6 @@ console.log('Registering webRequest listener...');
 
 chrome.webRequest.onBeforeSendHeaders.addListener(
   (details) => {
-    console.log('Dellmology Auth Helper: Checking request:', details.url);
-
     // Find the 'Authorization' header in the request.
     const authHeader = details.requestHeaders.find(
       (header) => header.name.toLowerCase() === 'authorization'
@@ -278,28 +289,34 @@ chrome.webRequest.onBeforeSendHeaders.addListener(
       // Extract the token string by removing "Bearer ".
       const token = authHeader.value.substring(7);
 
-      // Only sync if the token has changed to avoid spamming the API
-      if (token !== lastSyncedToken) {
-        console.log('Dellmology Auth Helper: New token candidate detected...');
+      const decoded = decodeJwt(token);
+      if (!decoded || !decoded.exp) {
+        return;
+      }
 
-        const decoded = decodeJwt(token);
+      // Determine if this is a carina (portfolio/securities) request
+      const isCarina = details.url.includes('carina.stockbit.com');
 
-        // Only sync if it's a valid JWT (must have a payload with an expiry)
-        if (!decoded || !decoded.exp) {
-          console.log('Dellmology Auth Helper: Skipping non-JWT or invalid token.');
-          return;
+      if (isCarina) {
+        // ── Carina Token (Portfolio) ─────────────────────
+        if (token !== lastSyncedCarinaToken) {
+          console.log('Dellmology Auth Helper: New CARINA (portfolio) token detected from:', details.url);
+          console.log('Dellmology Auth Helper: Carina token expiry:', new Date(decoded.exp * 1000));
+          sendTokenToBackend(token, decoded.exp, 'capture-carina', PORTFOLIO_TOKEN_ENDPOINT);
         }
-
-        console.log('Dellmology Auth Helper: Valid JWT detected from:', details.url);
-        console.log('Dellmology Auth Helper: Token expiry:', new Date(decoded.exp * 1000));
-        persistTokenState(token, decoded.exp);
-        sendTokenToBackend(token, decoded.exp, 'capture');
+      } else {
+        // ── Exodus Token (Market Data) ──────────────────
+        if (token !== lastSyncedToken) {
+          console.log('Dellmology Auth Helper: New EXODUS token detected from:', details.url);
+          console.log('Dellmology Auth Helper: Exodus token expiry:', new Date(decoded.exp * 1000));
+          persistTokenState(token, decoded.exp);
+          sendTokenToBackend(token, decoded.exp, 'capture', UPDATE_TOKEN_ENDPOINT);
+        }
       }
     }
   },
-  // Filter for requests to Stockbit API endpoints.
+  // Filter for requests to all Stockbit API subdomains
   { urls: ['https://*.stockbit.com/*'] },
-  // We need 'requestHeaders' and 'extraHeaders' to read the headers.
   ['requestHeaders', 'extraHeaders']
 );
 

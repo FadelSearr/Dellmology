@@ -1,17 +1,17 @@
 import { NextResponse } from 'next/server';
-import { getTokenStatus } from '@/lib/supabase';
+import { getTokenStatus } from '@/lib/stockbit';
 
 export async function GET() {
-  const checks: Record<string, { status: string; latency?: number; error?: string }> = {};
+  const checks: Record<string, { status: string; latency?: number; error?: string; metadata?: any }> = {};
 
-  // Check Supabase
+  // Check Database & Token
   const dbStart = Date.now();
   try {
     const tokenStatus = await getTokenStatus();
     checks.database = { status: 'online', latency: Date.now() - dbStart };
     checks.token = {
-      status: tokenStatus.isValid ? 'online' : tokenStatus.exists ? 'warning' : 'offline',
-      ...(tokenStatus.hoursUntilExpiry !== undefined && { latency: Math.round(tokenStatus.hoursUntilExpiry * 60) }),
+      status: tokenStatus.status,
+      metadata: { expiresInMinutes: tokenStatus.expiresInMinutes },
     };
   } catch (err) {
     checks.database = { status: 'offline', latency: Date.now() - dbStart, error: String(err) };

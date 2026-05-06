@@ -7,7 +7,7 @@
    ══════════════════════════════════════════════════════════════ */
 
 import type { MarketDetectorResponse, OrderbookResponse } from './types';
-import { getSessionValue, updateTokenLastUsed, invalidateToken } from './supabase';
+import { getSessionValue, updateTokenLastUsed, invalidateToken, upsertSession } from './supabase';
 
 const STOCKBIT_BASE_URL = 'https://exodus.stockbit.com';
 
@@ -21,7 +21,7 @@ export class TokenExpiredError extends Error {
 // ── Token Cache ──────────────────────────────────────────────
 let cachedToken: string | null = null;
 let tokenLastFetched = 0;
-const TOKEN_CACHE_DURATION = 60000; // 1 minute
+const TOKEN_CACHE_DURATION = 10000; // 10 seconds (reduced from 60s to pick up fresh tokens faster)
 
 async function getAuthToken(): Promise<string> {
   const now = Date.now();
@@ -39,6 +39,44 @@ async function getAuthToken(): Promise<string> {
   cachedToken = token;
   tokenLastFetched = now;
   return token;
+}
+
+/** Force clear token cache so next request gets a fresh one */
+export function forceRefreshToken() {
+  cachedToken = null;
+  tokenLastFetched = 0;
+}
+
+/** Get token expiration status for Health API */
+export async function getTokenStatus() {
+  try {
+    const token = await getAuthToken();
+    if (!token) return { status: 'offline', expiresAt: 0, expiresInMinutes: 0 };
+    
+    const base64Url = token.split('.')[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = decodeURIComponent(
+      atob(base64)
+        .split('')
+        .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+        .join('')
+    );
+    const payload = JSON.parse(jsonPayload);
+    
+    if (!payload.exp) return { status: 'unknown', expiresAt: 0, expiresInMinutes: 0 };
+    
+    const expiresAt = payload.exp * 1000;
+    const expiresInMs = expiresAt - Date.now();
+    const expiresInMinutes = Math.round(expiresInMs / 60000);
+    
+    let status = 'online';
+    if (expiresInMinutes <= 0) status = 'offline';
+    else if (expiresInMinutes < 15) status = 'expiring';
+    
+    return { status, expiresAt, expiresInMinutes };
+  } catch (error) {
+    return { status: 'offline', expiresAt: 0, expiresInMinutes: 0 };
+  }
 }
 
 // ── Common Headers ───────────────────────────────────────────
@@ -143,5 +181,94 @@ export async function fetchWatchlist(watchlistId: number) {
     headers: await getHeaders(),
   });
   await handleResponse(response, 'Watchlist Detail');
+  return response.json();
+}
+
+export async function fetchStockbitStream(emiten: string, limit = 15) {
+  const url = `${STOCKBIT_BASE_URL}/stream/symbol/${emiten}?limit=${limit}`;
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: await getHeaders(),
+  });
+  await handleResponse(response, 'Stockbit Stream');
+  const json = await response.json();
+  return Array.isArray(json.data) ? json.data : [];
+}
+
+// ── Portfolio Data (carina.stockbit.com) ─────────────────────
+// Carina uses a separate v2 JWT token from exodus
+
+const CARINA_BASE_URL = 'https://carina.stockbit.com';
+
+let cachedCarinaToken: string | null = null;
+let carinaTokenLastFetched = 0;
+
+async function getCarinaToken(): Promise<string> {
+  const now = Date.now();
+  if (cachedCarinaToken && now - carinaTokenLastFetched < TOKEN_CACHE_DURATION) {
+    return cachedCarinaToken;
+  }
+
+  // Try carina-specific token first
+  const carinaToken = await getSessionValue('stockbit_carina_token');
+  if (carinaToken) {
+    cachedCarinaToken = carinaToken;
+    carinaTokenLastFetched = now;
+    return carinaToken;
+  }
+
+  // Fallback to regular token (may not work for carina, but worth trying)
+  return getAuthToken();
+}
+
+async function getCarinaHeaders(): Promise<HeadersInit> {
+  return {
+    accept: 'application/json',
+    authorization: `Bearer ${await getCarinaToken()}`,
+    origin: 'https://stockbit.com',
+    referer: 'https://stockbit.com/',
+    'user-agent':
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36',
+  };
+}
+
+/** Store carina-specific token */
+export async function saveCarinaToken(token: string): Promise<void> {
+  // Decode JWT to get expiry
+  let expiresAt: Date | undefined;
+  try {
+    const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64').toString());
+    if (payload.exp) expiresAt = new Date(payload.exp * 1000);
+  } catch {}
+  await upsertSession('stockbit_carina_token', token, expiresAt);
+  cachedCarinaToken = token;
+  carinaTokenLastFetched = Date.now();
+}
+
+/**
+ * Fetch user stock portfolio holdings
+ * Endpoint: carina.stockbit.com/portfolio/v2/list
+ */
+export async function fetchPortfolio() {
+  const url = `${CARINA_BASE_URL}/portfolio/v2/list`;
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: await getCarinaHeaders(),
+  });
+  await handleResponse(response, 'Portfolio');
+  return response.json();
+}
+
+/**
+ * Fetch user bond portfolio
+ * Endpoint: carina.stockbit.com/bond/v1/portfolio
+ */
+export async function fetchBondPortfolio() {
+  const url = `${CARINA_BASE_URL}/bond/v1/portfolio`;
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: await getCarinaHeaders(),
+  });
+  await handleResponse(response, 'Bond Portfolio');
   return response.json();
 }

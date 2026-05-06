@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { fetchWatchlistGroups, fetchWatchlist, fetchMarketDetector } from '@/lib/stockbit';
 import { IDX_TICKERS } from '@/lib/idx-tickers';
 import { getBrokerProfile } from '@/lib/broker-profiles';
+import { rateLimit } from '@/lib/rateLimit';
 
 /* ══════════════════════════════════════════════════════════════
    Screener Engine — Dellmology Pro
@@ -380,30 +381,53 @@ let watchlistCache: { codes: Set<string>; names: Map<string, string>; ts: number
 const WL_CACHE_TTL = 2 * 60 * 1000; // 2 minutes
 
 async function getWatchlistData() {
-  if (watchlistCache && Date.now() - watchlistCache.ts < WL_CACHE_TTL) return watchlistCache;
-  const groups = await fetchWatchlistGroups().catch(() => []);
-  const codes  = new Set<string>();
-  const names  = new Map<string, string>();
-  if (groups?.length > 0) {
-    await Promise.allSettled(groups.map(async (g: any) => {
-      const wData = await fetchWatchlist(g.watchlist_id).catch(() => null);
-      if (wData?.data?.result) {
-        wData.data.result.forEach((item: any) => {
-          const code = (item.symbol || '').toUpperCase();
-          if (code) {
-            codes.add(code);
-            if (item.name) names.set(code, item.name);
-          }
-        });
-      }
-    }));
+  if (watchlistCache && Date.now() - watchlistCache.ts < WL_CACHE_TTL) {
+    if (watchlistCache.codes.size > 0) {
+      return watchlistCache;
+    }
   }
-  watchlistCache = { codes, names, ts: Date.now() };
-  return watchlistCache;
+  
+  try {
+    const groups = await fetchWatchlistGroups();
+    const codes  = new Set<string>();
+    const names  = new Map<string, string>();
+    
+    if (groups && groups.length > 0) {
+      await Promise.allSettled(groups.map(async (g: any) => {
+        const wData = await fetchWatchlist(g.watchlist_id).catch(err => {
+          console.error(`[Watchlist] Failed to fetch group ${g.watchlist_id}:`, err);
+          return null;
+        });
+        if (wData?.data?.result) {
+          wData.data.result.forEach((item: any) => {
+            const code = (item.symbol || '').toUpperCase();
+            if (code) {
+              codes.add(code);
+              if (item.name) names.set(code, item.name);
+            }
+          });
+        }
+      }));
+    } else {
+      console.warn('[Watchlist] No groups returned from Stockbit API.');
+    }
+    
+    // Only cache if we actually got items, or if we are sure it's empty
+    watchlistCache = { codes, names, ts: Date.now() };
+    return watchlistCache;
+  } catch (err) {
+    console.error('[Watchlist] fetchWatchlistGroups failed:', err);
+    // Return empty but don't cache it, so next request retries
+    return { codes: new Set<string>(), names: new Map<string, string>(), ts: 0 };
+  }
 }
 
 // ── Main Route ────────────────────────────────────────────────
 export async function GET(request: NextRequest) {
+  // ── Rate Limit Guard (20 req/60s — expensive endpoint) ────
+  const rateLimitResponse = rateLimit(request, 20, 60);
+  if (rateLimitResponse) return rateLimitResponse;
+
   const { searchParams } = new URL(request.url);
   const mode        = searchParams.get('mode') || 'daytrade';
   const minPrice    = Number(searchParams.get('minPrice') || 0);

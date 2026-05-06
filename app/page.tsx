@@ -6,9 +6,10 @@ import Sidebar from './components/Sidebar';
 import Canvas from './components/Canvas';
 import Tape from './components/Tape';
 import Brain from './components/Brain';
+import OracleScreen from './components/OracleScreen';
 import CombatMode from './components/CombatMode';
 import BacktestModal from './components/BacktestModal';
-import { useStockData, useWatchlist, useNarrative, useChartData, useAutoRefresh } from '@/app/hooks/useData';
+import { useStockData, useWatchlist, useNarrative, useChartData, useAutoRefresh, usePortfolio, useBrokerHistory } from '@/app/hooks/useData';
 import { useSSETicks } from '@/app/hooks/useSSE';
 import { calculateBeta } from '@/lib/analysis';
 
@@ -16,17 +17,17 @@ export default function Home() {
   const [selectedEmiten, setSelectedEmiten]   = useState('BBRI');
   const [screenerMode, setScreenerMode] = useState<'daytrade' | 'swing' | 'whale' | 'ai'>('daytrade');
   const [minPrice, setMinPrice]               = useState(0);
-  const [maxPrice, setMaxPrice]               = useState(999999);
+  const [maxPrice, setMaxPrice]               = useState(500);
   const [searchQuery, setSearchQuery]         = useState('');
   const [combatMode, setCombatMode]           = useState(false);
   const [showBacktest, setShowBacktest]       = useState(false);
   const [screenerSortBy, setScreenerSortBy]   = useState<'score' | 'price_asc' | 'price_desc' | 'change'>('score');
-  const [activeTab, setActiveTab]             = useState<'watchlist' | 'screener'>('watchlist');
+  const [activeTab, setActiveTab]             = useState<'watchlist' | 'screener' | 'portfolio' | 'oracle'>('watchlist');
   const [chartTimeframe, setChartTimeframe]   = useState('1D');
 
   // ── Watchlist data (always fetches watchlist mode) ───────
   const { data: watchlistData, refetch: refetchWatchlist } = useWatchlist(
-    'watchlist', 0, 999999, searchQuery
+    'watchlist', 0, 500, searchQuery
   );
   useAutoRefresh(refetchWatchlist, 30000); // 30s refresh for watchlist prices
 
@@ -40,6 +41,10 @@ export default function Home() {
   const { data: chartData, atr, loading: chartLoading } = useChartData(selectedEmiten, chartTimeframe);
   const { data: ihsgData } = useChartData('^JKSE', chartTimeframe);
   const sse = useSSETicks(50);
+
+  // ── Portfolio data ───────────────────────────────────────
+  const { data: portfolioData, loading: portfolioLoading, error: portfolioError, refetch: refetchPortfolio } = usePortfolio();
+  const { data: brokerHistory } = useBrokerHistory(selectedEmiten);
 
   const topBuyers  = (stockData?.topBuyers  as any[]) || [];
   const topSellers = (stockData?.topSellers as any[]) || [];
@@ -156,36 +161,65 @@ export default function Home() {
           activeTab={activeTab}
           onTabChange={setActiveTab}
           onRunScreener={refetchScreener}
+          portfolioData={portfolioData}
+          portfolioLoading={portfolioLoading}
+          portfolioError={portfolioError}
+          onPortfolioRefresh={refetchPortfolio}
         />
-        <Canvas 
-          selectedEmiten={selectedEmiten} 
-          selectedStock={selectedStock} 
-          stockData={stockData} 
-          chartData={chartData} 
-          chartLoading={chartLoading} 
-          timeframe={chartTimeframe}
-          onTimeframeChange={setChartTimeframe}
-        />
-        <Tape
-          selectedEmiten={selectedEmiten}
-          topBuyers={topBuyers}
-          topSellers={topSellers}
-          zScore={stockData.zScore as number}
-          spoofingAlert={stockData.spoofingAlert as boolean}
-          washSaleAlert={stockData.washSaleAlert as boolean}
-          chartData={chartData}
-        />
-        <Brain
-          selectedEmiten={selectedEmiten}
-          narrativeData={aiNarrative}
-          loading={aiLoading}
-          price={price}
-          atr={atr}
-          ups={selectedStock.ups}
-          beta={beta}
-          signal={selectedStock.ups >= 70 ? 'buy' : selectedStock.ups <= 30 ? 'sell' : 'neutral'}
-          onRunBacktest={() => setShowBacktest(true)}
-        />
+        {activeTab === 'oracle' ? (
+          <div style={{ flex: 1, height: '100%', overflow: 'hidden' }}>
+            <OracleScreen onSelectEmiten={(code) => {
+              setSelectedEmiten(code);
+              setActiveTab('watchlist'); // switch back to chart view
+            }} />
+          </div>
+        ) : (
+          <>
+            <Canvas 
+              selectedEmiten={selectedEmiten} 
+              selectedStock={selectedStock} 
+              stockData={stockData} 
+              chartData={chartData} 
+              chartLoading={chartLoading} 
+              timeframe={chartTimeframe}
+              onTimeframeChange={setChartTimeframe}
+            />
+            <Tape
+              selectedEmiten={selectedEmiten}
+              topBuyers={topBuyers}
+              topSellers={topSellers}
+              zScore={stockData.zScore as number}
+              spoofingAlert={stockData.spoofingAlert as boolean}
+              washSaleAlert={stockData.washSaleAlert as boolean}
+              upperShadowAlert={stockData.upperShadowAlert as boolean}
+              upperShadowLabel={stockData.upperShadowLabel as string}
+              upperShadowPct={stockData.upperShadowPct as number}
+              concentrationLabel={stockData.concentrationLabel as string}
+              concentrationTopBroker={stockData.concentrationTopBroker as string}
+              opposingBrokerCount={stockData.opposingBrokerCount as number}
+              chartData={chartData}
+              icebergDetected={stockData.icebergDetected as boolean}
+              icebergBroker={stockData.icebergBroker as string}
+              icebergAvgLot={stockData.icebergAvgLot as number}
+              icebergFrequency={stockData.icebergFrequency as number}
+              mfi={stockData.mfi as number}
+              mfiLabel={stockData.mfiLabel as string}
+              mfiDivergence={stockData.mfiDivergence as boolean}
+              brokerHistory={brokerHistory}
+            />
+            <Brain
+              selectedEmiten={selectedEmiten}
+              narrativeData={aiNarrative}
+              loading={aiLoading}
+              price={price}
+              atr={atr}
+              ups={selectedStock.ups}
+              beta={beta}
+              signal={selectedStock.ups >= 70 ? 'buy' : selectedStock.ups <= 30 ? 'sell' : 'neutral'}
+              onRunBacktest={() => setShowBacktest(true)}
+            />
+          </>
+        )}
       </div>
     </>
   );

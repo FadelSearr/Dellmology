@@ -140,8 +140,65 @@ export async function fetchSentiment(emiten?: string): Promise<SentimentItem[]> 
     }
   }
 
-  // Limit to 10 most recent
+  // Limit RSS to 10 most recent
   return allItems.slice(0, 10);
+}
+
+// ── Fetch Stockbit Stream ────────────────────────────────────
+import { fetchStockbitStream } from './stockbit';
+
+function isQualityOpinion(text: string, topics: string[] = []): boolean {
+  // 1. Tolak jika tag emiten terlalu banyak (indikasi spam WL / broadcast)
+  if (topics.length > 3) return false;
+
+  // 2. Bersihkan text dari tag ($GOTO), URL, dan format khusus Stockbit
+  const cleanedText = text
+    .replace(/\$[A-Za-z0-9]+/g, '')
+    .replace(/http[s]?:\/\/\S+/g, '')
+    .replace(/\[%.*?%\]/g, '')
+    .trim();
+
+  // 3. Harus punya opini / kata-kata yang cukup (minimal ~20 karakter isi murni)
+  if (cleanedText.length < 20) return false;
+
+  // 4. Deteksi kata-kata spam murni
+  const spamWords = ['nitip sendal', 'titip sendal', 'cuma tes', 'test doang', 'info dong', 'gimana nih'];
+  const lower = cleanedText.toLowerCase();
+  if (spamWords.some(w => lower.includes(w))) return false;
+
+  return true;
+}
+
+export async function fetchStreamSentiment(emiten: string): Promise<SentimentItem[]> {
+  try {
+    // Ambil lebih banyak untuk kompensasi yang akan difilter
+    const rawStream = await fetchStockbitStream(emiten, 30);
+    const streamItems: SentimentItem[] = [];
+
+    for (const post of rawStream) {
+      const text = (post.content_original || post.content || '').trim();
+      if (!text) continue;
+
+      // Filter kualitas opini
+      if (!isQualityOpinion(text, post.topics)) continue;
+
+      const { sentiment, score } = scoreHeadline(text);
+
+      streamItems.push({
+        source: `Stockbit @${post.username}`,
+        title: text.substring(0, 200) + (text.length > 200 ? '...' : ''),
+        link: `https://stockbit.com/post/${post.postid}`,
+        pubDate: post.created,
+        sentiment,
+        score,
+      });
+    }
+
+    return streamItems;
+  } catch (error) {
+    console.error('Failed to fetch Stockbit stream for sentiment:', error);
+    return [];
+  }
 }
 
 // ── Divergence Detection ─────────────────────────────────────
@@ -180,7 +237,19 @@ export async function analyzeSentiment(
   whaleNetValue: number,
   emiten?: string,
 ): Promise<SentimentResult> {
-  const items = await fetchSentiment(emiten);
+  // Fetch from RSS and Stockbit Stream concurrently
+  const [rssItems, streamItems] = await Promise.all([
+    fetchSentiment(emiten),
+    emiten ? fetchStreamSentiment(emiten) : Promise.resolve([]),
+  ]);
+
+  // Combine and sort by date descending
+  const combinedItems = [...rssItems, ...streamItems].sort((a, b) => {
+    return new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime();
+  });
+
+  // Limit to top 15 most recent combined items
+  const items = combinedItems.slice(0, 15);
 
   const scores = items.map(i => i.score);
   const overallScore = scores.length > 0
