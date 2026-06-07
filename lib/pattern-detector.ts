@@ -117,7 +117,7 @@ function detectDoubleBottom(lows: number[], closes: number[]): PatternResult | n
 }
 
 // ── Bull Flag ────────────────────────────────────────────────
-function detectBullFlag(closes: number[], highs: number[], lows: number[]): PatternResult | null {
+function detectBullFlag(closes: number[]): PatternResult | null {
   if (closes.length < 15) return null;
 
   // Look for a strong upward move (pole) followed by consolidation (flag)
@@ -213,7 +213,7 @@ export function detectPatterns(bars: Bar[]): PatternResult[] {
   const db = detectDoubleBottom(lows, closes);
   if (db) results.push(db);
 
-  const bf = detectBullFlag(closes, highs, lows);
+  const bf = detectBullFlag(closes);
   if (bf) results.push(bf);
 
   const at = detectAscendingTriangle(highs, lows);

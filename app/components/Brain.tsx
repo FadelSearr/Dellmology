@@ -1,5 +1,5 @@
 'use client';
-import { Brain as BrainIcon, Calculator, Send, Play } from 'lucide-react';
+import { Brain as BrainIcon, Calculator, Send, Play, Shield, Target } from 'lucide-react';
 import { fmt } from '@/lib/utils';
 
 interface BrainProps {
@@ -36,9 +36,20 @@ export default function Brain({ selectedEmiten, narrativeData, loading, price, a
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, color: 'var(--text-secondary)' }}>
             <BrainIcon size={13} color={loading ? 'var(--text-muted)' : 'var(--accent-cyan)'} className={loading ? 'spin-slow' : ''} /> AI Narrative — {selectedEmiten}
           </div>
-          <span className={`confidence-badge confidence-badge--${n.confidence}`}>
-            {(n.confidence || 'medium').toUpperCase()}
-          </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            {n.riskLevel && (
+              <span style={{ 
+                fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 4, display: 'flex', alignItems: 'center', gap: 3,
+                background: n.riskLevel === 'Low' ? 'rgba(46,189,133,0.15)' : n.riskLevel === 'Medium' ? 'rgba(245,158,11,0.15)' : 'rgba(224,41,74,0.15)',
+                color: n.riskLevel === 'Low' ? 'var(--color-bullish)' : n.riskLevel === 'Medium' ? 'var(--color-warning)' : 'var(--color-bearish)'
+              }}>
+                <Shield size={9} /> {n.riskLevel} Risk
+              </span>
+            )}
+            <span className={`confidence-badge confidence-badge--${n.confidence}`}>
+              {(n.confidence || 'medium').toUpperCase()}
+            </span>
+          </div>
         </div>
 
         {loading ? (
@@ -62,6 +73,17 @@ export default function Brain({ selectedEmiten, narrativeData, loading, price, a
                     <span>{kp}</span>
                   </div>
                 ))}
+              </div>
+            )}
+            {/* Entry Strategy */}
+            {n.entryStrategy && (
+              <div style={{ marginTop: 10, padding: '8px 10px', background: 'rgba(0,0,0,0.2)', border: '1px dashed var(--border-color)', borderRadius: 6 }}>
+                <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--accent-cyan)', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 4, textTransform: 'uppercase' }}>
+                  <Target size={10} /> Entry Strategy
+                </div>
+                <div style={{ fontSize: 10, color: 'var(--text-main)', lineHeight: 1.4 }}>
+                  {n.entryStrategy}
+                </div>
               </div>
             )}
           </>

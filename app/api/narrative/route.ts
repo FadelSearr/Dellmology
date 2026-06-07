@@ -60,7 +60,11 @@ export async function POST(request: NextRequest) {
       zScore = 0,
       atr: atrVal = 0,
       rsi: rsiVal,
+      mfi: mfiVal,
       topBrokers = [],
+      fiveDayFlow = 0,
+      orderFlow = null,
+      whaleZHeatmap = [],
     } = body;
 
     if (!emiten) {
@@ -95,6 +99,10 @@ export async function POST(request: NextRequest) {
       zScore,
       atr: atrVal,
       rsi: estimatedRsi,
+      mfi: mfiVal,
+      fiveDayFlow,
+      orderFlow,
+      whaleZHeatmap,
     });
 
     return NextResponse.json({ success: true, data: narrative });

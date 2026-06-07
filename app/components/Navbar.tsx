@@ -1,5 +1,5 @@
 'use client';
-import { Search, Zap, Globe2 } from 'lucide-react';
+import { Search, Zap, Globe2, TrendingUp, TrendingDown, Clock, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 import { useState, useEffect } from 'react';
 
 interface NavbarProps {
@@ -16,6 +16,23 @@ export default function Navbar({ searchQuery, onSearchChange, onCombatMode }: Na
     dataIntegrity: { status: 'offline' },
   });
   const [macros, setMacros] = useState<any[]>([]);
+  const [clock, setClock] = useState('');
+  const [breadth, setBreadth] = useState<{ advance: number; decline: number; foreignNet: number } | null>(null);
+
+  // Clock (Jakarta/WIB)
+  useEffect(() => {
+    function updateClock() {
+      const now = new Date();
+      const wib = new Intl.DateTimeFormat('en-GB', {
+        hour: '2-digit', minute: '2-digit', second: '2-digit',
+        timeZone: 'Asia/Jakarta', hour12: false,
+      }).format(now);
+      setClock(wib);
+    }
+    updateClock();
+    const interval = setInterval(updateClock, 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Fetch real health status
   useEffect(() => {
@@ -49,6 +66,22 @@ export default function Navbar({ searchQuery, onSearchChange, onCombatMode }: Na
     return () => clearInterval(interval);
   }, []);
 
+  // Fetch market breadth
+  useEffect(() => {
+    async function fetchBreadth() {
+      try {
+        const res = await fetch('/api/breadth');
+        const json = await res.json();
+        if (json.success) setBreadth(json.data);
+      } catch {
+        // ignore — API might not exist yet, show default
+      }
+    }
+    fetchBreadth();
+    const interval = setInterval(fetchBreadth, 60000);
+    return () => clearInterval(interval);
+  }, []);
+
   // Send heartbeat periodically
   useEffect(() => {
     async function heartbeat() {
@@ -59,9 +92,21 @@ export default function Navbar({ searchQuery, onSearchChange, onCombatMode }: Na
     return () => clearInterval(interval);
   }, []);
 
+  // Build macro items for marquee duplication
+  const macroItems = macros.length > 0 ? macros : [];
+  const macroMarkup = macroItems.map(m => (
+    <div key={m.id} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+      <span style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>{m.id}</span>
+      <span style={{ color: m.percentChange >= 0 ? 'var(--color-bullish)' : 'var(--color-bearish)' }}>
+        {m.price ? m.price.toLocaleString(undefined, { maximumFractionDigits: 1 }) : '-'}{' '}
+        ({m.percentChange > 0 ? '+' : ''}{m.percentChange.toFixed(2)}%)
+      </span>
+    </div>
+  ));
+
   return (
     <nav className="navbar" id="navbar" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexShrink: 0 }}>
         <div className="navbar__brand">
           <div className="navbar__brand-icon">⚡</div>
           <span>DELLMOLOGY <span style={{ color: 'var(--accent-cyan)' }}>PRO</span></span>
@@ -80,25 +125,48 @@ export default function Navbar({ searchQuery, onSearchChange, onCombatMode }: Na
         </div>
       </div>
 
-      {/* Global Macro Ticker */}
-      <div className="macro-ticker" style={{ display: 'flex', alignItems: 'center', gap: 15, fontSize: 11, fontFamily: 'var(--font-mono)' }}>
-        <Globe2 size={14} color="var(--text-muted)" />
-        {macros.length === 0 ? (
+      {/* Macro Ticker — Marquee */}
+      <div className="marquee-container" style={{ fontSize: 11, fontFamily: 'var(--font-mono)', margin: '0 12px' }}>
+        {macroItems.length === 0 ? (
           <span style={{ color: 'var(--text-muted)' }}>Loading macro data...</span>
         ) : (
-          macros.map(m => (
-            <div key={m.id} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-              <span style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>{m.id}</span>
-              <span style={{ color: m.percentChange >= 0 ? 'var(--color-bullish)' : 'var(--color-bearish)' }}>
-                {m.price ? m.price.toLocaleString(undefined, { maximumFractionDigits: 1 }) : '-'} 
-                ({m.percentChange > 0 ? '+' : ''}{m.percentChange.toFixed(2)}%)
-              </span>
-            </div>
-          ))
+          <div className="marquee-content">
+            {macroMarkup}
+            {/* Duplicate for seamless loop */}
+            {macroMarkup}
+          </div>
         )}
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
+        {/* Market Breadth Badges */}
+        {breadth && (
+          <>
+            <div className="breadth-badge" title="Advance / Decline Ratio">
+              <TrendingUp size={11} style={{ color: 'var(--color-bullish)' }} />
+              <span style={{ color: 'var(--color-bullish)' }}>{breadth.advance}</span>
+              <span style={{ color: 'var(--text-muted)' }}>/</span>
+              <span style={{ color: 'var(--color-bearish)' }}>{breadth.decline}</span>
+            </div>
+            <div className="breadth-badge" title="Foreign Net Flow" style={{
+              color: breadth.foreignNet >= 0 ? 'var(--color-bullish)' : 'var(--color-bearish)',
+            }}>
+              {breadth.foreignNet >= 0 ? <ArrowUpRight size={11} /> : <ArrowDownRight size={11} />}
+              <span>{breadth.foreignNet >= 0 ? '+' : ''}{(breadth.foreignNet / 1e9).toFixed(1)}B</span>
+            </div>
+          </>
+        )}
+
+        {/* Clock */}
+        <div style={{
+          fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-muted)',
+          display: 'flex', alignItems: 'center', gap: 4,
+        }}>
+          <Clock size={11} />
+          <span>{clock}</span>
+          <span style={{ fontSize: 8, opacity: 0.6 }}>WIB</span>
+        </div>
+
         {onCombatMode && (
           <button
             className="btn btn--ghost btn--sm"

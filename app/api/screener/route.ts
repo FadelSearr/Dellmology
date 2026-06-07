@@ -188,8 +188,8 @@ function screenDayTrade(ticker: string, bars: OHLCVBar[], minPrice: number, maxP
   // Rule 5: 1 Day Volume Change >= 30
   if (volumeChangePercent < 30) return null;
 
-  // Rule 6: Price < 1000
-  if (currentPrice >= 1000) return null;
+  // Rule 6: Price <= 500
+  if (currentPrice > 500) return null;
 
   // ════════════════════════════════════════════════════════════
   //  SCORING — higher = better day trade candidate
@@ -305,11 +305,11 @@ function screenSwing(ticker: string, bars: OHLCVBar[], minPrice: number, maxPric
   // Rule 2: Value > 5,000,000
   if (value <= 5_000_000) return null;
 
-  // Rule 3: Price > 100
-  if (currentPrice <= 100) return null;
+  // Rule 3: Price >= 100
+  if (currentPrice < 100) return null;
 
-  // Rule 4: Price < 1000
-  if (currentPrice >= 1000) return null;
+  // Rule 4: Price <= 500
+  if (currentPrice > 500) return null;
 
   // Rule 5: Price MA 5 > 1 x Price MA 20
   if (ma5 <= ma20) return null;

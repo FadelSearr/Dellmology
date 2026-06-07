@@ -9,7 +9,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import type { InfraHealth } from '@/lib/types';
+import type { InfraHealth, StockData, ChartDataPoint, AINarrative, ScreenerResult, SentimentData, BrokerData } from '@/lib/types';
 
 // ── Generic Fetcher ──────────────────────────────────────────
 async function apiFetch<T>(url: string, options?: RequestInit): Promise<T> {
@@ -21,7 +21,7 @@ async function apiFetch<T>(url: string, options?: RequestInit): Promise<T> {
 
 // ── useStockData ─────────────────────────────────────────────
 export function useStockData(emiten: string, from?: string, to?: string) {
-  const [data, setData] = useState<Record<string, unknown> | null>(null);
+  const [data, setData] = useState<StockData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -33,7 +33,7 @@ export function useStockData(emiten: string, from?: string, to?: string) {
       const params = new URLSearchParams({ emiten });
       if (from) params.set('from', from);
       if (to) params.set('to', to);
-      const result = await apiFetch<Record<string, unknown>>(`/api/stock?${params}`);
+      const result = await apiFetch<StockData>(`/api/stock?${params}`);
       setData(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch stock data');
@@ -51,7 +51,7 @@ export function useStockData(emiten: string, from?: string, to?: string) {
 // mode = 'watchlist' | 'daytrade' | 'swing'
 // sortBy = 'score' | 'price_asc' | 'price_desc' | 'change'
 export function useWatchlist(mode = 'watchlist', minPrice = 0, maxPrice = 999999, searchQuery = '', sortBy = 'score') {
-  const [data, setData] = useState<any[]>([]);
+  const [data, setData] = useState<ScreenerResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -61,7 +61,7 @@ export function useWatchlist(mode = 'watchlist', minPrice = 0, maxPrice = 999999
       const params = new URLSearchParams({ mode, minPrice: minPrice.toString(), maxPrice: maxPrice.toString() });
       if (searchQuery.trim()) params.set('q', searchQuery.trim());
       if (sortBy !== 'score') params.set('sortBy', sortBy);
-      const result = await apiFetch<any>(`/api/screener?${params}`);
+      const result = await apiFetch<{ results: ScreenerResult[] }>(`/api/screener?${params}`);
       setData(result.results || []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch watchlist');
@@ -79,7 +79,7 @@ export function useWatchlist(mode = 'watchlist', minPrice = 0, maxPrice = 999999
 
 // ── useChartData ──────────────────────────────────────────────
 export function useChartData(emiten: string, timeframe: string = '1D') {
-  const [data, setData] = useState<any[]>([]);
+  const [data, setData] = useState<ChartDataPoint[]>([]);
   const [atr, setAtr] = useState<number>(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -89,7 +89,7 @@ export function useChartData(emiten: string, timeframe: string = '1D') {
       if (!emiten) return;
       setLoading(true);
       try {
-        const result = await apiFetch<any>(`/api/chart?emiten=${emiten}&tf=${timeframe}`);
+        const result = await apiFetch<{ chartData: ChartDataPoint[], atr: number }>(`/api/chart?emiten=${emiten}&tf=${timeframe}`);
         setData(result.chartData || []);
         setAtr(result.atr || 0);
       } catch (err) {
@@ -114,9 +114,17 @@ export function useNarrative(params: {
   regime?: string;
   zScore?: number;
   atr?: number;
-  topBrokers?: any[];
+  topBrokers?: BrokerData[];
+  mfi?: number;
+  fiveDayFlow?: number;
+  orderFlow?: {
+    spoofingDetected: boolean;
+    icebergDetected: boolean;
+    bigWalls: number[];
+  };
+  whaleZHeatmap?: number[];
 }) {
-  const [data, setData] = useState<any>(null);
+  const [data, setData] = useState<AINarrative | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const lastFetched = useRef<string>('');
@@ -134,7 +142,7 @@ export function useNarrative(params: {
       setLoading(true);
       setError(null);
       try {
-        const result = await apiFetch<any>('/api/narrative', {
+        const result = await apiFetch<AINarrative>('/api/narrative', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(params),
@@ -155,7 +163,7 @@ export function useNarrative(params: {
     if (!params.emiten || !params.price) return;
     setLoading(true);
     try {
-      const result = await apiFetch<any>('/api/narrative', {
+      const result = await apiFetch<AINarrative>('/api/narrative', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(params),
@@ -248,13 +256,24 @@ export function useOracle() {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [meta, setMeta] = useState<{ generatedAt: number | null; cached: boolean; ttlMinutes: number }>({
+    generatedAt: null, cached: false, ttlMinutes: 30,
+  });
 
-  const fetchOracle = useCallback(async () => {
+  const fetchOracle = useCallback(async (forceRefresh = false) => {
     setLoading(true);
     setError(null);
     try {
-      const result = await apiFetch<any>('/api/oracle');
-      setData(result);
+      const url = forceRefresh ? '/api/oracle?refresh=true' : '/api/oracle';
+      const res = await fetch(url);
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error || 'Oracle API Error');
+      setData(json.data);
+      setMeta({
+        generatedAt: json.generatedAt ?? null,
+        cached: json.cached ?? false,
+        ttlMinutes: json.ttlMinutes ?? 30,
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch AI Oracle');
     } finally {
@@ -262,9 +281,12 @@ export function useOracle() {
     }
   }, []);
 
-  useEffect(() => { fetchOracle(); }, [fetchOracle]);
+  useEffect(() => { fetchOracle(false); }, [fetchOracle]);
 
-  return { data, loading, error, refetch: fetchOracle };
+  // refetch always forces fresh data from real market
+  const refetch = useCallback(() => fetchOracle(true), [fetchOracle]);
+
+  return { data, loading, error, meta, refetch };
 }
 
 // ── useAutoRefresh ───────────────────────────────────────────
@@ -306,7 +328,7 @@ export function useCombatMode() {
 
 // ── usePortfolio ─────────────────────────────────────────────
 export function usePortfolio() {
-  const [data, setData] = useState<any>(null);
+  const [data, setData] = useState<any>(null); // Keep any or define PortfolioResponse
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -314,7 +336,7 @@ export function usePortfolio() {
     setLoading(true);
     setError(null);
     try {
-      const result = await apiFetch<any>('/api/portfolio');
+      const result = await apiFetch<{ data: any }>('/api/portfolio');
       setData(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch portfolio');
@@ -328,17 +350,16 @@ export function usePortfolio() {
   return { data, loading, error, refetch: fetchPortfolio };
 }
 
-// ── useBrokerHistory ─────────────────────────────────────────
 // Fetches multi-day broker flow data for heatmap visualization
 export function useBrokerHistory(emiten: string) {
-  const [data, setData] = useState<any>(null);
+  const [data, setData] = useState<{ brokers: any[], days: string[] } | null>(null);
   const [loading, setLoading] = useState(false);
 
   const fetchHistory = useCallback(async () => {
     if (!emiten) return;
     setLoading(true);
     try {
-      const result = await apiFetch<any>(`/api/broker-history?emiten=${emiten}`);
+      const result = await apiFetch<{ brokers: any[], days: string[] }>(`/api/broker-history?emiten=${emiten}`);
       setData(result);
     } catch {
       setData(null);

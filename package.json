@@ -16,7 +16,10 @@
     "next": "16.2.4",
     "react": "19.2.4",
     "react-dom": "19.2.4",
-    "recharts": "^3.8.1"
+    "recharts": "^3.8.1",
+    "socket.io": "^4.8.3",
+    "socket.io-client": "^4.8.3",
+    "technicalindicators": "^3.1.0"
   },
   "devDependencies": {
     "@types/node": "^20",

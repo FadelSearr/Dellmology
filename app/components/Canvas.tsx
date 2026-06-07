@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { BarChart3, TrendingUp, Layers, Eye, AlertTriangle } from 'lucide-react';
 import { createChart, ColorType, CandlestickSeries, LineSeries } from 'lightweight-charts';
+import { SMA, EMA, RSI, MACD, BollingerBands, ADX, ATR, ROC, Stochastic, AwesomeOscillator, VWAP, VolumeProfile, MFI, IchimokuCloud, bearish, bullish, doji, bullishengulfingpattern, bearishengulfingpattern, morningstar, eveningstar, hammerpattern, shootingstar } from 'technicalindicators';
 import type { WatchlistItem } from '@/lib/types';
 import { fmt } from '@/lib/utils';
 import OrderFlowHeatmap from './OrderFlowHeatmap';
@@ -131,32 +132,37 @@ export default function Canvas({ selectedEmiten, selectedStock, stockData, chart
 
     candlestickSeries.setData(chartData);
 
-    // Add MA20 overlay if enough data
-    if (chartData.length >= 20) {
-      const ma20Data = [];
-      for (let i = 19; i < chartData.length; i++) {
-        let sum = 0;
-        for (let j = 0; j < 20; j++) sum += chartData[i - j].close;
-        ma20Data.push({ time: chartData[i].time, value: sum / 20 });
-      }
-      const ma20Series = chart.addSeries(LineSeries, {
+    const closes = chartData.map(d => d.close);
+
+    // SMA 20 overlay
+    const sma20 = SMA.calculate({ period: 20, values: closes });
+    if (sma20.length > 0) {
+      const sma20Data = sma20.map((val, i) => ({ time: chartData[i + 19].time, value: val }));
+      const sma20Series = chart.addSeries(LineSeries, {
         color: '#fbbf24', lineWidth: 1, crosshairMarkerVisible: false,
       });
-      ma20Series.setData(ma20Data);
+      sma20Series.setData(sma20Data);
     }
 
-    // Add MA50 overlay if enough data
-    if (chartData.length >= 50) {
-      const ma50Data = [];
-      for (let i = 49; i < chartData.length; i++) {
-        let sum = 0;
-        for (let j = 0; j < 50; j++) sum += chartData[i - j].close;
-        ma50Data.push({ time: chartData[i].time, value: sum / 50 });
-      }
-      const ma50Series = chart.addSeries(LineSeries, {
+    // EMA 50 overlay
+    const ema50 = EMA.calculate({ period: 50, values: closes });
+    if (ema50.length > 0) {
+      const ema50Data = ema50.map((val, i) => ({ time: chartData[i + 49].time, value: val }));
+      const ema50Series = chart.addSeries(LineSeries, {
         color: '#a78bfa', lineWidth: 1, crosshairMarkerVisible: false,
       });
-      ma50Series.setData(ma50Data);
+      ema50Series.setData(ema50Data);
+    }
+
+    // Bollinger Bands (20, 2)
+    const bb = BollingerBands.calculate({ period: 20, stdDev: 2, values: closes });
+    if (bb.length > 0) {
+      const upperData = bb.map((val, i) => ({ time: chartData[i + 19].time, value: val.upper }));
+      const lowerData = bb.map((val, i) => ({ time: chartData[i + 19].time, value: val.lower }));
+      const upperSeries = chart.addSeries(LineSeries, { color: 'rgba(56, 189, 248, 0.4)', lineWidth: 1, crosshairMarkerVisible: false });
+      const lowerSeries = chart.addSeries(LineSeries, { color: 'rgba(56, 189, 248, 0.4)', lineWidth: 1, crosshairMarkerVisible: false });
+      upperSeries.setData(upperData);
+      lowerSeries.setData(lowerData);
     }
 
     // Pattern detection markers are displayed as badges in the chart header
@@ -184,11 +190,68 @@ export default function Canvas({ selectedEmiten, selectedStock, stockData, chart
   const upsClass = ups.total >= 70 ? 'bullish' : ups.total >= 40 ? 'neutral' : 'bearish';
   
   // Use CNN Model if available, otherwise fallback to static UPS logic
-  const regime = cnnRegime ? cnnRegime.regime : (ups.total >= 60 ? 'uptrend' : ups.total <= 40 ? 'downtrend' : 'sideways');
-  const regimeConfidence = cnnRegime ? `${cnnRegime.confidence}% (CNN)` : '';
+  const regime = (cnnRegime && cnnRegime.regime) ? cnnRegime.regime : (ups.total >= 60 ? 'uptrend' : ups.total <= 40 ? 'downtrend' : 'sideways');
+  const regimeConfidence = (cnnRegime && cnnRegime.regime) ? `${cnnRegime.confidence}% (CNN)` : '';
   
   const killSwitch = stockData?.killSwitchActive || false;
   const incompleteData = stockData?.incompleteData || false;
+
+  let latestRSI = 0;
+  let latestMACD = { MACD: 0, signal: 0, histogram: 0 };
+  let latestADX = 0;
+  let latestATR = 0;
+  let latestStoch = { k: 0, d: 0 };
+  let latestMFI = 0;
+  let detectedPatterns: string[] = [];
+  
+  if (chartData && chartData.length > 0) {
+    const closes = chartData.map(d => d.close);
+    const highs = chartData.map(d => d.high || d.close);
+    const lows = chartData.map(d => d.low || d.close);
+    const opens = chartData.map(d => d.open || d.close);
+    const volumes = chartData.map(d => d.volume || 0);
+
+    // Get last 5 candles for pattern detection
+    const recentInput = {
+      open: opens.slice(-5),
+      high: highs.slice(-5),
+      low: lows.slice(-5),
+      close: closes.slice(-5)
+    };
+
+    const rsiVals = RSI.calculate({ period: 14, values: closes });
+    if (rsiVals.length > 0) latestRSI = rsiVals[rsiVals.length - 1];
+    
+    const macdVals = MACD.calculate({ values: closes, fastPeriod: 12, slowPeriod: 26, signalPeriod: 9, SimpleMAOscillator: false, SimpleMASignal: false });
+    if (macdVals.length > 0) latestMACD = macdVals[macdVals.length - 1] as any;
+
+    try {
+      const adxVals = ADX.calculate({ period: 14, high: highs, low: lows, close: closes });
+      if (adxVals.length > 0) latestADX = adxVals[adxVals.length - 1].adx;
+
+      const atrVals = ATR.calculate({ period: 14, high: highs, low: lows, close: closes });
+      if (atrVals.length > 0) latestATR = atrVals[atrVals.length - 1];
+
+      const stochVals = Stochastic.calculate({ high: highs, low: lows, close: closes, period: 14, signalPeriod: 3 });
+      if (stochVals.length > 0) latestStoch = stochVals[stochVals.length - 1] as any;
+
+      const mfiVals = MFI.calculate({ high: highs, low: lows, close: closes, volume: volumes, period: 14 });
+      if (mfiVals.length > 0) latestMFI = mfiVals[mfiVals.length - 1];
+
+      // Candlestick Pattern Detection
+      if (recentInput.close.length >= 5) {
+        if (bullish(recentInput)) detectedPatterns.push('Bullish');
+        if (bearish(recentInput)) detectedPatterns.push('Bearish');
+        if (doji(recentInput)) detectedPatterns.push('Doji');
+        if (bullishengulfingpattern(recentInput)) detectedPatterns.push('Bull Engulf');
+        if (bearishengulfingpattern(recentInput)) detectedPatterns.push('Bear Engulf');
+        if (morningstar(recentInput)) detectedPatterns.push('Morning Star');
+        if (eveningstar(recentInput)) detectedPatterns.push('Evening Star');
+        if (hammerpattern(recentInput)) detectedPatterns.push('Hammer');
+        if (shootingstar(recentInput)) detectedPatterns.push('Shooting Star');
+      }
+    } catch(e) {}
+  }
 
   return (
     <main className="canvas" id="canvas" style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
@@ -266,9 +329,33 @@ export default function Canvas({ selectedEmiten, selectedStock, stockData, chart
             </div>
           </div>
 
-          <div style={{ display: 'flex', gap: 4, marginBottom: 4 }}>
-            <span style={{ fontSize: 9, color: '#fbbf24', fontFamily: 'var(--font-mono)' }}>━ MA20</span>
-            <span style={{ fontSize: 9, color: '#a78bfa', fontFamily: 'var(--font-mono)' }}>━ MA50</span>
+          <div style={{ display: 'flex', gap: 12, marginBottom: 4, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 9, color: '#fbbf24', fontFamily: 'var(--font-mono)' }}>━ SMA20</span>
+            <span style={{ fontSize: 9, color: '#a78bfa', fontFamily: 'var(--font-mono)' }}>━ EMA50</span>
+            <span style={{ fontSize: 9, color: '#38bdf8', fontFamily: 'var(--font-mono)' }}>━ BB(20,2)</span>
+            <span style={{ fontSize: 9, color: latestRSI > 70 ? '#e0294a' : latestRSI < 30 ? '#2ebd85' : 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+              RSI: {latestRSI.toFixed(2)}
+            </span>
+            <span style={{ fontSize: 9, color: (latestMACD?.histogram || 0) > 0 ? '#2ebd85' : '#e0294a', fontFamily: 'var(--font-mono)' }}>
+              MACD: {latestMACD?.MACD?.toFixed(2)} (Sig: {latestMACD?.signal?.toFixed(2)})
+            </span>
+            <span style={{ fontSize: 9, color: latestADX > 25 ? '#2ebd85' : 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+              ADX: {latestADX.toFixed(2)}
+            </span>
+            <span style={{ fontSize: 9, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+              ATR: {latestATR.toFixed(2)}
+            </span>
+            <span style={{ fontSize: 9, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+              Stoch(%K): {latestStoch?.k?.toFixed(2)}
+            </span>
+            <span style={{ fontSize: 9, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+              MFI: {latestMFI.toFixed(2)}
+            </span>
+            {detectedPatterns.length > 0 && (
+              <span style={{ fontSize: 9, color: '#a855f7', fontFamily: 'var(--font-mono)', fontWeight: 'bold' }}>
+                PATTERNS: {detectedPatterns.join(', ')}
+              </span>
+            )}
           </div>
 
           <div ref={chartContainerRef} className="chart-container" style={{ flex: 1, minHeight: 320, width: '100%', position: 'relative' }}>

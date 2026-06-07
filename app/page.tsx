@@ -10,8 +10,8 @@ import OracleScreen from './components/OracleScreen';
 import CombatMode from './components/CombatMode';
 import BacktestModal from './components/BacktestModal';
 import { useStockData, useWatchlist, useNarrative, useChartData, useAutoRefresh, usePortfolio, useBrokerHistory } from '@/app/hooks/useData';
-import { useSSETicks } from '@/app/hooks/useSSE';
 import { calculateBeta } from '@/lib/analysis';
+import type { BrokerData } from '@/lib/types';
 
 export default function Home() {
   const [selectedEmiten, setSelectedEmiten]   = useState('BBRI');
@@ -40,14 +40,14 @@ export default function Home() {
   const { data: stockData, loading: stockLoading, error: stockError } = useStockData(selectedEmiten);
   const { data: chartData, atr, loading: chartLoading } = useChartData(selectedEmiten, chartTimeframe);
   const { data: ihsgData } = useChartData('^JKSE', chartTimeframe);
-  const sse = useSSETicks(50);
+  // const sse = useSSETicks(50); // Unused, per Roadmap: SSE only for combat mode or specific panels
 
   // ── Portfolio data ───────────────────────────────────────
   const { data: portfolioData, loading: portfolioLoading, error: portfolioError, refetch: refetchPortfolio } = usePortfolio();
   const { data: brokerHistory } = useBrokerHistory(selectedEmiten);
 
-  const topBuyers  = (stockData?.topBuyers  as any[]) || [];
-  const topSellers = (stockData?.topSellers as any[]) || [];
+  const topBuyers  = (stockData?.topBuyers  as BrokerData[]) || [];
+  const topSellers = (stockData?.topSellers as BrokerData[]) || [];
   const price      = (stockData?.price as number) || 0;
 
   // Calculate Beta
@@ -62,13 +62,20 @@ export default function Home() {
   const { data: aiNarrative, loading: aiLoading } = useNarrative({
     emiten:        selectedEmiten,
     price:         price,
-    change:        (stockData?.change as number) || 0,
-    changePercent: (stockData?.changePercent as number) || 0,
-    ups:           (stockData?.ups as number) || 50,
-    regime:        (stockData?.ups as number) >= 60 ? 'uptrend' : (stockData?.ups as number) <= 40 ? 'downtrend' : 'sideways',
-    zScore:        (stockData?.zScore as number) || 0,
+    change:        stockData?.change || 0,
+    changePercent: stockData?.changePercent || 0,
+    ups:           stockData?.ups || 50,
+    regime:        (stockData?.ups || 50) >= 60 ? 'uptrend' : (stockData?.ups || 50) <= 40 ? 'downtrend' : 'sideways',
+    zScore:        stockData?.zScore || 0,
     atr:           atr,
     topBrokers:    [...topBuyers, ...topSellers],
+    mfi:           stockData?.mfi ?? 50,
+    orderFlow: {
+      spoofingDetected: stockData?.spoofingAlert || false,
+      icebergDetected: stockData?.icebergDetected || false,
+      bigWalls: (stockData?.totalBid || 0) > (stockData?.totalOffer || 0) * 2 ? [stockData?.totalBid || 0] : [],
+    },
+    whaleZHeatmap: [stockData?.zScore || 0], // placeholder for now
   });
 
   if (stockError) {
@@ -167,7 +174,7 @@ export default function Home() {
           onPortfolioRefresh={refetchPortfolio}
         />
         {activeTab === 'oracle' ? (
-          <div style={{ flex: 1, height: '100%', overflow: 'hidden' }}>
+          <div style={{ gridColumn: '2 / 4', gridRow: '2', background: 'var(--bg-primary)', overflow: 'hidden' }}>
             <OracleScreen onSelectEmiten={(code) => {
               setSelectedEmiten(code);
               setActiveTab('watchlist'); // switch back to chart view

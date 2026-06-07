@@ -36,6 +36,11 @@ interface ScreenerItem {
   // AI
   aiScore?:         number;
   aiReason?:        string;
+  unifiedPowerScore?: number;
+  technicalScore?: number;
+  bandarmologyScore?: number;
+  cnnScore?: number;
+  consensus?: 'BULLISH' | 'BEARISH' | 'NEUTRAL';
 }
 
 interface SidebarProps {
@@ -201,13 +206,6 @@ export default function Sidebar({
             >
               🐋 Whale
             </button>
-            <button
-              className={`screener-tab ${screenerMode === 'ai' ? 'screener-tab--active' : ''}`}
-              onClick={() => onScreenerModeChange('ai')}
-              style={{ flex: 1, fontSize: 10 }}
-            >
-              🤖 AI
-            </button>
           </div>
 
           {/* Mode info box */}
@@ -234,15 +232,6 @@ export default function Sidebar({
               <div style={{ fontSize: 9, fontWeight: 700, color: '#38bdf8', marginBottom: 3 }}>🐋 THE WHALE SHADOW</div>
               <div style={{ fontSize: 9, color: 'var(--text-muted)', lineHeight: 1.6 }}>
                 Swing Pre-filter + <b style={{ color: '#38bdf8' }}>Institutional Accumulation</b> · Stockbit Validated
-              </div>
-            </div>
-          )}
-
-          {screenerMode === 'ai' && (
-            <div style={{ background: 'rgba(168,85,247,0.07)', border: '1px solid rgba(168,85,247,0.25)', borderRadius: 5, padding: '7px 8px', marginBottom: 8 }}>
-              <div style={{ fontSize: 9, fontWeight: 700, color: '#a855f7', marginBottom: 3 }}>🤖 THE AI ORACLE</div>
-              <div style={{ fontSize: 9, color: 'var(--text-muted)', lineHeight: 1.6 }}>
-                Analyze Top 20 Candidates using <b style={{ color: '#a855f7' }}>Flexible AI Reasoning</b> for next-day breakout.
               </div>
             </div>
           )}
@@ -482,6 +471,16 @@ export default function Sidebar({
                       background: 'rgba(168,85,247,0.05)', padding: '4px 6px', borderRadius: 4, borderLeft: '2px solid #a855f7' 
                     }}>
                       "{item.aiReason}"
+                      {item.unifiedPowerScore !== undefined && (
+                        <div style={{ marginTop: 4, display: 'flex', gap: 4, flexWrap: 'wrap', fontFamily: 'var(--font-mono)' }}>
+                          <span style={{ background: '#a855f722', padding: '1px 3px', borderRadius: 2 }}>Pwr: {item.unifiedPowerScore}</span>
+                          <span style={{ background: '#38bdf822', color: '#38bdf8', padding: '1px 3px', borderRadius: 2 }}>Ban: {item.bandarmologyScore}</span>
+                          <span style={{ background: '#4ade8022', color: '#4ade80', padding: '1px 3px', borderRadius: 2 }}>Tec: {item.technicalScore}</span>
+                          <span style={{ fontWeight: 'bold', color: item.consensus === 'BULLISH' ? '#4ade80' : item.consensus === 'BEARISH' ? '#f87171' : '#fbbf24' }}>
+                            {item.consensus}
+                          </span>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

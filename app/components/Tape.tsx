@@ -6,15 +6,9 @@ import { fmtCompact } from '@/lib/utils';
 import { getBrokerProfile } from '@/lib/broker-profiles';
 import { detectVolumeAnomalies, calculateBrokerFlowMatrix } from '@/lib/analysis';
 import BrokerFlowNetwork from './BrokerFlowNetwork';
+import type { BrokerData, ChartDataPoint, SentimentData, WhaleZScore } from '@/lib/types';
 
-interface BrokerData {
-  netbs_broker_code: string;
-  type?: string;
-  bvalv?: number | string;
-  svalv?: number | string;
-  bval?: number | string;
-  sval?: number | string;
-}
+
 
 interface TapeProps {
   selectedEmiten: string;
@@ -29,7 +23,7 @@ interface TapeProps {
   concentrationLabel?: string;
   concentrationTopBroker?: string;
   opposingBrokerCount?: number;
-  chartData?: any[];
+  chartData?: ChartDataPoint[];
   // Iceberg Order Detection
   icebergDetected?: boolean;
   icebergBroker?: string;
@@ -40,11 +34,14 @@ interface TapeProps {
   mfiLabel?: string;
   mfiDivergence?: boolean;
   // Broker History Heatmap
-  brokerHistory?: any;
+  brokerHistory?: {
+    days: string[];
+    brokers: any[]; // define more specifically if needed
+  } | null;
 }
 
 export default function Tape({ selectedEmiten, topBuyers, topSellers, zScore = 0, spoofingAlert = false, washSaleAlert = false, upperShadowAlert = false, upperShadowLabel = '', upperShadowPct = 0, concentrationLabel = '', concentrationTopBroker = '', opposingBrokerCount = 0, chartData = [], icebergDetected = false, icebergBroker = '', icebergAvgLot = 0, icebergFrequency = 0, mfi = 50, mfiLabel = '', mfiDivergence = false, brokerHistory = null }: TapeProps) {
-  const [sentiment, setSentiment] = useState<any>(null);
+  const [sentiment, setSentiment] = useState<SentimentData | null>(null);
 
   // Fetch sentiment data filtered by selected emiten
   useEffect(() => {
@@ -85,7 +82,7 @@ export default function Tape({ selectedEmiten, topBuyers, topSellers, zScore = 0
   ].sort((a, b) => Math.abs(b.netValue) - Math.abs(a.netValue)).slice(0, 8);
 
   // Generate real Z-Scores from chartData if available
-  let liveZScores: any[] = [];
+  let liveZScores: (WhaleZScore & { isAnomaly: boolean })[] = [];
   if (chartData && chartData.length > 0) {
     const recent = chartData.slice(-20);
     const anomalies = detectVolumeAnomalies(
@@ -376,7 +373,7 @@ export default function Tape({ selectedEmiten, topBuyers, topSellers, zScore = 0
             {/* Headlines & Stream */}
             {(sentiment.items || []).length > 0 ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {(sentiment.items || []).slice(0, 8).map((item: any, i: number) => (
+                {(sentiment.items || []).slice(0, 8).map((item, i: number) => (
                   <div key={i} style={{ fontSize: 9, color: 'var(--text-secondary)', lineHeight: 1.4, display: 'flex', gap: 4, alignItems: 'flex-start' }}>
                     <span style={{
                       flexShrink: 0, width: 6, height: 6, borderRadius: '50%', marginTop: 3,

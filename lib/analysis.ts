@@ -5,24 +5,21 @@
    Market Regime Detection, Position Sizing
    ══════════════════════════════════════════════════════════════ */
 
-import type {
-  UnifiedPowerScore, UPSSignal, ConfidenceLevel,
-  MarketRegime, PositionSizing, WhaleZScore, BrokerFlowEntry,
-} from './types';
+import { WhaleZScore } from './types';
 
-// ── Simple Moving Average ────────────────────────────────────
+// ── Simple Moving Average (SMA) ──────────────────────────────
 export function sma(data: number[], period: number): number[] {
   const result: number[] = [];
   for (let i = period - 1; i < data.length; i++) {
-    let sum = 0;
-    for (let j = 0; j < period; j++) sum += data[i - j];
+    const sum = data.slice(i - period + 1, i + 1).reduce((a, b) => a + b, 0);
     result.push(sum / period);
   }
   return result;
 }
 
-// ── Exponential Moving Average ───────────────────────────────
+// ── Exponential Moving Average (EMA) ─────────────────────────
 export function ema(data: number[], period: number): number[] {
+  if (!data || data.length === 0) return [];
   const k = 2 / (period + 1);
   const result: number[] = [data[0]];
   for (let i = 1; i < data.length; i++) {
@@ -144,6 +141,7 @@ export function calculateBeta(stockCloses: number[], marketCloses: number[]): nu
 
 // ── Market Regime Detection ──────────────────────────────────
 // Per roadmap: "Smart system that knows when market is Uptrend/Downtrend/Sideways"
+export type MarketRegime = 'uptrend' | 'downtrend' | 'sideways';
 export function detectMarketRegime(closes: number[], period = 20): MarketRegime {
   if (closes.length < period) return 'sideways';
 
@@ -183,85 +181,17 @@ export function detectWashSale(
   return { isWashSale: false, churnRatio, label: 'Healthy Accumulation' };
 }
 
-// ── Unified Power Score (UPS) ────────────────────────────────
-// Per roadmap: "Combines technical, volume, bandarmology into single 0-100 score"
-export function calculateUPS(params: {
-  rsiValue: number;
-  macdHistogram: number;
-  trendDirection: MarketRegime;
-  whaleNetValue: number;
-  brokerConsistency: number;
-  zScore: number;
-  hakaRatio: number; // HAKA / (HAKA + HAKI)
-}): UnifiedPowerScore {
-  // Technical Score (0-100)
-  // RSI 30-70 mapping, MACD trend
-  let techScore = 50;
-  if (params.rsiValue < 30) techScore += 25; // Oversold = bullish
-  else if (params.rsiValue > 70) techScore -= 25; // Overbought = bearish
-  else techScore += (50 - params.rsiValue) * 0.5;
-
-  if (params.macdHistogram > 0) techScore += 15;
-  else techScore -= 15;
-
-  if (params.trendDirection === 'uptrend') techScore += 10;
-  else if (params.trendDirection === 'downtrend') techScore -= 10;
-
-  techScore = Math.max(0, Math.min(100, techScore));
-
-  // Bandarmology Score (0-100)
-  let bandarScore = 50;
-  if (params.whaleNetValue > 0) bandarScore += Math.min(30, params.whaleNetValue / 1e9 * 3);
-  else bandarScore -= Math.min(30, Math.abs(params.whaleNetValue) / 1e9 * 3);
-
-  bandarScore += (params.brokerConsistency - 50) * 0.4;
-  bandarScore = Math.max(0, Math.min(100, bandarScore));
-
-  // Volume Flow Score (0-100)
-  let volumeScore = 50;
-  if (params.zScore > 2) volumeScore += 30;
-  else if (params.zScore > 1) volumeScore += 15;
-  else if (params.zScore < -1) volumeScore -= 15;
-
-  volumeScore += (params.hakaRatio - 0.5) * 60; // HAKA dominance
-  volumeScore = Math.max(0, Math.min(100, volumeScore));
-
-  // Sentiment placeholder
-  const sentimentScore = 50;
-
-  // Weighted Total
-  const total = Math.round(
-    techScore * 0.25 +
-    bandarScore * 0.35 +
-    volumeScore * 0.25 +
-    sentimentScore * 0.15
-  );
-
-  // Signal mapping
-  let signal: UPSSignal = 'neutral';
-  if (total >= 80) signal = 'strong_buy';
-  else if (total >= 60) signal = 'buy';
-  else if (total <= 20) signal = 'strong_sell';
-  else if (total <= 40) signal = 'sell';
-
-  // Confidence based on data quality
-  let confidence: ConfidenceLevel = 'medium';
-  if (params.brokerConsistency >= 70 && Math.abs(params.zScore) > 1.5) confidence = 'high';
-  else if (params.brokerConsistency < 40) confidence = 'low';
-
-  return {
-    total,
-    technical: Math.round(techScore),
-    bandarmology: Math.round(bandarScore),
-    volumeFlow: Math.round(volumeScore),
-    sentiment: sentimentScore,
-    signal,
-    confidence,
-  };
-}
-
 // ── Volatility-Adjusted Position Sizing ──────────────────────
 // Per roadmap: "Calculate how volatile stock is (ATR) and recommend max lots"
+export interface PositionSizing {
+  atr: number;
+  suggestedLot: number;
+  riskPerTrade: number;
+  stopLoss: number;
+  takeProfit: number;
+  riskRewardRatio: number;
+  slippageBuffer: number;
+}
 export function calculatePositionSize(params: {
   currentPrice: number;
   atrValue: number;
@@ -631,4 +561,348 @@ export function calculateBrokerFlowMatrix(
   });
 
   return links.sort((a, b) => b.value - a.value);
+}
+// ── On-Balance Volume (OBV) ──────────────────────────────────
+export function obv(closes: number[], volumes: number[]): number[] {
+  if (closes.length === 0) return [];
+  const result: number[] = [0];
+  let currentOBV = 0;
+
+  for (let i = 1; i < closes.length; i++) {
+    if (closes[i] > closes[i - 1]) {
+      currentOBV += volumes[i];
+    } else if (closes[i] < closes[i - 1]) {
+      currentOBV -= volumes[i];
+    }
+    result.push(currentOBV);
+  }
+  return result;
+}
+
+// ── Commodity Channel Index (CCI) ───────────────────────────
+export function cci(
+  highs: number[], lows: number[], closes: number[], period = 20
+): number[] {
+  if (closes.length < period) return [];
+  
+  const typicalPrices = highs.map((h, i) => (h + lows[i] + closes[i]) / 3);
+  const smaTP = sma(typicalPrices, period);
+  const result: number[] = [];
+
+  for (let i = period - 1; i < typicalPrices.length; i++) {
+    const window = typicalPrices.slice(i - period + 1, i + 1);
+    const mean = smaTP[i - (period - 1)];
+    
+    // Mean Deviation
+    const meanDev = window.reduce((sum, tp) => sum + Math.abs(tp - mean), 0) / period;
+    
+    if (meanDev === 0) {
+      result.push(0);
+    } else {
+      const val = (typicalPrices[i] - mean) / (0.015 * meanDev);
+      result.push(val);
+    }
+  }
+  return result;
+}
+
+// ── Bollinger Bands ──────────────────────────────────────────
+export function bollingerBands(
+  data: number[],
+  period = 20,
+  stdDev = 2
+): { middle: number[]; upper: number[]; lower: number[] } {
+  const middle = sma(data, period);
+  const upper: number[] = [];
+  const lower: number[] = [];
+
+  for (let i = period - 1; i < data.length; i++) {
+    const window = data.slice(i - period + 1, i + 1);
+    const mean = middle[i - (period - 1)];
+    const variance = window.reduce((sum, v) => sum + Math.pow(v - mean, 2), 0) / period;
+    const sd = Math.sqrt(variance);
+    upper.push(mean + sd * stdDev);
+    lower.push(mean - sd * stdDev);
+  }
+
+  return { middle, upper, lower };
+}
+
+// ── Williams %R ──────────────────────────────────────────────
+export function williamsR(
+  highs: number[],
+  lows: number[],
+  closes: number[],
+  period = 14
+): number[] {
+  if (closes.length < period) return [];
+  const result: number[] = [];
+
+  for (let i = period - 1; i < closes.length; i++) {
+    const highWindow = highs.slice(i - period + 1, i + 1);
+    const lowWindow = lows.slice(i - period + 1, i + 1);
+    const highestHigh = Math.max(...highWindow);
+    const lowestLow = Math.min(...lowWindow);
+
+    if (highestHigh === lowestLow) {
+      result.push(-50);
+    } else {
+      const res = ((highestHigh - closes[i]) / (highestHigh - lowestLow)) * -100;
+      result.push(res);
+    }
+  }
+  return result;
+}
+
+// ── Average Directional Index (ADX) ──────────────────────────
+export interface ADXOutput {
+  adx: number;
+  pdi: number;
+  mdi: number;
+}
+
+export function adx(
+  highs: number[],
+  lows: number[],
+  closes: number[],
+  period = 14
+): ADXOutput[] {
+  if (closes.length < period * 2) return [];
+
+  const tr: number[] = [highs[0] - lows[0]];
+  const plusDM: number[] = [0];
+  const minusDM: number[] = [0];
+
+  for (let i = 1; i < closes.length; i++) {
+    const upMove = highs[i] - highs[i - 1];
+    const downMove = lows[i - 1] - lows[i];
+
+    tr.push(Math.max(
+      highs[i] - lows[i],
+      Math.abs(highs[i] - closes[i - 1]),
+      Math.abs(lows[i] - closes[i - 1])
+    ));
+
+    plusDM.push(upMove > downMove && upMove > 0 ? upMove : 0);
+    minusDM.push(downMove > upMove && downMove > 0 ? downMove : 0);
+  }
+
+  const smoothTR = ema(tr, period);
+  const smoothPlusDM = ema(plusDM, period);
+  const smoothMinusDM = ema(minusDM, minusDM.length > period ? period : minusDM.length); // simple ema use
+
+  const result: ADXOutput[] = [];
+  const dxValues: number[] = [];
+
+  for (let i = 0; i < smoothTR.length; i++) {
+    const pdi = (smoothPlusDM[i] / smoothTR[i]) * 100;
+    const mdi = (smoothMinusDM[i] / smoothTR[i]) * 100;
+    const dx = (Math.abs(pdi - mdi) / (pdi + mdi)) * 100;
+    dxValues.push(dx);
+    
+    if (i >= period - 1) {
+      const adxWindow = dxValues.slice(i - period + 1, i + 1);
+      const currentADX = adxWindow.reduce((a, b) => a + b, 0) / period;
+      result.push({ adx: currentADX, pdi, mdi });
+    }
+  }
+
+  return result;
+}
+
+// ── Ichimoku Cloud ───────────────────────────────────────────
+export interface IchimokuOutput {
+  conversion: number;
+  base: number;
+  spanA: number;
+  spanB: number;
+  lagging: number;
+}
+
+export function ichimokuCloud(
+  highs: number[],
+  lows: number[],
+  closes: number[],
+  conversionPeriod = 9,
+  basePeriod = 26,
+  spanPeriod = 52
+): IchimokuOutput[] {
+  const result: IchimokuOutput[] = [];
+  const maxPeriod = Math.max(conversionPeriod, basePeriod, spanPeriod);
+  
+  if (closes.length < maxPeriod) return [];
+
+  for (let i = maxPeriod - 1; i < closes.length; i++) {
+    const convHigh = Math.max(...highs.slice(i - conversionPeriod + 1, i + 1));
+    const convLow = Math.min(...lows.slice(i - conversionPeriod + 1, i + 1));
+    const baseHigh = Math.max(...highs.slice(i - basePeriod + 1, i + 1));
+    const baseLow = Math.min(...lows.slice(i - basePeriod + 1, i + 1));
+    const spanBHigh = Math.max(...highs.slice(i - spanPeriod + 1, i + 1));
+    const spanBLow = Math.min(...lows.slice(i - spanPeriod + 1, i + 1));
+
+    const conversion = (convHigh + convLow) / 2;
+    const base = (baseHigh + baseLow) / 2;
+    
+    result.push({
+      conversion,
+      base,
+      spanA: (conversion + base) / 2,
+      spanB: (spanBHigh + spanBLow) / 2,
+      lagging: closes[i]
+    });
+  }
+  
+  return result;
+}
+
+// ── Unified Power Score (UPS) ────────────────────────────────
+export type UPSSignal = 'strong_buy' | 'buy' | 'neutral' | 'sell' | 'strong_sell';
+export type ConfidenceLevel = 'high' | 'medium' | 'low';
+export interface UnifiedPowerScore {
+  total: number;
+  technical: number;
+  bandarmology: number;
+  volumeFlow: number;
+  sentiment: number;
+  signal: UPSSignal;
+  confidence: ConfidenceLevel;
+}
+
+// ── Institutional vs Retail Pairing ─────────────────────────
+// Calculates ratio between "Whale/Institutional" accumulation 
+// and "Retail" distribution. High pairing = Smart Money in, Weak Hands out.
+export function calculatePairingScore(buyers: { code: string; netValue: number }[], sellers: { code: string; netValue: number }[]): number {
+  const { getBrokerProfile } = require('./broker-profiles');
+  
+  let whaleBuy = 0;
+  let retailSell = 0;
+  
+  buyers.forEach(b => {
+    const profile = getBrokerProfile(b.code);
+    if (profile.character === 'institutional_accumulator' || profile.character === 'foreign_flow') {
+      whaleBuy += b.netValue;
+    }
+  });
+  
+  sellers.forEach(s => {
+    const profile = getBrokerProfile(s.code);
+    if (profile.character === 'retail_herder') {
+      retailSell += Math.abs(s.netValue);
+    }
+  });
+  
+  if (whaleBuy === 0) return 0;
+  // Pairing Score (0-100): Weighted average of whale conviction and retail exit
+  const score = (whaleBuy > 0 && retailSell > 0) ? 100 : (whaleBuy > 0 ? 70 : 0);
+  return score;
+}
+
+export function calculateUPS(params: {
+  rsiValue: number;
+  macdHistogram: number;
+  trendDirection: MarketRegime;
+  whaleNetValue: number;
+  brokerConsistency: number;
+  zScore: number;
+  hakaRatio: number;
+  pairingScore?: number;      // New: Institutional vs Retail Pairing
+  isWashSale?: boolean;      // New: Detected artificial liquidity
+  isDayTraderSpike?: boolean; // New: Accumulation by MG/YB/SH
+}): UnifiedPowerScore {
+  // 1. Technical Score (0-100) - Weight 15%
+  let techScore = 50;
+  if (params.rsiValue < 30) techScore += 25; 
+  else if (params.rsiValue > 70) techScore -= 25; 
+  else techScore += (50 - params.rsiValue) * 0.5;
+
+  if (params.macdHistogram > 0) techScore += 15;
+  else techScore -= 15;
+
+  if (params.trendDirection === 'uptrend') techScore += 10;
+  else if (params.trendDirection === 'downtrend') techScore -= 10;
+  techScore = Math.max(0, Math.min(100, techScore));
+
+  // 2. Bandarmology Score (0-100) - Weight 50% (The Core)
+  let bandarScore = 50;
+  // Base Net Value Impact
+  if (params.whaleNetValue > 0) bandarScore += Math.min(30, params.whaleNetValue / 1e9 * 3);
+  else bandarScore -= Math.min(30, Math.abs(params.whaleNetValue) / 1e9 * 3);
+
+  // Consistency Modifier
+  bandarScore += (params.brokerConsistency - 50) * 0.4;
+  
+  // Advanced Pairing Modifier
+  if (params.pairingScore !== undefined) {
+    bandarScore += (params.pairingScore - 50) * 0.3;
+  }
+
+  // Penalties
+  if (params.isWashSale) bandarScore -= 20; // Fake liquidity
+  if (params.isDayTraderSpike) bandarScore -= 15; // Unstable pump
+
+  bandarScore = Math.max(0, Math.min(100, bandarScore));
+
+  // 3. Volume Flow Score (0-100) - Weight 25%
+  let volumeScore = 50;
+  if (params.zScore > 2) volumeScore += 30;
+  else if (params.zScore > 1.5) volumeScore += 15;
+  
+  volumeScore += (params.hakaRatio - 0.5) * 60; 
+  volumeScore = Math.max(0, Math.min(100, volumeScore));
+
+  // 4. Sentiment (Placeholder for now) - Weight 10%
+  const sentimentScore = 50;
+
+  const total = Math.round(
+    techScore * 0.15 +
+    bandarScore * 0.50 +
+    volumeScore * 0.25 +
+    sentimentScore * 0.10
+  );
+
+  let signal: UPSSignal = 'neutral';
+  if (total >= 80) signal = 'strong_buy';
+  else if (total >= 65) signal = 'buy'; // Lowered from 70 per optimized regime
+  else if (total <= 25) signal = 'strong_sell';
+  else if (total <= 45) signal = 'sell';
+
+  let confidence: ConfidenceLevel = 'medium';
+  if (params.brokerConsistency >= 70 && Math.abs(params.zScore) > 1.5 && !params.isWashSale) confidence = 'high';
+  else if (params.brokerConsistency < 40 || params.isDayTraderSpike) confidence = 'low';
+
+  return {
+    total,
+    technical: Math.round(techScore),
+    bandarmology: Math.round(bandarScore),
+    volumeFlow: Math.round(volumeScore),
+    sentiment: sentimentScore,
+    signal,
+    confidence,
+  };
+}
+
+// ── Stochastic Oscillator ────────────────────────────────────
+export function stochastic(
+  highs: number[], lows: number[], closes: number[], period = 14, smoothK = 3, smoothD = 3
+): { k: number[]; d: number[] } {
+  if (closes.length < period) return { k: [], d: [] };
+  
+  const rawK: number[] = [];
+  for (let i = period - 1; i < closes.length; i++) {
+    const recentHighs = highs.slice(i - period + 1, i + 1);
+    const recentLows = lows.slice(i - period + 1, i + 1);
+    const highestHigh = Math.max(...recentHighs);
+    const lowestLow = Math.min(...recentLows);
+    
+    if (highestHigh === lowestLow) {
+      rawK.push(50);
+    } else {
+      rawK.push(((closes[i] - lowestLow) / (highestHigh - lowestLow)) * 100);
+    }
+  }
+  
+  const k = sma(rawK, smoothK);
+  const d = sma(k, smoothD);
+  
+  return { k, d };
 }

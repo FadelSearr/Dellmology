@@ -88,11 +88,11 @@ export const mockInfraHealth: InfraHealth = {
 
 // ── Screener Results ─────────────────────────────────────────
 export const mockScreenerResults: ScreenerResult[] = [
-  { emiten: 'ANTM', name: 'Aneka Tambang', sector: 'Mining', price: 1505, change: 30, changePercent: 2.03, ups: 91, regime: 'uptrend', topBroker: 'YP', netValue: 12000000000, zScore: 2.8, hakaRatio: 0.72, signal: 'strong_buy', confidence: 'high' },
-  { emiten: 'ADRO', name: 'Adaro Energy', sector: 'Mining', price: 2380, change: 60, changePercent: 2.59, ups: 87, regime: 'uptrend', topBroker: 'CC', netValue: 9500000000, zScore: 2.1, hakaRatio: 0.68, signal: 'buy', confidence: 'high' },
-  { emiten: 'BBRI', name: 'Bank Rakyat Indonesia', sector: 'Finance', price: 4650, change: 50, changePercent: 1.09, ups: 82, regime: 'uptrend', topBroker: 'YP', netValue: 15200000000, zScore: 2.3, hakaRatio: 0.65, signal: 'buy', confidence: 'high' },
-  { emiten: 'BRIS', name: 'Bank Syariah Indonesia', sector: 'Finance', price: 2620, change: 80, changePercent: 3.15, ups: 78, regime: 'uptrend', topBroker: 'PD', netValue: 6300000000, zScore: 1.9, hakaRatio: 0.61, signal: 'buy', confidence: 'medium' },
-  { emiten: 'GOTO', name: 'GoTo Gojek Tokopedia', sector: 'Technology', price: 68, change: 3, changePercent: 4.62, ups: 74, regime: 'sideways', topBroker: 'RX', netValue: 4100000000, zScore: 1.5, hakaRatio: 0.58, signal: 'neutral', confidence: 'medium' },
+  { id: '1', code: 'ANTM', emiten: 'ANTM', name: 'Aneka Tambang', sector: 'Mining', price: 1505, change: 30, changePercent: 2.03, ups: 91, regime: 'uptrend', topBroker: 'YP', netValue: 12000000000, zScore: 2.8, hakaRatio: 0.72, signal: 'strong_buy', confidence: 'high', volume: 1000000 },
+  { id: '2', code: 'ADRO', emiten: 'ADRO', name: 'Adaro Energy', sector: 'Mining', price: 2380, change: 60, changePercent: 2.59, ups: 87, regime: 'uptrend', topBroker: 'CC', netValue: 9500000000, zScore: 2.1, hakaRatio: 0.68, signal: 'buy', confidence: 'high', volume: 1000000 },
+  { id: '3', code: 'BBRI', emiten: 'BBRI', name: 'Bank Rakyat Indonesia', sector: 'Finance', price: 4650, change: 50, changePercent: 1.09, ups: 82, regime: 'uptrend', topBroker: 'YP', netValue: 15200000000, zScore: 2.3, hakaRatio: 0.65, signal: 'buy', confidence: 'high', volume: 1000000 },
+  { id: '4', code: 'BRIS', emiten: 'BRIS', name: 'Bank Syariah Indonesia', sector: 'Finance', price: 2620, change: 80, changePercent: 3.15, ups: 78, regime: 'uptrend', topBroker: 'PD', netValue: 6300000000, zScore: 1.9, hakaRatio: 0.61, signal: 'buy', confidence: 'medium', volume: 1000000 },
+  { id: '5', code: 'GOTO', emiten: 'GOTO', name: 'GoTo Gojek Tokopedia', sector: 'Technology', price: 68, change: 3, changePercent: 4.62, ups: 74, regime: 'sideways', topBroker: 'RX', netValue: 4100000000, zScore: 1.5, hakaRatio: 0.58, signal: 'neutral', confidence: 'medium', volume: 1000000 },
 ];
 
 // ── Mock Price Data for Chart (deterministic) ────────────────

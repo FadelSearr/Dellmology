@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { fetchMarketDetector, fetchOrderbook, fetchEmitenInfo } from '@/lib/stockbit';
+import { getPrice } from '@/lib/price-sync';
 import {
   calculateUPS, rsi, macd, atr as computeAtr, detectMarketRegime,
   calculateZScore, detectWashSale, adjustUPSThreshold,
@@ -86,12 +87,31 @@ export async function GET(request: NextRequest) {
       getIHSGChange(),
     ]);
 
-    // Check for token errors
+    // ── Check token errors and fallback ───────────────────────
     const rejected = [marketDetector, orderbook, emitenInfo].find(p => p.status === 'rejected');
-    if (rejected && rejected.status === 'rejected') throw rejected.reason;
+    let price = 0;
+    let change = 0;
+    let changePercent = 0;
+    let fallbackUsed = false;
+    
+    // Cast to any — API response has dynamic fields not in our strict type
+    let ob: any = orderbook.status === 'fulfilled' ? orderbook.value?.data || {} : {};
+
+    if (rejected && rejected.status === 'rejected') {
+      console.warn(`[Stock API] Token failed. Using price-sync fallback for ${emiten}`);
+      const pData = await getPrice(emiten);
+      price = pData.price;
+      changePercent = pData.changePercent || 0;
+      change = price - (price / (1 + changePercent / 100));
+      fallbackUsed = true;
+    } else {
+      price = ob.lastprice || ob.close || 0;
+      const previousClose = ob.previousclose || 0;
+      change = price && previousClose ? price - previousClose : 0;
+      changePercent = price && previousClose ? (change / previousClose) * 100 : 0;
+    }
 
     const mdData = marketDetector.status === 'fulfilled' ? marketDetector.value : null;
-    const obData = orderbook.status === 'fulfilled' ? orderbook.value : null;
     const infoData = emitenInfo.status === 'fulfilled' ? emitenInfo.value : null;
     const ihsgPct = ihsgChange.status === 'fulfilled' ? ihsgChange.value : 0;
 
@@ -101,12 +121,6 @@ export async function GET(request: NextRequest) {
     const allBuyers = mdData?.data?.broker_summary?.brokers_buy || [];
     const detector = mdData?.data?.bandar_detector;
 
-    // Cast to any — API response has dynamic fields not in our strict type
-    const ob: any = obData?.data || {};
-    const price = ob.lastprice || ob.close || 0;
-    const previousClose = ob.previousclose || 0;
-    const change = price && previousClose ? price - previousClose : 0;
-    const changePercent = price && previousClose ? (change / previousClose) * 100 : 0;
     const high = ob.high || 0;
     const ara = ob.ara?.value ? Number(ob.ara.value) : 0;
     const arb = ob.arb?.value ? Number(ob.arb.value) : 0;
@@ -171,61 +185,6 @@ export async function GET(request: NextRequest) {
     ];
     const mtfResult = multiTimeframeValidation(mtfSignals);
 
-    // ══════════════════════════════════════════════════════════
-    //   UNIFIED POWER SCORE
-    // ══════════════════════════════════════════════════════════
-    let ups = 50;
-
-    // Bandarmology (±20)
-    if (detector?.top1?.accdist?.includes('Accum')) ups += 5;
-    else if (detector?.top1?.accdist?.includes('Dist')) ups -= 5;
-    if (detector?.top3?.accdist?.includes('Accum')) ups += 5;
-    else if (detector?.top3?.accdist?.includes('Dist')) ups -= 5;
-    if (detector?.top5?.accdist?.includes('Accum')) ups += 10;
-    else if (detector?.top5?.accdist?.includes('Dist')) ups -= 10;
-
-    // Orderbook Pressure (±15)
-    if (totalBid > 0 && totalOffer > 0) {
-      const bidRatio = totalBid / (totalBid + totalOffer);
-      if (bidRatio > 0.6) ups += 15;
-      else if (bidRatio > 0.5) ups += 5;
-      else if (bidRatio < 0.4) ups -= 15;
-      else if (bidRatio < 0.5) ups -= 5;
-    }
-
-    // Price Momentum (±15)
-    if (changePercent > 3) ups += 15;
-    else if (changePercent > 0) ups += 5;
-    else if (changePercent < -3) ups -= 15;
-    else if (changePercent < 0) ups -= 5;
-
-    // Penalize for manipulation signals
-    if (spoofingAlert)       ups -= 20;
-    if (washSaleAlert)       ups -= 15;
-    if (artificialLiquidity) ups -= 10;
-
-    // Multi-TF boost/penalty
-    if (mtfResult.isValid && mtfResult.consensus.includes('BULLISH')) ups += 10;
-    else if (mtfResult.isValid && mtfResult.consensus.includes('BEARISH')) ups -= 10;
-
-    // ── Volume-Profile Divergence (Upper Shadow Alert) ──
-    const open = ob.open || 0;
-    const low = ob.low || 0;
-    const upperShadowResult = detectUpperShadowDivergence({
-      open, high, low, close: price, netBuy,
-    });
-    if (upperShadowResult.alert) ups -= 5;
-
-    // ── Iceberg Order Detection ──
-    const icebergBrokers = allBuyers.map((b: any) => ({
-      code: b.netbs_broker_code || '',
-      netValue: parseFloat(b.bval || '0') - parseFloat(b.sval || '0'),
-      bfreq: parseInt(b.bfreq || b.blot_freq || '0', 10),
-      blot: parseInt(String(b.blot || '0').replace(/,/g, ''), 10),
-    }));
-    const icebergResult = detectIcebergOrder(icebergBrokers);
-    if (icebergResult.detected) ups += 5; // Stealth accumulation = bullish conviction
-
     // ── Money Flow Index (MFI) ──
     // Fetch mini OHLCV from Yahoo for MFI calculation
     let mfiValue = 50;
@@ -261,9 +220,39 @@ export async function GET(request: NextRequest) {
     mfiLabel = mfiFusion.label;
     mfiDivergence = mfiFusion.divergence;
 
+    // ── Volume-Profile Divergence (Upper Shadow Alert) ──
+    const open = ob.open || 0;
+    const low = ob.low || 0;
+    const upperShadowResult = detectUpperShadowDivergence({
+      open, high, low, close: price, netBuy,
+    });
+
+    // ── Iceberg Order Detection ──
+    const icebergBrokers = allBuyers.map((b: any) => ({
+      code: b.netbs_broker_code || '',
+      netValue: parseFloat(b.bval || '0') - parseFloat(b.sval || '0'),
+      bfreq: parseInt(b.bfreq || b.blot_freq || '0', 10),
+      blot: parseInt(String(b.blot || '0').replace(/,/g, ''), 10),
+    }));
+    const icebergResult = detectIcebergOrder(icebergBrokers);
+
+    // ── Unified Power Score (UPS) ───────────────────────────
+    const upsResult = calculateUPS({
+      rsiValue: mfiValue, // Using MFI as proxy or we could fetch RSI
+      macdHistogram: 0,   // Placeholder if not calculated
+      trendDirection: detector?.top5?.accdist?.includes('Accum') ? 'uptrend' : 'sideways',
+      whaleNetValue: netBuy,
+      brokerConsistency: detector?.top5?.percent || 50,
+      zScore: zScore,
+      hakaRatio: 0.5, // Placeholder
+    });
+    
+    let ups = upsResult.total;
+    if (icebergResult.detected) ups += 5; // Bonus for hidden accumulation
+
     // ── Data Integrity Shield (Gap Detection) ──
     // Incomplete Data if orderbook is completely empty during market hours
-    const incompleteData = (totalBid === 0 && totalOffer === 0) || (obData === null);
+    const incompleteData = fallbackUsed || (!topBuyers.length && !topSellers.length);
     if (incompleteData) {
       ups = 50; // Neutralize UPS on missing data to prevent hallucination
     }

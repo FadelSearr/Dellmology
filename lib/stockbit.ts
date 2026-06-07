@@ -74,7 +74,7 @@ export async function getTokenStatus() {
     else if (expiresInMinutes < 15) status = 'expiring';
     
     return { status, expiresAt, expiresInMinutes };
-  } catch (error) {
+  } catch {
     return { status: 'offline', expiresAt: 0, expiresInMinutes: 0 };
   }
 }

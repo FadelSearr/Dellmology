@@ -150,7 +150,7 @@ export async function sendAnomalyAlert(params: {
   emoji: string;
   title: string;
   message: string;
-  data?: Record<string, any>;
+  data?: Record<string, string | number | boolean>;
 }) {
   if (!canSendAlert(params.emiten, params.type)) return false;
   

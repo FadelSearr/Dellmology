@@ -54,6 +54,16 @@ export interface WatchlistItem {
   inWatchlist?: boolean;
 }
 
+export interface BrokerData {
+  netbs_broker_code: string;
+  type?: string;
+  bvalv?: number | string;
+  svalv?: number | string;
+  bval?: number | string;
+  sval?: number | string;
+  code?: string;
+}
+
 // ── Broker Flow Entry ────────────────────────────────────────
 export interface BrokerFlowEntry {
   brokerCode: string;
@@ -112,6 +122,8 @@ export interface AINarrative {
   confidence: ConfidenceLevel;
   timestamp: string;
   keyPoints: string[];
+  entryStrategy?: string;
+  riskLevel?: 'Low' | 'Medium' | 'High';
 }
 
 // ── Position Sizing ──────────────────────────────────────────
@@ -177,20 +189,37 @@ export interface StockQueryRecord {
 
 // ── Screener Result ──────────────────────────────────────────
 export interface ScreenerResult {
+  id: string;
+  code: string;
   emiten: string;
   name: string;
-  sector: string;
+  sector?: string;
   price: number;
   change: number;
   changePercent: number;
-  ups: number;
-  regime: MarketRegime;
-  topBroker: string;
-  netValue: number;
-  zScore: number;
-  hakaRatio: number;  // HAKA / (HAKA+HAKI)
-  signal: UPSSignal;
-  confidence: ConfidenceLevel;
+  volume: number;
+  ups?: number;
+  regime?: MarketRegime;
+  topBroker?: string;
+  netValue?: number;
+  zScore?: number;
+  hakaRatio?: number;  // HAKA / (HAKA+HAKI)
+  signal?: UPSSignal;
+  confidence?: ConfidenceLevel;
+  dayScore?: number;
+  swingScore?: number;
+  volRatio?: number;
+  dynamicScore?: number;
+  aiScore?: number;
+  aiReason?: string;
+  ma5?: number;
+  ma20?: number;
+  ma50?: number;
+  rsi14?: number;
+  volumeRatio?: number;
+  valueBillion?: number;
+  upperShadowPct?: number;
+  trend?: string;
 }
 
 // ── Market Detector Response ─────────────────────────────────
@@ -233,4 +262,65 @@ export interface OrderbookResponse {
       offer: { lot: string };
     };
   };
+}
+// ── Stock Data Response ──────────────────────────────────────
+export interface StockData {
+  emiten: string;
+  name: string;
+  sector: string;
+  price: number;
+  change: number;
+  changePercent: number;
+  high: number;
+  ara: number;
+  arb: number;
+  totalBid: number;
+  totalOffer: number;
+  topBuyers: BrokerData[];
+  topSellers: BrokerData[];
+  ups: number;
+  zScore: number;
+  spoofingAlert: boolean;
+  washSaleAlert: boolean;
+  icebergDetected: boolean;
+  icebergBroker?: string;
+  icebergAvgLot?: number;
+  icebergFrequency?: number;
+  mfi: number;
+  mfiLabel: string;
+  mfiDivergence: boolean;
+  concentrationLabel: string;
+  concentrationTopBroker: string;
+  opposingBrokerCount: number;
+  upperShadowAlert: boolean;
+  upperShadowLabel: string;
+  upperShadowPct: number;
+  killSwitchActive: boolean;
+}
+
+// ── Chart Data ───────────────────────────────────────────────
+export interface ChartDataPoint {
+  time: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  value: number;
+  color?: string;
+}
+
+// ── Sentiment Data ───────────────────────────────────────────
+export interface SentimentItem {
+  title: string;
+  sentiment: 'bullish' | 'bearish' | 'neutral';
+  source?: string;
+  timestamp?: string;
+}
+
+export interface SentimentData {
+  overallSentiment: 'bullish' | 'bearish' | 'neutral';
+  overallScore: number;
+  items: SentimentItem[];
+  divergenceAlert?: boolean;
+  divergenceMessage?: string;
 }

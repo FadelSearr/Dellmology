@@ -59,7 +59,7 @@ export async function GET(request: NextRequest) {
       low: quote.low[i],
       close: quote.close[i],
       value: quote.volume[i] // Lightweight Charts often uses 'value' for volume histograms
-    })).filter((item: any) => item.open !== null && item.close !== null); // Filter out empty days
+    })).filter((item: { open: number | null, close: number | null }) => item.open !== null && item.close !== null); // Filter out empty days
 
     // ── 4H Aggregation Logic ─────────────────────────────────
     if (timeframe === '4H' && chartData.length > 0) {

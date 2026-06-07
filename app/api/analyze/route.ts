@@ -3,6 +3,7 @@ import {
   calculateUPS, calculatePositionSize, detectMarketRegime,
   rsi, macd, atr, detectVolumeAnomalies, detectWashSale,
   multiTimeframeValidation, checkRoCKillSwitch, adjustUPSThreshold,
+  adx, bollingerBands, williamsR, ichimokuCloud, stochastic
 } from '@/lib/analysis';
 
 export async function POST(request: NextRequest) {
@@ -30,6 +31,20 @@ export async function POST(request: NextRequest) {
     const currentMacdHist = macdResult.histogram.length > 0 ? macdResult.histogram[macdResult.histogram.length - 1] : 0;
     const atrValues = atr(highs, lows, closes);
     const currentAtr = atrValues.length > 0 ? atrValues[atrValues.length - 1] : 0;
+    
+    // New Advanced Indicators
+    const adxResult = adx(highs, lows, closes);
+    const currentADX = adxResult.length > 0 ? adxResult[adxResult.length - 1] : null;
+    const bb = bollingerBands(closes);
+    const currentBB = bb ? { 
+      upper: bb.upper[bb.upper.length-1], 
+      middle: bb.middle[bb.middle.length-1], 
+      lower: bb.lower[bb.lower.length-1] 
+    } : null;
+    const wr = williamsR(highs, lows, closes);
+    const currentWR = wr.length > 0 ? wr[wr.length - 1] : -50;
+    const stoch = stochastic(highs, lows, closes);
+    const currentStoch = stoch.k.length > 0 ? stoch.k[stoch.k.length - 1] : null;
 
     // Market Regime
     const regime = detectMarketRegime(closes);
@@ -78,7 +93,15 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       data: {
-        technical: { rsi: currentRsi, macd: currentMacdHist, atr: currentAtr },
+        technical: { 
+          rsi: currentRsi, 
+          macd: currentMacdHist, 
+          atr: currentAtr,
+          adx: currentADX,
+          bb: currentBB,
+          williamsR: currentWR,
+          stoch: currentStoch
+        },
         regime,
         zScoreHistory: zScoreData,
         currentZScore,

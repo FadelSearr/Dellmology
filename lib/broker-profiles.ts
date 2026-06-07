@@ -57,18 +57,18 @@ const BROKER_DB: Record<string, Omit<BrokerProfile, 'code'>> = {
   'GR': { name: 'Panin Sekuritas', character: 'institutional_accumulator', label: 'Institutional', description: 'Local institutional and high-net-worth individual flows.', avgHoldDays: 14, reliability: 75, color: '#4ade80' },
   
   // ── Retail Herder (Mass Retail) ───
-  'YP': { name: 'Mirae Asset Sekuritas', character: 'retail_herder', label: 'Mass Retail', description: 'The largest retail broker in Indonesia. "Pasukan YP". High volume often means retail FOMO.', avgHoldDays: 3, reliability: 30, color: '#94a3b8' },
-  'PD': { name: 'Indo Premier Sekuritas', character: 'retail_herder', label: 'Mass Retail', description: 'Major retail broker (IPOT). Very sensitive to retail sentiment.', avgHoldDays: 3, reliability: 30, color: '#94a3b8' },
-  'XC': { name: 'Ajaib Sekuritas', character: 'retail_herder', label: 'Retail Gen-Z', description: 'Fintech broker dominated by retail and Gen-Z. Pure retail sentiment.', avgHoldDays: 2, reliability: 15, color: '#94a3b8' },
-  'XL': { name: 'Stockbit Sekuritas', character: 'retail_herder', label: 'Retail Community', description: 'Community-driven retail broker. High accumulation = social media hype.', avgHoldDays: 3, reliability: 20, color: '#94a3b8' },
-  'EP': { name: 'MNC Sekuritas', character: 'retail_herder', label: 'Retail', description: 'Large retail base. Frequent short-term trading.', avgHoldDays: 2, reliability: 25, color: '#94a3b8' },
-  'KK': { name: 'Phillip Sekuritas', character: 'retail_herder', label: 'Retail', description: 'Retail-focused broker (POEMS).', avgHoldDays: 4, reliability: 35, color: '#94a3b8' },
-  'AZ': { name: 'Sucor Sekuritas', character: 'retail_herder', label: 'Retail', description: 'Strong retail and influencer-driven community base.', avgHoldDays: 3, reliability: 30, color: '#94a3b8' },
+  'YP': { name: 'Mirae Asset Sekuritas', character: 'retail_herder', label: 'Mass Retail', description: 'The largest retail broker in Indonesia. "Pasukan YP". High volume often means retail FOMO.', avgHoldDays: 3, reliability: 20, color: '#94a3b8' },
+  'PD': { name: 'Indo Premier Sekuritas', character: 'retail_herder', label: 'Mass Retail', description: 'Major retail broker (IPOT). Very sensitive to retail sentiment.', avgHoldDays: 3, reliability: 20, color: '#94a3b8' },
+  'XC': { name: 'Ajaib Sekuritas', character: 'retail_herder', label: 'Retail Gen-Z', description: 'Fintech broker dominated by retail and Gen-Z. Pure retail sentiment.', avgHoldDays: 2, reliability: 10, color: '#94a3b8' },
+  'XL': { name: 'Stockbit Sekuritas', character: 'retail_herder', label: 'Retail Community', description: 'Community-driven retail broker. High accumulation = social media hype.', avgHoldDays: 3, reliability: 15, color: '#94a3b8' },
+  'EP': { name: 'MNC Sekuritas', character: 'retail_herder', label: 'Retail', description: 'Large retail base. Frequent short-term trading.', avgHoldDays: 2, reliability: 15, color: '#94a3b8' },
+  'KK': { name: 'Phillip Sekuritas', character: 'retail_herder', label: 'Retail', description: 'Retail-focused broker (POEMS).', avgHoldDays: 4, reliability: 25, color: '#94a3b8' },
+  'AZ': { name: 'Sucor Sekuritas', character: 'retail_herder', label: 'Retail', description: 'Strong retail and influencer-driven community base.', avgHoldDays: 3, reliability: 20, color: '#94a3b8' },
 
   // ── Day Traders / Scalpers / Market Makers ───
-  'MG': { name: 'Semesta Indovest', character: 'one_day_trader', label: 'Day Trade ⚡', description: 'Legendary day-trading broker. Aggressive intra-day volatility. Do not hold based on MG accumulation.', avgHoldDays: 1, reliability: 10, color: '#f87171' },
-  'YB': { name: 'Jasa Utama Capital', character: 'one_day_trader', label: 'Day Trade ⚡', description: 'Very active in penny stocks and scalping.', avgHoldDays: 1, reliability: 15, color: '#f87171' },
-  'SH': { name: 'Artha Sekuritas', character: 'one_day_trader', label: 'Scalper ⚡', description: 'Known for high-frequency scalping operations.', avgHoldDays: 1, reliability: 10, color: '#f87171' },
+  'MG': { name: 'Semesta Indovest', character: 'one_day_trader', label: 'Day Trade ⚡', description: 'Legendary day-trading broker. Aggressive intra-day volatility. Do not hold based on MG accumulation.', avgHoldDays: 1, reliability: 5, color: '#f87171' },
+  'YB': { name: 'Jasa Utama Capital', character: 'one_day_trader', label: 'Day Trade ⚡', description: 'Very active in penny stocks and scalping.', avgHoldDays: 1, reliability: 10, color: '#f87171' },
+  'SH': { name: 'Artha Sekuritas', character: 'one_day_trader', label: 'Scalper ⚡', description: 'Known for high-frequency scalping operations.', avgHoldDays: 1, reliability: 5, color: '#f87171' },
   'CP': { name: 'Valbury Sekuritas', character: 'swing_player', label: 'Swing', description: 'Active in short to medium term swings.', avgHoldDays: 5, reliability: 50, color: '#38bdf8' },
   'IF': { name: 'Samuel Sekuritas', character: 'market_maker', label: 'Market Maker', description: 'Often acts as liquidity provider / market maker.', avgHoldDays: 2, reliability: 40, color: '#6b7280' },
   'FZ': { name: 'Waterfront Sekuritas', character: 'market_maker', label: 'Market Maker', description: 'Known for market making in specific mid-cap stocks.', avgHoldDays: 2, reliability: 30, color: '#6b7280' },

@@ -25,7 +25,7 @@ let forcedRefreshCount = 0;
 
 // ── Carina (Portfolio) token tracking ─────────────────────
 let lastSyncedCarinaToken = null;
-let lastCarinaSyncAtMs = 0;
+// let lastCarinaSyncAtMs = 0;
 
 /**
  * Decodes a JWT token to extract its payload, including the expiration time.

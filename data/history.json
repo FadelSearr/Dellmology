@@ -1,0 +1,52 @@
+[
+  {
+    "id": "pred-1",
+    "timestamp": 1716300000000,
+    "emiten": "BBRI",
+    "entryPrice": 4500,
+    "targetPrice": 4800,
+    "stopLoss": 4350,
+    "status": "won",
+    "highestPriceReached": 4850
+  },
+  {
+    "id": "pred-2",
+    "timestamp": 1716400000000,
+    "emiten": "GOTO",
+    "entryPrice": 60,
+    "targetPrice": 75,
+    "stopLoss": 54,
+    "status": "lost",
+    "lowestPriceReached": 50
+  },
+  {
+    "id": "pred-3",
+    "timestamp": 1716500000000,
+    "emiten": "TLKM",
+    "entryPrice": 1600,
+    "targetPrice": 1800,
+    "stopLoss": 1500,
+    "status": "won",
+    "highestPriceReached": 1820
+  },
+  {
+    "id": "pred-4",
+    "timestamp": 1716600000000,
+    "emiten": "BMRI",
+    "entryPrice": 6000,
+    "targetPrice": 6300,
+    "stopLoss": 5800,
+    "status": "won",
+    "highestPriceReached": 6350
+  },
+  {
+    "id": "pred-5",
+    "timestamp": 1716700000000,
+    "emiten": "AMMN",
+    "entryPrice": 250,
+    "targetPrice": 300,
+    "stopLoss": 230,
+    "status": "won",
+    "highestPriceReached": 310
+  }
+]

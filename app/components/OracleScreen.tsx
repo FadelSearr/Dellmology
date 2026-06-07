@@ -1,12 +1,80 @@
 'use client';
+import { useState, useEffect } from 'react';
+import { io } from 'socket.io-client';
 import { useOracle } from '@/app/hooks/useData';
-import { Sparkles, RefreshCw, AlertTriangle, Shield, Target } from 'lucide-react';
+import { Sparkles, RefreshCw, AlertTriangle, Shield, Target, Send, Clock, SlidersHorizontal, RefreshCcw, Bell, X, BarChart2, TrendingUp, History, Activity } from 'lucide-react';
 
 export default function OracleScreen({ onSelectEmiten }: { onSelectEmiten: (code: string) => void }) {
   const { data, loading, error, refetch } = useOracle();
+  const [whaleAlerts, setWhaleAlerts] = useState<string[]>([]);
+  const [showToast, setShowToast] = useState(false);
+
+  // Whale Alert Detection (Legacy REST fallback)
+  useEffect(() => {
+    if (data?.topPicks) {
+      const whales = data.topPicks.filter((pick: any) => pick.item?.volumeRatio > 3 || (pick as any).volumeRatio > 3);
+      if (whales.length > 0 && whaleAlerts.length === 0) { // prevent duplicate triggers
+        setWhaleAlerts(whales.map((w: any) => w.emiten));
+        setShowToast(true);
+        fetch('/api/whale-alert', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ emitenList: whales.map((w: any) => w.emiten) })
+        }).catch(err => console.error('Failed to trigger whale alert', err));
+        const timer = setTimeout(() => setShowToast(false), 8000);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [data]);
+
+  // WebSocket Integration
+  useEffect(() => {
+    // Connect to standalone WS server
+    const socket = io('http://localhost:3001');
+
+    socket.on('connect', () => {
+      console.log('Connected to Oracle WebSocket Server');
+    });
+
+    socket.on('oracle_update', (eventData) => {
+      console.log('Received real-time update:', eventData);
+      
+      if (eventData.type === 'WHALE_ALERT') {
+        // Trigger UI toast immediately
+        setWhaleAlerts([eventData.emiten]);
+        setShowToast(true);
+        
+        // Forward to telegram backend
+        fetch('/api/whale-alert', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ emitenList: [eventData.emiten] })
+        }).catch(err => console.error('Failed to forward real-time WS alert', err));
+
+        setTimeout(() => setShowToast(false), 8000);
+      }
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, []);
 
   return (
     <div className="oracle-screen" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '20px', height: '100%', overflowY: 'auto' }}>
+      {showToast && (
+        <div style={{
+          position: 'fixed', top: '20px', right: '20px', background: 'var(--color-warning)', color: '#000',
+          padding: '12px 20px', borderRadius: '8px', zIndex: 1000, display: 'flex', alignItems: 'center', gap: '8px',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.5)', fontWeight: 'bold', animation: 'pulse 1s infinite'
+        }}>
+          <Bell size={16} /> Whale detected in {whaleAlerts.join(', ')}!
+          <button onClick={() => setShowToast(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, marginLeft: '8px' }}>
+            <X size={16} />
+          </button>
+        </div>
+      )}
+
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
           <h2 style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0, color: 'var(--accent-cyan)' }}>
@@ -49,6 +117,15 @@ export default function OracleScreen({ onSelectEmiten }: { onSelectEmiten: (code
             <h3 style={{ margin: '0 0 8px 0', fontSize: '14px', color: 'var(--text-secondary)' }}>Macro Sentiment</h3>
             <p style={{ margin: 0, fontSize: '14px', lineHeight: '1.5' }}>{data.macroSentiment}</p>
           </div>
+
+          {data.goldenOracle && (
+            <div className="card" style={{ padding: '16px', background: 'rgba(255, 215, 0, 0.1)', border: '1px solid #FFD700', borderRadius: '8px' }}>
+              <h3 style={{ margin: '0 0 8px 0', fontSize: '14px', color: '#FFD700', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Sparkles size={16} /> Golden Oracle Pick
+              </h3>
+              <p style={{ margin: 0, fontSize: '14px', lineHeight: '1.5', color: '#FFF' }}>{data.goldenOracle}</p>
+            </div>
+          )}
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '16px' }}>
             {data.topPicks.map((pick: any, idx: number) => (
