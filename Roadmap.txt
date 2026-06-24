@@ -1,0 +1,267 @@
+🗺️ Roadmap Eksekusi Dellmology Pro
+
+Desain / Prototipe Absolute
+🖥️ Layout: The Dellmology Command Center
+Layout ini menggunakan pembagian layar yang kaku namun modular (Bento Grid) agar mata Anda bisa melakukan scanning data dalam hitungan detik.
+1. Top Navigation Bar (The Pulse)
+Tetap tipis di bagian paling atas untuk memaksimalkan area kerja.
+•	Search Emiten Bar: Kotak pencarian cerdas di pojok kiri atas dengan live price dan regime status.
+•	Infrastructure Health: Indikator LED kecil untuk status Go + SSE, TimescaleDB, dan Data Integrity Shield.
+2. Left Sidebar: Discovery & Intelligence (AI Screener)
+Panel sempit di sisi kiri untuk berpindah fokus antar emiten.
+•	Screener Navigation: Tab khusus untuk berpindah mode secara instan:
+o	Daytrade: Mencari volatilitas dan dominasi HAKA.
+o	Swing: Mencari akumulasi konsisten dan pola teknikal solid.
+o	Custom: Filter rentang harga (Rp 100 - Rp 500).
+•	Watchlist: Daftar emiten yang sedang Anda pantau dengan ringkasan Unified Power Score di sampingnya.
+3. Center Panel: Visual Analysis (The Canvas)
+Area terbesar untuk melihat pergerakan harga secara mendalam.
+•	Advanced Chart (Top-Center): Grafik utama dengan CNN Technical Overlay yang otomatis mendeteksi pola chart.
+•	Order Flow Heatmap: Terintegrasi di sisi kanan chart untuk melihat "tembok" harga.
+•	Unified Power Score (Bottom-Center): Bar gradasi warna (0-100) sebagai konfirmasi final sinyal.
+4. Right Sidebar: Whale & Flow Engine (The Tape)
+Pusat data Bandarmology yang paling sering Anda lirik.
+•	Deep Broker Flow Table: Tabel yang menampilkan Identity (Whale/Retail), Daily Heatmap (Spark-bars), Net Value, dan Consistency Score.
+•	Whale Z-Score & Wash Sale Alert: Grafik anomali volume dan notifikasi transaksi semu di bawah tabel.
+•	Negotiated Market Monitor: Feed kecil untuk transaksi pasar negosiasi.
+5. Bottom Panel: Execution & AI Narrative (The Brain)
+Panel horizontal di bagian bawah untuk merangkum dan mengeksekusi.
+•	AI Narrative Terminal: Narasi strategi dari AI Local yang merangkum kondisi teknikal dan broker flow.
+•	Smart Position sizing: Kalkulator otomatis lot berdasarkan ATR Volatility.
+•	Action Dock: Tombol cepat untuk Send to Telegram dan kontrol Backtesting Rig.
+
+Fitur Fitur
+1. Core Infrastructure & Data Engine (Pondasi)
+Fokus di sini adalah keandalan data. Analisis sehebat apa pun akan hancur jika datanya delay atau korup.
+•	Real-time Stream (Legacy): Berkat Go dan Server-Sent Events (SSE), data harga akan mengalir layaknya air ke dashboard tanpa perlu refresh halaman (seperti melihat running trade langsung dari bursa).
+•	High-Performance Storage (Legacy): Penggunaan TimescaleDB sangat tepat karena database ini dirancang khusus untuk data time-series. Sistem bisa melakukan query jutaan data transaksi per detik (tick-by-tick) tanpa membuat server down.
+•	Data Integration & Background Job (Legacy): Sistem otomatis menarik data broker dan jika gagal (misal server target sedang down), sistem akan terus mencoba ulang (retry) di latar belakang agar tidak ada data yang bolong.
+•	Data Integrity Shield & API Rate-Limit (Baru): Ini adalah satpam sistem. Integrity shield membuang data error (misal harga tiba-tiba melonjak 1000% karena glitch bursa), sementara Rate-Limit menjaga agar aplikasi kamu tidak di-banned oleh pihak ketiga karena terlalu sering me-request data.
+2. Advanced Analysis Engines (Pilar Analisis)
+Ini adalah inti pemrosesan data, mengubah angka mentah menjadi insight tersembunyi.
+•	Deep CNN Technical (Legacy): Alih-alih menggambar garis support/resistance atau pola Head and Shoulders secara manual, model machine learning (CNN) bertindak sebagai "mata" yang langsung mendeteksi pola tersebut di chart secara objektif dan instan.
+•	Whale Z-Score & Bandarmology (Legacy): Menggunakan perhitungan statistik (Z-Score) untuk mendeteksi lonjakan volume yang tidak wajar. Digabungkan dengan kalkulasi harga rata-rata broker, kamu bisa tahu persis di harga berapa "Bandar" (institusi/modal besar) sedang mengumpulkan barang.
+•	Order Flow Heatmap & Dark Pool Discovery (Baru): Menganalisis ketebalan bid/offer untuk melihat "tembok" antrean fiktif atau pesanan besar yang sengaja disembunyikan (iceberg orders) agar tidak memicu kepanikan retail.
+•	Wash Sale Detection (Baru): Algoritma yang mendeteksi "transaksi semu" di mana broker A menjual ke broker B yang sebenarnya masih satu grup, hanya untuk memancing volume palsu.
+•	Market Regime Shifting (Baru): Sistem cerdas yang tahu kapan pasar sedang Uptrend, Downtrend, atau Sideways, sehingga indikator lain bisa menyesuaikan parameter (misal: strategi breakout hanya aktif saat Uptrend).
+3. Integrated Intelligence (Otak Sistem)
+Di sini, berbagai tools yang rumit disederhanakan agar keputusan bisa diambil dalam hitungan detik.
+•	AI-Screener: Daytrade, Swing & Custom Range (Baru): Fitur penyaring proaktif yang menyisir ratusan emiten berdasarkan kriteria pengguna. Dilengkapi filter Price Range (misal: Rp 100 - Rp 500) dan dua mode utama: Daytrade (mencari saham dengan volatilitas tinggi dan dominasi Aggressive Buy/HAKA real-time untuk scalping cepat) dan Swing (mencari saham dengan akumulasi broker konsisten dan pola teknikal solid untuk di-hold).
+•	Unified Power Score / Confluence (Baru): Daripada pusing melihat 10 indikator yang saling bertentangan, sistem menggabungkan semuanya (teknikal, volume, bandarmology) menjadi satu skor 0-100. Skor 90 berarti sinyal "Strong Buy" dengan probabilitas tinggi.
+•	AI Narrative Agent (Legacy + Baru): Memanfaatkan AI untuk "membaca" data angka dari hasil screener atau analisis dan merangkumnya menjadi bahasa manusia. Contoh: "Saham X sedang diakumulasi oleh Broker Y di harga rata-rata 1000 dengan sentimen fundamental yang mendukung."
+•	Retail Sentiment Divergence (Baru): Indikator yang mendeteksi anomali perilaku. Jika forum saham sedang sangat euforia menyuruh beli, namun data Whale Z-Score menunjukkan distribusi massal, sistem akan mengeluarkan peringatan bahaya
+
+4. Signal, Execution & Risk (Radar & Pengawasan)
+Bagian ini fokus pada eksekusi kapan masuk (entry) dan kapan keluar (exit), serta manajemen risiko.
+•	Volatility-Adjusted Position Sizing (Baru): Fitur money management krusial. Sistem menghitung seberapa liar pergerakan saham (ATR) dan merekomendasikan berapa lot maksimal yang boleh dibeli agar portfolio tetap aman jika terjadi cut loss.
+•	Telegram Notif & Advanced Charts (Legacy): Sistem peringatan dini (alert) yang langsung masuk ke HP ketika ada sinyal penting, lengkap dengan visualisasi chart interaktif.
+
+Metoded Pengumpulan Data:
+Berikut adalah panduan mendetail untuk setiap metode yang Anda perlukan untuk membangun Dellmology, mulai dari pengambilan kunci akses hingga pengolahan data pasar secara real-time dan gratis.
+
+1. Metode Autentikasi (The Master Key)
+Metode ini bertujuan untuk mendapatkan "kunci" (token) secara otomatis agar sistem Anda bisa mengakses data internal Stockbit tanpa harus melakukan login manual di dalam kode.
+•	Pencegatan Header (Intercepting): Ekstensi Chrome menggunakan chrome.webRequest.onBeforeSendHeaders untuk memantau lalu lintas data saat Anda membuka Stockbit.
+•	Ekstraksi Bearer Token: Ekstensi mencari header bertipe "Authorization" yang diawali dengan kata "Bearer".
+•	Validasi JWT: Sebelum dikirim, token didekode untuk memastikan formatnya adalah JWT yang valid.
+•	Pengecekan Masa Berlaku: Sistem mengambil informasi exp (expiry) dari payload JWT untuk mengetahui kapan token tersebut akan kedaluwarsa.
+•	Sinkronisasi Otomatis: Token hanya akan dikirim ke API Anda jika terjadi perubahan atau pembaruan (token !== lastSyncedToken) untuk menjaga efisiensi.
+•	Penyimpanan Cloud: Backend Next.js menerima token melalui metode POST dan menyimpannya ke database (seperti Supabase) menggunakan fungsi upsertSession.
+
+2. Metode Streaming Real-time (The Engine)
+Setelah memiliki token di database, metode ini digunakan untuk mengisi Section 1 (Market Intelligence Canvas) secara langsung saat bursa berjalan. Data ini di hapus seletah 7 hari saat tutup market 
+•	Handshake WebSocket: Script backend (Python atau Go) mengambil token terbaru dari database, lalu melakukan koneksi ke URL WebSocket Stockbit (misal: wss://stream.stockbit.com).
+•	Filtering Data: Sistem hanya akan mendengarkan pesan (frames) yang berkaitan dengan trade atau running-trade.
+•	Logika Haka-Haki:
+o	Jika harga transaksi sama dengan harga Ask/Offer teratas, sistem mencatatnya sebagai Haka (Aggressive Buy).
+o	Jika harga transaksi sama dengan harga Bid teratas, sistem mencatatnya sebagai Haki (Aggressive Sell).
+•	Visualisasi Live: Data yang terkumpul dikirimkan ke frontend menggunakan SSE (Server-Sent Events) agar grafik dan indikator bergerak tanpa perlu di-refresh.
+
+3. Metode Analisis Pasca-Market (The Bandarmology)
+Metode ini dijalankan setelah pasar tutup (pukul 16:00 WIB) untuk mengisi Section 2 (Flow Engine) dengan data akumulasi dan distribusi broker.
+•	Pemicu Waktu (Cron Job): Script dijalankan otomatis setiap pukul 17:00 - 18:00 WIB.
+•	Akses API Internal: Menggunakan token dari database untuk menembak endpoint API internal Stockbit (seperti /v2/broker-summary/emiten_code).
+•	Pengolahan Data Mentah: Mengonversi data JSON dari API menjadi statistik:
+o	Net Value: Selisih total beli dan jual per broker.
+o	Consistency Score: Menghitung berapa hari dalam seminggu broker tertentu aktif melakukan akumulasi.
+•	Penyimpanan Historis: Data disimpan ke TimescaleDB agar Anda bisa melihat tren pergerakan bandar selama berminggu-minggu atau berbulan-bulan.
+
+4. Metode Data Makro & Global (The Context)
+Metode ini mengisi Section 0 (Command Bar) dengan konteks pasar dunia agar analisis Anda tidak "buta" terhadap sentimen global.
+•	API Komoditas & Indeks: Menggunakan library yfinance (Python) untuk menarik harga Emas, Batubara, Nikel, serta indeks Dow Jones (DJI) dan IHSG secara periodik (misal: setiap 5 menit).
+•	Sentiment Scraper: Mengambil headline berita dari RSS Feed media finansial (seperti CNBC atau Kontan) dan mengirimkannya ke AI untuk dianalisis apakah sentimennya Bullish atau Bearish bagi pasar Indonesia.
+
+5. Metode Infrastruktur & UI (The Face)
+Metode untuk menyatukan semua data ke dalam layout Single Page Application yang telah Anda susun.
+•	Technical Labeling: Menggunakan library TradingView Lightweight Charts untuk merender harga dan menambahkan label otomatis (seperti "HNS" atau "Double Bottom") berdasarkan analisis dari data historis di database Anda.
+•	System Health Monitor: Menampilkan "Health Dots" berdasarkan status koneksi ke database dan status terakhir kali token diperbarui oleh ekstensi.
+
+
+Pencegasan Risiko Pengambilan data
+•	Graceful Degradation: Buat logika fallback. Jika token mati atau akses diblokir, sistem harus secara otomatis beralih ke sumber data cadangan (misalnya scraping data delay 15 menit dari Yahoo Finance) agar dashboard tidak kosong melompong atau error, sambil mengirimkan notifikasi darurat ke Telegram.
+•	Implementasi Message Broker: Ini adalah praktik standar dalam perancangan data engineering untuk menangani streaming berkecepatan tinggi. Gunakan alat seperti Redis Pub/Sub atau RabbitMQ. Biarkan script WebSocket hanya bertugas menangkap raw JSON dan melemparkannya ke antrean (queue). Kemudian, buat worker terpisah yang bertugas mengambil data dari antrean tersebut, menghitung HAKA/HAKI, dan menyimpannya ke TimescaleDB.
+•	Exponential Backoff Auto-Reconnect: Tulis script dengan logika reconnect yang cerdas. Jika terputus, jangan langsung membombardir server target dengan request baru setiap detik. Gunakan jeda waktu eksponensial (coba lagi dalam 1 detik, lalu 2 detik, 4 detik, dst) agar IP kamu tidak dianggap melakukan serangan DDoS.
+•	Batch Processing vs Stream Processing: Jangan jalankan analisis CNN pada setiap pergerakan tick. Posisikan deteksi pola ini pada timeframe yang lebih besar (misal 15 menit, 1 jam, atau End of Day). Gunakan cron job untuk memicu mesin AI hanya pada interval waktu tersebut.
+•	Event-Driven Triggers: AI hanya dibangunkan jika ada anomali. Misalnya, script Python kamu mendeteksi ada lonjakan volume 300% (berdasarkan data HAKA/HAKI). Trigger inilah yang kemudian menyuruh engine CNN dan XAI untuk menganalisis saham tersebut, alih-alih menganalisis seluruh saham terus-menerus.
+•	Penanganan Data (TimescaleDB)
+Karena Anda menghapus data setelah 7 hari (setelah market tutup), pastikan Anda melakukan Aggregation sebelum data tersebut dihapus. Saran: Simpan data tick-by-tick (HAKA/HAKI) selama 7 hari, namun simpan ringkasan harian (Daily Net Value, Top 3 Buyers) secara permanen. Ini memungkinkan Anda melakukan backtesting jangka panjang tanpa memenuhi kuota database gratis.
+•	JWT Expiry Race Condition: Token Bearer seringkali mati di tengah sesi trading yang intens. Buatlah sistem di ekstensi Chrome yang melakukan "Heartbeat". Jika token akan mati dalam 5 menit, paksa refresh halaman Stockbit di tab tersembunyi untuk memicu token baru.
+•	Concurrency di Go: Saat menangani running trade dari banyak emiten sekaligus, pastikan Anda menggunakan Go Channels untuk memproses data agar tidak terjadi race condition saat menulis ke database.
+•	Vercel Edge Functions: Gunakan Edge Functions di Vercel untuk bagian Dashboard yang membutuhkan latensi rendah agar UI terasa sangat instan (snappy).
+•	Mitigasi "Data Poisoning" (Integritas Data)
+Karena Anda menggunakan intercepted token dan streaming data, ada risiko data yang masuk "kotor" atau terputus di tengah jalan. 
+Gap Detection Logic: Buat fungsi yang mengecek sekuensial timestamp data. Jika ada jeda lebih dari 5 detik saat market buka, sistem harus memberi label "Incomplete Data" pada chart. Jangan biarkan AI memberikan narasi berdasarkan data yang bolong. 
+Outlier Filter: Kadang ada transaksi "Nego" atau "Cross" dengan harga yang jauh dari harga pasar. Pastikan algoritma HAKA/HAKI Anda hanya memproses data dari Pasar Reguler kecuali Anda sedang memantau Cross-Monitor secara khusus.
+•	Mitigasi "Browser Automation" & Detection
+Pihak penyedia data sering memperbarui sistem keamanan mereka untuk mendeteksi headless browser atau perilaku scraping.
+Human-Mimicry di Ekstensi: Jangan biarkan ekstensi Chrome Anda mengirim token setiap detik. Gunakan jitter (jeda waktu acak) saat mengirim data session ke backend Anda.
+•	Mitigasi "Hallucination" pada AI Narrative
+ai sangat pintar, tapi jika diberi data angka yang terlalu mentah, ia bisa salah menyimpulkan (misal: menganggap akumulasi kecil sebagai "Whale").
+Pre-Processing Wrapper: Jangan kirim seluruh log transaksi ke ai. Kirimkan JSON Summary.
+Buruk: "Ini data transaksinya: [log 1, log 2...]"
+Baik: "Emiten X: Net Volume +50rb lot, Z-Score 2.5, Dominasi Broker Y 70%. Berikan analisis."
+Confidence Score: Tambahkan label "Confidence: Low/Medium/High" di dashboard AI Narrative berdasarkan kelengkapan data yang tersedia.
+•	Mitigasi Infrastruktur (The "Dead Man's Switch")
+Karena Engine utama ada di laptop lokal, masalah listrik atau internet rumah bisa mematikan sistem.
+Heartbeat Monitor: Buat skrip sederhana di Vercel (Frontend) yang mengecek apakah Local Worker masih mengirim data. Jika dalam 60 detik tidak ada data masuk, kirim notifikasi "Engine Offline" ke Telegram Anda.
+Cloud Fallback: Jika mesin lokal mati, sistem harus otomatis beralih menampilkan data dari API gratisan yang stabil (seperti Yahoo Finance) meskipun fiturnya hanya harga (tanpa Bandarmology).
+•	Mitigasi "Look-Ahead Bias" pada Backtesting
+Saat membangun Backtesting Rig dengan AI/CNN, ada risiko sistem "mencontek" masa depan secara tidak sengaja.
+Strict Point-in-Time: Pastikan saat backtesting, sistem hanya bisa melihat data sebelum waktu transaksi tersebut. Contoh: Saat mengetes strategi tanggal 10 Maret, pastikan data tanggal 11 Maret benar-benar "tidak terlihat" oleh memori sistem atau model AI.
+•	Mitigasi "Wash Sale & Circular Trade" (Volume Palsu)
+Di bursa Indonesia, sering terjadi transaksi di mana Broker A menjual ke Broker B, lalu Broker B menjual kembali ke Broker A di harga yang sama (hanya untuk menciptakan keramaian).
+Risiko: Z-Score Anda melonjak (karena volume tinggi), AI Screener memberikan sinyal "Bullish", padahal tidak ada perpindahan barang yang nyata.
+Mitigasi: Net Accumulation Filter. Hitung Net Buy vs Gross Turnover. Jika sebuah emiten memiliki volume transaksi 1 triliun tapi Net Buy brokernya hanya 1 milyar, berikan label "High Churn / Low Accumulation". Ini adalah tanda saham tersebut hanya "digoreng" volumenya.
+•	Mitigasi "Latency Arbitrage" (Sinkronisasi Waktu)
+Karena Anda menggunakan Residential IP dan Local Machine, akan ada jeda milidetik (latency) antara bursa -> Stockbit -> Laptop Anda -> Database Cloud.
+Risiko: Saat Anda melakukan backtesting, sistem menganggap Anda bisa membeli di harga Rp 100, padahal di dunia nyata harga sudah melonjak ke Rp 105 saat data sampai di dashboard.
+Mitigasi: Gunakan Slippage Buffer (0,5% - 1%) dalam kalkulasi Smart Position Sizing. Selalu asumsikan harga beli Anda sedikit lebih mahal dan harga jual sedikit lebih murah dari data yang tampil untuk kompensasi delay jaringan.
+•	Mitigasi "The Black Swan" (Extreme Market Event)
+Model CNN dan AI biasanya dilatih pada kondisi pasar normal. Saat terjadi sentimen global ekstrem (misal: pengumuman suku bunga mendadak), indikator teknikal seringkali menjadi tidak relevan.
+Risiko: Sistem tetap memberikan sinyal "Buy" berdasarkan pola historis, padahal pasar sedang panic selling.
+Mitigasi: Global Correlation Kill-Switch. Hubungkan Section 0 (Command Bar) Anda ke indeks global (DJI/IHSG). Jika IHSG turun > 1,5% dalam satu sesi, sistem harus otomatis menaikkan standar Unified Power Score (UPS). Sinyal yang biasanya butuh skor 70, sekarang butuh skor 90 untuk muncul sebagai rekomendasi.
+•	Mitigasi "Phantom Liquidity" (Likuiditas Palsu)
+Banyak institusi menggunakan Layering atau Spoofing—memasang antrean beli (Bid) yang sangat tebal namun segera dicabut sebelum harga menyentuh antrean tersebut.
+Risiko: Order Flow Heatmap Anda menunjukkan "Big Wall" (tembok dukungan), membuat Anda merasa aman untuk masuk, padahal itu hanya umpan agar retail berani membeli di harga tinggi.
+Mitigasi: Order Lifetime Tracking. Hitung berapa lama sebuah antrean besar (misal >10.000 lot) bertahan di satu harga. Jika antrean besar muncul dan hilang dalam hitungan detik tanpa terjadi transaksi (Trade), tandai sebagai "Spoofing Alert". Jangan masukkan volume ini ke dalam perhitungan Unified Power Score.
+•	2. Mitigasi "Survivorship Bias" (Data Historis)
+Saat Anda melakukan backtesting di Section 5, Anda mungkin hanya mengetes pada saham-saham yang "masih hidup" dan sukses hari ini.
+Risiko: Strategi Anda terlihat sangat menguntungkan karena Anda tidak menghitung saham-saham yang sudah delisted (dihapus dari bursa) atau disuspensi (notasi khusus).
+Mitigasi: Dead Stock Inclusion. Pastikan database Anda tetap menyimpan data emiten yang sudah tidak aktif atau terkena suspensi (Notasi Khusus dari BEI). Jika strategi Anda menyarankan beli saham yang kemudian disuspensi, itu harus dihitung sebagai kerugian 100% dalam simulasi.
+•	Mitigasi "The Feedback Loop" (Self-Fulfilling Prophecy)
+Jika algoritma AI Anda selalu memberikan narasi yang sama untuk pola yang sama, Anda mungkin terjebak dalam bias konfirmasi.
+Risiko: AI menyuruh beli karena ada akumulasi, namun ia tidak melihat bahwa akumulasi tersebut dilakukan oleh broker yang "hobi" melakukan dumping (guyur) di sesi penutupan.
+•	Mitigasi: Broker Character Profile (BCP). Jangan hanya melihat jumlah lot yang dibeli, tapi buatlah profil perilaku broker.
+Contoh: Broker MG dikenal dengan strategi "One Day Trade". Jika MG akumulasi besar, mitigasinya adalah menaikkan label "Short-Term Volatility" bukannya "Strong Uptrend".
+•	Mitigasi "Over-Fitting" pada CNN
+Deep Learning (CNN) sangat jago menemukan pola, saking jagonya, ia bisa menemukan "pola" pada data yang sebenarnya acak (noise).
+Risiko: Model CNN Anda mendeteksi pola "Bull Flag" pada grafik menit-an yang sangat liar, padahal itu hanya fluktuasi normal.
+Mitigasi: Multi-Timeframe Validation. Jangan biarkan sinyal muncul hanya dari satu timeframe. Jika CNN mendeteksi pola di 5-menit, ia wajib dikonfirmasi oleh tren di 15-menit atau 1-jam. Jika tren besar sedang turun (Downtrend), abaikan pola Bullish di timeframe kecil.
+•	Mitigasi "Infrastructure Drift" (Ketidakkonsistenan Data)
+Karena data mengalir dari laptop ke Cloud, ada kemungkinan data di Supabase tidak sinkron dengan data asli di bursa karena packet loss.
+Risiko: Backtesting Anda menggunakan data yang salah/rusak.
+Mitigasi: Nightly Data Reconciliation. Setiap pukul 20:00 (setelah data resmi End-of-Day keluar), buat script otomatis untuk membandingkan total volume di database Anda dengan data resmi dari IDX. Jika selisihnya > 1%, berikan bendera merah pada data hari tersebut dan lakukan penarikan ulang (Re-fetching).
+•	Mitigasi "The AI Echo Chamber" (Bias Model)
+Jika Anda menggunakan ai local (atau LLM lain) untuk memberikan narasi secara terus-menerus, ada risiko AI menjadi terlalu optimis atau terlalu pesimis berdasarkan data yang terbatas.
+Risiko: AI mulai "menyukai" saham tertentu karena pola historisnya, dan terus mencari alasan untuk membenarkan sinyal beli (Confirmation Bias).
+Mitigasi: Adversarial Prompting. Setiap kali AI memberikan narasi "Bullish", sistem harus secara otomatis menjalankan prompt kedua: "Berikan 3 alasan logis mengapa analisis ini bisa salah dan apa risiko terburuknya (Bearish case)." Tampilkan kedua sudut pandang ini di AI Narrative Terminal agar Anda tetap objektif.
+•	Mitigasi "Technical Debt & Dependency" (Ketergantungan API)
+Dellmology sangat bergantung pada Master Key (token) dari pihak ketiga.
+Risiko: Pihak penyedia data mengubah struktur API atau menutup celah intercepting secara total dalam semalam.
+Mitigasi: Modular Adapter Pattern. Jangan menulis kode yang langsung menembak API Stockbit di seluruh aplikasi. Buatlah satu lapisan "Adapter". Jika Stockbit mati, Anda hanya perlu mengganti satu file adapter untuk beralih ke sumber data lain (misalnya Yahoo Finance) tanpa harus membongkar seluruh logika Bandarmology dan CNN Anda.
+•	Mitigasi "Concept Drift" (Degradasi Model AI)
+Model AI seperti CNN atau algoritma Z-Score yang Anda buat hari ini mungkin bekerja sangat baik di pasar yang Bullish. Namun, perilaku "Bandar" selalu berevolusi untuk menghindari deteksi retail.
+Risiko: Akurasi sistem Anda menurun perlahan (drift) tanpa Anda sadari, sehingga sinyal yang dulu profitabel menjadi tidak akurat lagi.
+•	Mitigasi: Champion-Challenger Framework. Jalankan dua versi algoritma secara bersamaan di backend.
+Versi A (Champion): Model yang saat ini Anda gunakan di Dashboard.
+Versi B (Challenger): Model baru dengan parameter berbeda.
+Bandingkan performa keduanya setiap bulan. Jika Versi B lebih akurat dalam mendeteksi Whale, segera lakukan swapping.
+•	Mitigasi "Correlation Collapse" (Gagalnya Diversifikasi)
+Dalam kondisi market crash (seperti awal COVID-19 atau krisis finansial), semua saham cenderung turun bersamaan tanpa mempedulikan bandarmology atau teknikal.
+Risiko: Kamu merasa aman karena memegang 5 saham berbeda hasil screener Dellmology, padahal semuanya memiliki korelasi 0.9 (bergerak searah) terhadap IHSG.
+•	Mitigasi: Beta-Weighting Analysis. Di Section 4 (Risk & Tactical Dock), tambahkan indikator Beta. Jika total Beta portofoliomu > 1.5, sistem harus memberi peringatan: "Systemic Risk High: Portfolio too sensitive to Market Crash." Ini memaksamu untuk mengurangi posisi meski sahamnya terlihat "bagus".
+•	Mitigasi: Forced Cooling-Off Period. Implementasikan fitur di Section 4 (Risk & Tactical Dock) di mana jika portofolio atau simulasi Anda mengalami drawdown (penurunan) berturut-turut sebesar 5%, sistem akan mengunci (lock) fitur Screener dan Recommendation selama 24 jam. Ini memaksa Anda untuk melakukan evaluasi ulang terhadap algoritma, bukan terus-menerus mencoba "balas dendam" ke pasar.
+•	Mitigasi: Telegram Heartbeat & Mobile Fallback. * Buat script kecil di Go yang mengirimkan pesan "Ping" ke bot Telegram Anda setiap 5 menit.
+Jika bot tidak menerima "Ping" dalam 10 menit, bot akan mengirimkan notifikasi darurat: "DELLMOLOGY OFFLINE - CHECK POSITION MANUALLY!".
+Simpan state terakhir (posisi saham yang sedang dipantau) di database Cloud (Supabase), sehingga Anda bisa melihatnya dari HP meskipun laptop di rumah mati.
+•	Mitigasi: Statistical Fingerprinting. Buat fungsi validasi yang membandingkan Total Volume harian (Running Total) di Dellmology dengan Data Open/High/Low/Close (OHLC) yang biasanya tersedia lebih stabil secara publik. Jika ada deviasi statistik yang tidak masuk akal, sistem harus otomatis melakukan Hard Reset pada koneksi dan meminta Token baru.
+•	Mitigasi: Rule-Engine Versioning. Jangan menanam (hard-code) parameter strategi langsung di dalam kode. Gunakan Dynamic Configuration (bisa lewat file .yaml atau tabel di Supabase). Setiap kali ada perubahan aturan bursa, kamu cukup memperbarui parameter di satu tempat tanpa harus deploy ulang seluruh kode backend.
+•	Mitigasi "Algorithm Hallucination" (Audit Trail)
+Kadang, perpaduan antara CNN Technical dan Z-Score Bandarmology memberikan sinyal "Strong Buy", tetapi harga justru anjlok. Tanpa mitigasi ini, Anda tidak akan tahu bagian mana yang salah: datanya, teknikalnya, atau bandarmologinya.
+Risiko: Anda terus menggunakan algoritma yang cacat karena tidak bisa melacak keputusan sistem di masa lalu.
+•	Mitigasi "The Flash Crash" (Circuit Breaker Lokal)
+Bursa memiliki Circuit Breaker (suspensi perdagangan jika indeks turun drastis). Namun, saham individu bisa jatuh 10-20% dalam hitungan menit sebelum bursa bertindak.
+Risiko: Sistem Anda tetap memberikan narasi "tunggu akumulasi" saat harga sedang terjun bebas karena berita fraud yang sangat cepat.
+•	Mitigasi: Rate-of-Change (RoC) Kill-Switch. Tambahkan logika di Go-worker Anda: Jika harga sebuah emiten turun lebih dari X% dalam waktu < 5 menit tanpa ada transaksi besar di sisi Bid (HAKI masif), sistem harus otomatis memberikan status "CRITICAL: VOLATILITY SPIKE" dan mematikan semua sinyal beli untuk emiten tersebut, terlepas dari sebagus apa pun data Bandarmologinya.
+•	Mitigasi: Client-Side Logic Obfuscation. Jangan taruh logika inti (rumus rahasia Bandarmology-mu) di sisi Frontend (JavaScript di Vercel). Simpan semua logika perhitungan sensitif di dalam Go-Worker (Local) atau Supabase Edge Functions yang terenkripsi. Vercel hanya bertugas menampilkan angka hasil akhir, bukan cara angka itu dihitung.
+•	Mitigasi: Multi-DNS Failover & Hardcoded IP. Jangan mengandalkan DNS standar ISP. Gunakan kombinasi DNS Cloudflare (1.1.1.1) dan Google (8.8.8.8) di level kode Go-worker kamu. Jika memungkinkan, gunakan Direct IP Connection untuk endpoint API yang paling krusial agar tidak perlu melewati proses pencarian DNS setiap kali melakukan request.
+•	Mitigasi "Database Bloat" (Performa Jangka Panjang)
+TimescaleDB sangat hebat untuk data time-series, tapi jika kamu menyimpan setiap tick dari ratusan saham selama 7 hari, database kamu bisa membengkak (bloat) dan membuat query di Dashboard Vercel menjadi lemot.
+Risiko: Dashboard kamu butuh waktu 10 detik untuk loading karena database terlalu berat memproses jutaan baris data mentah.
+•	Mitigasi: Continuous Aggregation Policy. Jangan biarkan Dashboard menarik data mentah (raw ticks). Buatlah Materialized Views di PostgreSQL yang secara otomatis merangkum data setiap 1 menit atau 5 menit (misal: total HAKA/HAKI per menit). Dashboard hanya akan memanggil data rangkuman ini, sehingga loading tetap instan meskipun data mentahnya jutaan.
+•	Mitigasi "The Update Chain Reaction" (Stability)
+Sebagai pengembang, kamu mungkin tergoda untuk selalu memperbarui library Go, Next.js, atau Python ke versi terbaru.
+Risiko: Update otomatis pada library AI atau database menyebabkan fungsi Bandarmology yang sudah stabil tiba-tiba error saat market sedang buka (pukul 09:00 WIB).
+•	Mitigasi: Model Confidence Scoring. Tambahkan metrik "Historical Accuracy Tracking" pada Dashboard. Jika dalam 10 sinyal terakhir yang diberikan AI, 7 di antaranya meleset dari target harga, sistem harus otomatis menampilkan peringatan: "AI CONFIDENCE: LOW - RE-CALIBRATION REQUIRED".
+•	Mitigasi: Volume-Profile Divergence. Jangan hanya melihat siapa yang beli (Broker), tapi lihat di mana volume terbesar terjadi di dalam Candlestick. Jika volume transaksi terbesar terjadi di harga atas (Upper Shadow), tapi Dellmology mencatat "Net Buy", berikan label "Late Entry Warning". Ini menandakan institusi sudah selesai akumulasi dan sedang mulai memancing retail.
+•	Mitigasi "The AI Black-Box Blindness"
+Model AI seperti CNN untuk teknikal dan ai local untuk narasi bisa mengalami "halusinasi kolektif" jika data yang masuk sangat volatil (misal: saat pengumuman suku bunga).
+Risiko: Kedua model memberikan sinyal "Buy" karena hanya melihat data 5 menit terakhir, tanpa melihat bahwa secara makro pasar sedang crash.
+•	Mitigasi: Multi-Model Consensus (Voting System). Jangan biarkan satu AI mengambil keputusan. Gunakan sistem voting:
+Voter 1: Analisis Teknikal (CNN).
+Voter 2: Analisis Bandarmology (Z-Score).
+Voter 3: Analisis Sentimen (ai local).
+Rule: Sinyal hanya muncul di Dashboard jika minimal 2 dari 3 Voter setuju. Jika ketiganya bertentangan, munculkan status "MARKET CONFUSION - STAND ASIDE".
+•	Mitigasi: Market-Wide Net Summary. Jangan hanya memantau broker top. Buat fungsi yang menghitung "Concentration Ratio". Jika akumulasi hanya dilakukan oleh 1 broker sementara 50 broker lainnya jualan, berikan label "Artificial Liquidity Warning". Akumulasi yang sehat harusnya diikuti oleh setidaknya 2-3 broker besar yang searah.
+•	Mitigasi "The Information Overload" (Decision Fatigue)
+Dashboard Bento Grid Anda sangat lengkap. Namun, saat market sedang sangat cepat (volatil), melihat terlalu banyak indikator bisa membuat Anda membeku (Analysis Paralysis).
+Risiko: Anda melewatkan momentum jual/beli karena sibuk membaca narasi AI yang terlalu panjang atau melihat terlalu banyak grafik.
+•	Mitigasi: Dynamic UI Simplification. Saat volatilitas (ATR) naik di atas ambang batas tertentu, Dashboard Dellmology harus otomatis berubah ke "Combat Mode":
+Sembunyikan footer dan log teknis.
+Perbesar ukuran angka Unified Power Score (UPS).
+Ubah narasi AI menjadi bullet points maksimal 3 kata (misal: "BUY NOW", "WHALE EXIT", "HOLD").
+Catatan “Pro”
+•  Edge Functions: Gunakan Vercel Edge Functions untuk menghitung skor Unified Power Score agar UI terasa instan tanpa menunggu round-trip ke database utama.
+
+Berikut adalah daftar Tools & Provider (Semuanya memiliki versi Gratis):
+1. The Engine (Local Machine / Laptop)
+Karena server tidak perlu menyala 24 jam, laptop Anda menjadi pusat pemrosesan data.
+•	Language: Go (Golang). Gunakan Go untuk menangkap stream data real-time (SSE/WebSocket) dari Stockbit karena efisiensinya sangat tinggi.
+•	Worker: Python (Opsional). Jika Anda ingin menggunakan library Machine Learning (seperti PyTorch untuk CNN), jalankan script Python terpisah yang berkomunikasi dengan Go.
+2. The Cloud Storage (Always Online)
+Tempat menyimpan hasil analisis agar bisa diakses kapan saja.
+•	Provider: Supabase 
+o	Status: Gratis (PostgreSQL).
+o	Fungsi: Menyimpan hasil akhir seperti "Top 10 Akumulasi Hari Ini", "Z-Score Alert", dan "Master Key/Token".
+o	Keunggulan: Meskipun laptop mati, data hasil scan terakhir tetap bisa Anda lihat di HP via dashboard Vercel.
+3. The Dashboard (Frontend)
+Wajah aplikasi yang bisa Anda buka di mana saja.
+•	Provider: Vercel.
+o	Framework: Next.js.
+o	Status: Gratis.
+o	Fungsi: Menampilkan grafik Bento Grid, Chart TradingView, dan narasi AI. Vercel akan mengambil data dari Supabase/Neon.
+4. Intelligence (AI Brain)
+•	Provider: AI LOCAL 
+o	Status: Gratis.
+o	Fungsi: Mengolah data yang sudah diringkas oleh laptop Anda menjadi narasi strategi trading.
+
+Source:
+•	https://github.com/anandanand84/technicalindicators
+•	https://github.com/bhaktiutama/adimology
+•	https://github.com/philipxjm/Deep-Convolution-Stock-Technical-Analysis?tab=readme-ov-file
+
+
+Tolong konfirmasi jika kamu sudah memahami konteks ini.
+note
+- untuk referensi pengembil token atau atau lainnya Anda bisa ambil referensi dari folder References sebagai patokan
+- jangan memberikan saran diluar roadmap.
+- untuk pembuatan stockbit interception gunakanlah referensi stockbit-extension
+
+
+
+
+
+
+
+
+

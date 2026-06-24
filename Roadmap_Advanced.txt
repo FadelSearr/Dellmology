@@ -1,0 +1,289 @@
+🗺️ Roadmap Advanced — Dellmology Pro (Saran Fitur Lanjutan)
+══════════════════════════════════════════════════════════════
+Dibuat: 6 Mei 2026
+Status: Semua fitur akan diimplementasikan secara bertahap.
+══════════════════════════════════════════════════════════════
+
+
+🔥 TIER 1 — HIGH IMPACT (Langsung Terasa di Trading Harian)
+────────────────────────────────────────────────────────────
+
+1. BROKER FLOW HEATMAP (Multi-Day Tracking)
+   Status: [x] SELESAI ✅
+   Prioritas: ⭐⭐⭐⭐⭐
+   
+   Deskripsi:
+   Saat ini kita hanya melihat akumulasi/distribusi broker HARI INI saja.
+   Fitur ini akan menampilkan heatmap 5-7 hari kebelakang per broker — 
+   sehingga Anda bisa melihat apakah BK (JP Morgan) sudah mengumpulkan 
+   barang 5 hari berturut-turut atau baru mulai hari ini.
+   Konsistensi multi-hari ini jauh lebih reliable daripada sinyal 1 hari.
+   
+   Implementasi:
+   - Simpan data broker summary harian ke Supabase/TimescaleDB
+   - Buat endpoint API /api/broker-history?emiten=BBRI&days=7
+   - Render spark-bars (mini heatmap) di sebelah nama broker di Tape.tsx
+   - Warna: hijau tua = akumulasi kuat, merah tua = distribusi kuat, abu = idle
+   
+   File yang terpengaruh:
+   - lib/stockbit.ts (fetch historical broker data)
+   - app/api/broker-history/route.ts (NEW)
+   - app/components/Tape.tsx (render heatmap bars)
+   - lib/supabase.ts (storage layer)
+
+
+2. ICEBERG ORDER DETECTION (Hidden Whale / Stealth Accumulation)
+   Status: [x] SELESAI ✅
+   Prioritas: ⭐⭐⭐⭐⭐
+   
+   Deskripsi:
+   Mendeteksi pola di mana broker tertentu membeli dalam lot kecil-kecil 
+   secara repetitif sepanjang hari (bukan sekali besar). Ini adalah taktik 
+   klasik institusi untuk mengakumulasi tanpa menggerakkan harga.
+   Sistem akan memberi label "🧊 Stealth Accumulation" jika ada broker yang 
+   muncul di top buyer dengan frekuensi tinggi tapi lot per transaksi kecil.
+   
+   Implementasi:
+   - Analisis distribusi lot per transaksi dari data running trade
+   - Jika broker X muncul > 50 kali tapi rata-rata lot < 10 → Iceberg
+   - Tambahkan indikator di Tape.tsx: "🧊 Stealth Accumulation by [BK]"
+   - Integrasikan ke UPS scoring (Iceberg = +5 karena menandakan conviction tinggi)
+   
+   File yang terpengaruh:
+   - lib/analysis.ts (NEW: detectIcebergOrder function)
+   - app/api/stock/route.ts (invoke detection)
+   - app/components/Tape.tsx (render alert)
+
+
+3. SMART ALERT KE TELEGRAM (Event-Driven Notification)
+   Status: [x] SELESAI ✅
+   Prioritas: ⭐⭐⭐⭐⭐
+   
+   Deskripsi:
+   Menghubungkan semua deteksi anomali ke Telegram Bot. Saat:
+   - Z-Score > 2.5 terdeteksi → kirim notif
+   - Wash Sale terdeteksi di emiten watchlist → kirim notif
+   - Divergence (Retail euphoria + Whale distribusi) → kirim notif darurat
+   - Iceberg Order terdeteksi → kirim notif
+   - Concentration Warning → kirim notif
+   
+   Implementasi:
+   - Buat lib/telegram.ts dengan fungsi sendAlert(type, data)
+   - Buat app/api/alerts/route.ts untuk trigger manual atau otomatis
+   - Integrasikan di stock/route.ts setelah semua analisis selesai
+   - Format pesan: emoji + nama emiten + tipe alert + data ringkas
+   - Gunakan TELEGRAM_BOT_TOKEN dan TELEGRAM_CHAT_ID dari env
+   
+   File yang terpengaruh:
+   - lib/telegram.ts (NEW)
+   - app/api/alerts/route.ts (NEW)
+   - app/api/stock/route.ts (trigger alerts)
+   - .env.local (TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID)
+
+
+══════════════════════════════════════════════════════════════
+📊 TIER 2 — STRATEGIC EDGE (Keunggulan Kompetitif)
+────────────────────────────────────────────────────────────
+
+4. BROKER "FOOTPRINT" (Riwayat Performa / Win Rate Broker)
+   Status: [ ] Belum dikerjakan
+   Prioritas: ⭐⭐⭐⭐
+   
+   Deskripsi:
+   Menyimpan rekam jejak: setiap kali broker X akumulasi besar, berapa % 
+   kemungkinan harga naik dalam 3-5 hari ke depan?
+   Contoh: "BK (JPMorgan) akumulasi → 78% chance harga naik 3 hari kemudian"
+   Ini mengubah Bandarmology dari "siapa yang beli" menjadi 
+   "seberapa bisa dipercaya broker ini."
+   
+   Implementasi:
+   - Cron job harian: simpan snapshot top buyer + harga hari itu
+   - Setelah 3-5 hari, bandingkan harga saat ini vs harga saat akumulasi
+   - Hitung win rate per broker code (misal: BK win 78%, MG win 23%)
+   - Tampilkan di tooltip atau kolom tambahan di Broker Flow Table
+   - Update broker-profiles.ts dengan field "historicalWinRate"
+   
+   File yang terpengaruh:
+   - lib/broker-profiles.ts (tambah field winRate)
+   - lib/supabase.ts (store historical snapshots)
+   - app/api/broker-footprint/route.ts (NEW)
+   - app/components/Tape.tsx (render win rate badge)
+   - scripts/daily-footprint-cron.ts (NEW — cron job)
+
+
+5. CORRELATION MATRIX ANTAR EMITEN
+   Status: [ ] Belum dikerjakan
+   Prioritas: ⭐⭐⭐⭐
+   
+   Deskripsi:
+   Dashboard mini yang menunjukkan: jika BBRI naik, emiten mana yang ikut naik?
+   Berguna untuk:
+   - Menghindari false diversification (beli 5 saham tapi semua terkorelasi 0.9)
+   - Menemukan pair trading opportunity
+   - Mendeteksi "Correlation Collapse" saat market crash
+   
+   Implementasi:
+   - Hitung Pearson correlation antara daily returns emiten-emiten di watchlist
+   - Tampilkan sebagai mini heatmap grid (merah = korelasi tinggi, biru = rendah)
+   - Beri peringatan jika total portfolio correlation > 0.7
+   - Integrasikan dengan Beta-Weighting yang sudah ada
+   
+   File yang terpengaruh:
+   - lib/analysis.ts (NEW: calculateCorrelationMatrix)
+   - app/api/correlation/route.ts (NEW)
+   - app/components/Brain.tsx (render correlation heatmap)
+
+
+6. MONEY FLOW INDEX (MFI) + VOLUME-WEIGHTED SENTIMENT
+   Status: [x] SELESAI ✅
+   Prioritas: ⭐⭐⭐
+   
+   Deskripsi:
+   Menggabungkan harga, volume, DAN sentimen Stockbit stream menjadi satu 
+   indikator terpadu. Jika MFI menunjukkan overbought tapi sentimen ritel 
+   masih sangat bullish → sinyal "distribution imminent".
+   
+   Implementasi:
+   - Hitung MFI 14-day dari data OHLCV (typical price * volume)
+   - Gabungkan skor MFI dengan skor sentimen stream
+   - Jika MFI > 80 (overbought) + Sentiment Bullish → "Distribution Imminent"
+   - Jika MFI < 20 (oversold) + Sentiment Bearish → "Accumulation Window"
+   - Tambahkan ke UPS calculation sebagai komponen sentiment (bukan placeholder 50)
+   
+   File yang terpengaruh:
+   - lib/analysis.ts (NEW: calculateMFI)
+   - lib/sentiment.ts (integrate MFI with stream sentiment)
+   - app/api/stock/route.ts (compute MFI, feed to UPS)
+
+
+══════════════════════════════════════════════════════════════
+🛡️ TIER 3 — DEFENSE & RESILIENCE
+────────────────────────────────────────────────────────────
+
+7. AUTO TOKEN REFRESH DENGAN HEARTBEAT
+   Status: [x] SELESAI ✅
+   Prioritas: ⭐⭐⭐⭐
+   
+   Deskripsi:
+   Saat ini token bisa mati dan dashboard kosong. Fitur ini membuat extension 
+   secara otomatis mendeteksi token yang akan expired (cek exp claim di JWT), 
+   lalu trigger refresh sebelum mati — sehingga dashboard tidak pernah offline 
+   saat jam trading.
+   
+   Implementasi:
+   - Di stockbit-extension: decode JWT, baca field "exp"
+   - Jika token akan expired dalam < 5 menit, trigger page refresh di background tab
+   - Tambahkan heartbeat endpoint: GET /api/health/token-status
+   - Dashboard menampilkan "Token expires in: XX min" di Navbar
+   - Jika token mati, auto-fallback ke Yahoo Finance (graceful degradation)
+   
+   File yang terpengaruh:
+   - stockbit-extension/background.js (heartbeat logic)
+   - app/api/health/route.ts (NEW — token status check)
+   - app/components/Navbar.tsx (display token health)
+   - lib/stockbit.ts (auto-fallback mechanism)
+
+
+8. NIGHTLY DATA RECONCILIATION
+   Status: [ ] Belum dikerjakan
+   Prioritas: ⭐⭐⭐
+   
+   Deskripsi:
+   Script otomatis pukul 20:00 WIB yang membandingkan data volume di database 
+   Anda dengan data resmi End-of-Day dari Yahoo Finance. Jika selisih > 1%, 
+   data hari itu diberi flag merah dan di-refetch.
+   
+   Implementasi:
+   - Cron job (node-cron) di engine Go atau script terpisah
+   - Fetch EOD data dari Yahoo Finance (official OHLCV)
+   - Bandingkan total volume Dellmology vs Yahoo volume
+   - Jika deviasi > 1%: mark data sebagai "Incomplete" + trigger re-fetch
+   - Log hasil reconciliation ke Supabase untuk audit trail
+   
+   File yang terpengaruh:
+   - scripts/nightly-reconciliation.ts (NEW)
+   - lib/supabase.ts (store reconciliation results)
+   - app/components/Navbar.tsx (show data integrity status)
+
+
+9. CHAMPION-CHALLENGER (A/B Testing Algoritma UPS)
+   Status: [ ] Belum dikerjakan
+   Prioritas: ⭐⭐⭐
+   
+   Deskripsi:
+   Menjalankan dua versi algoritma UPS secara paralel di backend.
+   Setiap bulan bandingkan akurasi keduanya.
+   Jika versi baru lebih akurat, lakukan swap otomatis.
+   
+   Implementasi:
+   - Duplikasi calculateUPS menjadi calculateUPS_v2 dengan parameter berbeda
+   - Jalankan keduanya di stock/route.ts, simpan kedua skor
+   - Setiap hari, catat: "UPS v1 bilang Buy → harga naik/turun 3 hari kemudian?"
+   - Dashboard admin sederhana untuk melihat akurasi v1 vs v2
+   - Auto-swap jika v2 konsisten lebih akurat selama 20 hari berturut
+   
+   File yang terpengaruh:
+   - lib/analysis.ts (NEW: calculateUPS_v2)
+   - app/api/stock/route.ts (run both versions)
+   - scripts/champion-challenger-eval.ts (NEW)
+   - lib/supabase.ts (store prediction logs)
+
+
+══════════════════════════════════════════════════════════════
+🎯 TIER 4 — ADVANCED / EKSPERIMENTAL
+────────────────────────────────────────────────────────────
+
+10. AI SCREENER "ORACLE" DENGAN GEMINI
+    Status: [x] SELESAI ✅
+    Prioritas: ⭐⭐⭐⭐
+    
+    Deskripsi:
+    Memanfaatkan Gemini API untuk menganalisis gabungan data teknikal + 
+    bandarmology + sentimen stream, lalu menghasilkan top 5 stock picks 
+    untuk besok pagi. Berbeda dari screener biasa yang hanya filter angka — 
+    ini benar-benar analisis kontekstual oleh AI.
+    
+    Implementasi:
+    - Kumpulkan data ringkasan dari semua emiten di watchlist
+    - Kirim ke Gemini API dalam format JSON Summary (sesuai roadmap)
+    - Prompt: "Dari data ini, pilih 5 saham dengan probabilitas breakout tertinggi"
+    - Tampilkan hasil di tab "AI Oracle" di Sidebar
+    - Sertakan reasoning AI + confidence level per pick
+    - Rate limit: 1x per hari (hemat quota API)
+    
+    File yang terpengaruh:
+    - lib/ai-oracle.ts (NEW)
+    - app/api/oracle/route.ts (NEW)
+    - app/components/Sidebar.tsx (NEW tab: AI Oracle)
+
+
+══════════════════════════════════════════════════════════════
+📋 URUTAN IMPLEMENTASI YANG DISARANKAN
+────────────────────────────────────────────────────────────
+
+Phase 1 (Minggu ini):
+  → #1 Broker Flow Heatmap (Multi-Day)
+  → #2 Iceberg Order Detection
+  → #6 Money Flow Index (mengganti placeholder sentiment di UPS)
+
+Phase 2 (Minggu depan):
+  → #3 Smart Alert Telegram
+  → #7 Auto Token Refresh + Heartbeat
+  → #10 AI Oracle dengan Gemini
+
+Phase 3 (2 minggu ke depan):
+  → #4 Broker Footprint (Win Rate)
+  → #5 Correlation Matrix
+  → #8 Nightly Data Reconciliation
+
+Phase 4 (1 bulan ke depan):
+  → #9 Champion-Challenger A/B Testing
+
+
+══════════════════════════════════════════════════════════════
+CATATAN PENTING:
+- Semua fitur harus mengikuti prinsip Roadmap utama (Roadmap.txt)
+- Jangan hard-code parameter — gunakan Dynamic Configuration
+- Semua logika sensitif tetap di backend (bukan frontend)
+- Setiap fitur baru harus memiliki fallback jika data tidak tersedia
+══════════════════════════════════════════════════════════════
