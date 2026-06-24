@@ -86,6 +86,9 @@ export async function generateOraclePicks(watchlistData: any[]): Promise<OracleA
         mfiDivergence: item.mfiDivergence,
         topBuyers: item.topBuyers?.slice(0,3).map((b: any) => b.code).join(', '),
         topSellers: item.topSellers?.slice(0,3).map((s: any) => s.code).join(', '),
+        foreignDistributionFlag: item.foreignDistributionFlag || 'NEUTRAL',
+        foreignNetBuyMio: item.foreignNetBuy ? (item.foreignNetBuy / 1e6).toFixed(1) : '0',
+        foreignNetSellMio: item.foreignNetSell ? (item.foreignNetSell / 1e6).toFixed(1) : '0',
         newsSentiment: news?.sentiment || 'Neutral',
         newsHeadline: news?.headline || 'No major news'
       };

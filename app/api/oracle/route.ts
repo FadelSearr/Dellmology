@@ -238,9 +238,49 @@ export async function GET(request: NextRequest) {
     );
 
     // Re-filter after enrichment (real price might be outside range)
+    // Also apply Foreign Whale Distribution filter per oracle.md spec
     const finalCandidates = enriched.filter((stock: any) => {
       const p = Number(stock.price);
-      return p >= minPrice && p <= maxPrice && p > 0;
+      if (p < minPrice || p > maxPrice || p <= 0) return false;
+
+      // ── FOREIGN WHALE DISTRIBUTION FILTER (oracle.md §2 & §3) ──
+      // Calculate net foreign sell vs net foreign buy to detect distribution
+      let foreignNetBuy = 0;
+      let foreignNetSell = 0;
+
+      if (stock.topBuyers) {
+        for (const buyer of stock.topBuyers.slice(0, 5)) {
+          const profile = getBrokerProfile(buyer.code);
+          if (profile.character === 'foreign_flow') {
+            foreignNetBuy += parseFloat(buyer.val || '0');
+          }
+        }
+      }
+      if (stock.topSellers) {
+        for (const seller of stock.topSellers.slice(0, 5)) {
+          const profile = getBrokerProfile(seller.code);
+          if (profile.character === 'foreign_flow') {
+            foreignNetSell += parseFloat(seller.val || '0');
+          }
+        }
+      }
+
+      // If foreign sell > foreign buy → distribution masif → REJECT
+      if (foreignNetSell > 0 && foreignNetSell > foreignNetBuy) {
+        console.log(`[Oracle] ❌ FILTERING OUT ${stock.emiten} — Foreign Whale Distribution detected (sell: ${(foreignNetSell/1e6).toFixed(1)}M > buy: ${(foreignNetBuy/1e6).toFixed(1)}M)`);
+        return false;
+      }
+
+      // Tag remaining stocks with foreign flow metadata for AI synthesis
+      stock.foreignNetBuy = foreignNetBuy;
+      stock.foreignNetSell = foreignNetSell;
+      stock.foreignDistributionFlag = foreignNetSell > foreignNetBuy * 0.5
+        ? 'CAUTION: Significant foreign selling pressure detected'
+        : foreignNetBuy > 0
+          ? 'POSITIVE: Foreign accumulation confirmed'
+          : 'NEUTRAL: No significant foreign activity';
+
+      return true;
     });
 
     if (finalCandidates.length === 0) {
