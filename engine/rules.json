@@ -1,0 +1,4 @@
+{
+  "priceDeviationLimit": 0.20,
+  "allowedBoards": ["RG"]
+}
