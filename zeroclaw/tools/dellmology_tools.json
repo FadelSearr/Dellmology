@@ -1,0 +1,135 @@
+[
+  {
+    "name": "run_screener",
+    "description": "Menjalankan engine screener saham Dellmology. Gunakan ini untuk menemukan kandidat saham berdasarkan indikator teknikal dan bandarmologi. Mode 'daytrade' untuk saham volatil hari ini, 'swing' untuk tren menengah, 'whale' untuk aktivitas institusi, 'ai' untuk rekomendasi AI.",
+    "endpoint": "POST",
+    "url": "http://localhost:3000/api/zeroclaw?action=screener",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": ["daytrade", "swing", "whale", "ai", "watchlist"],
+          "description": "Mode screener: daytrade=volatil hari ini, swing=tren menengah, whale=aktivitas institusi besar, ai=rekomendasi AI, watchlist=pantauan pengguna",
+          "default": "daytrade"
+        },
+        "minPrice": {
+          "type": "number",
+          "description": "Harga minimum saham dalam IDR (contoh: 100 untuk Rp 100). Default: 0",
+          "default": 0
+        },
+        "maxPrice": {
+          "type": "number",
+          "description": "Harga maksimum saham dalam IDR (contoh: 500 untuk Rp 500). Default: 999999",
+          "default": 999999
+        }
+      },
+      "required": ["mode"]
+    }
+  },
+  {
+    "name": "get_oracle_picks",
+    "description": "Mengambil Top 5 pilihan AI Oracle Dellmology. Oracle adalah hasil analisis Bandarmologi mendalam yang dikombinasikan dengan AI Gemini. Gunakan ini untuk laporan harian atau validasi sinyal.",
+    "endpoint": "GET",
+    "url": "http://localhost:3000/api/zeroclaw?action=oracle",
+    "parameters": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "check_whale_activity",
+    "description": "Mengecek apakah ada aktivitas whale (institusi besar) pada satu emiten tertentu. Mengembalikan data apakah emiten tersebut sedang diakumulasi atau didistribusi oleh bandar.",
+    "endpoint": "POST",
+    "url": "http://localhost:3000/api/zeroclaw?action=whale_check",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "ticker": {
+          "type": "string",
+          "description": "Kode emiten saham IDX, maksimal 4 huruf kapital. Contoh: BBCA, GOTO, TLKM, WIMU"
+        }
+      },
+      "required": ["ticker"]
+    }
+  },
+  {
+    "name": "get_daily_summary",
+    "description": "Mengambil ringkasan data pasar harian yang teragregasi: market breadth (advance/decline), foreign net flow, Oracle picks, top movers, dan data makro (IHSG, USD/IDR). Ideal untuk Daily Briefing atau laporan akhir hari.",
+    "endpoint": "GET",
+    "url": "http://localhost:3000/api/zeroclaw?action=daily_summary",
+    "parameters": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "get_market_breadth",
+    "description": "Mengambil data Advance/Decline ratio dan Foreign Net Flow hari ini secara real-time.",
+    "endpoint": "GET",
+    "url": "http://localhost:3000/api/zeroclaw?action=breadth",
+    "parameters": {
+      "type": "object",
+      "properties": {}
+    }
+  },
+  {
+    "name": "submit_async_job",
+    "description": "Mengirimkan tugas berat yang berjalan secara asinkron. Gunakan ini untuk operasi yang membutuhkan >10 detik. Kembalikan jobId dan gunakan poll_job_status untuk mengecek hasilnya.",
+    "endpoint": "POST",
+    "url": "http://localhost:3000/api/zeroclaw?action=submit_job",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "task": {
+          "type": "string",
+          "enum": ["oracle_refresh", "screener_run", "daily_briefing", "whale_scan"],
+          "description": "Jenis tugas yang akan dijalankan"
+        },
+        "params": {
+          "type": "object",
+          "description": "Parameter tambahan untuk tugas (opsional, tergantung task)"
+        }
+      },
+      "required": ["task"]
+    }
+  },
+  {
+    "name": "poll_job_status",
+    "description": "Mengecek status tugas asinkron yang sudah disubmit. Panggil setiap 5 detik sampai status = 'done' atau 'error'.",
+    "endpoint": "POST",
+    "url": "http://localhost:3000/api/zeroclaw?action=poll_job",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "jobId": {
+          "type": "string",
+          "description": "ID job yang dikembalikan oleh submit_async_job"
+        }
+      },
+      "required": ["jobId"]
+    }
+  },
+  {
+    "name": "send_telegram_alert",
+    "description": "Mengirim notifikasi peringatan ke Telegram channel Dellmology. Gunakan HANYA jika ditemukan sinyal urgency HIGH atau CRITICAL.",
+    "endpoint": "POST",
+    "url": "http://localhost:3000/api/zeroclaw?action=send_alert",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "emitenList": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Daftar kode emiten yang memiliki sinyal kuat, contoh: ['BBCA', 'GOTO']"
+        },
+        "urgencyLevel": {
+          "type": "string",
+          "enum": ["LOW", "MEDIUM", "HIGH", "CRITICAL"],
+          "description": "Tingkat urgensi sinyal"
+        }
+      },
+      "required": ["emitenList", "urgencyLevel"]
+    }
+  }
+]

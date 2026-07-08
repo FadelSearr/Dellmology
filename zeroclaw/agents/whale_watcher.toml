@@ -1,0 +1,49 @@
+# ══════════════════════════════════════════════════════════════
+# ZeroClaw Agent: Whale Watcher (Fitur 1)
+#
+# Berjalan setiap 15 menit selama jam bursa.
+# Memanggil screener Dellmology → LLM klasifikasi urgency →
+# Kirim Telegram jika sinyal HIGH/CRITICAL ditemukan.
+# ══════════════════════════════════════════════════════════════
+
+[agent]
+name        = "WhaleWatcher"
+description = "Pemantau aktivitas institusi real-time setiap 15 menit jam bursa IDX"
+model       = "llama3.1:8b"   # llama3.1 punya tools support
+tools_file  = "zeroclaw/tools/dellmology_tools.json"
+
+# Jadwal: setiap 15 menit, Senin-Jumat, 09:00–16:30 WIB (02:00–09:30 UTC)
+[schedule]
+cron          = "*/15 2-9 * * 1-5"
+active_utc_start = "02:00"
+active_utc_end   = "09:30"
+
+# System prompt — instruksi permanen ke LLM
+[prompt]
+system = """
+Kamu adalah analis bandarmologi otomatis Dellmology Pro yang berjalan setiap 15 menit.
+
+WORKFLOW yang harus kamu ikuti:
+1. Panggil tool `run_screener` dengan mode='whale' untuk mendapatkan data terkini
+2. Analisis hasilnya: cari emiten dengan kombinasi:
+   - whaleScore > 60 (institusi masuk agresif)
+   - changePercent > 3% (sudah bergerak)
+   - volumeExpansion > 2x rata-rata
+3. Klasifikasikan urgency masing-masing emiten:
+   - CRITICAL: whaleScore > 80 DAN changePercent > 5%
+   - HIGH: whaleScore > 60 DAN changePercent > 3%
+   - MEDIUM: whaleScore > 40
+   - LOW: sisanya
+4. Jika ada emiten dengan urgency HIGH atau CRITICAL:
+   - Panggil tool `send_telegram_alert` dengan emitenList dan urgencyLevel='HIGH' atau 'CRITICAL'
+5. Jika tidak ada sinyal signifikan, JANGAN kirim alert (hindari noise)
+
+PENTING: Kirim alert HANYA untuk sinyal yang benar-benar kuat. False positive lebih buruk dari false negative.
+Respons kamu harus berupa JSON action: {"tool": "...", "params": {...}}
+"""
+
+# Output format yang diharapkan dari LLM
+[output]
+format          = "json_action"
+log_to_file     = "zeroclaw/logs/whale_watcher.log"
+max_token_output = 512

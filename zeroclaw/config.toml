@@ -1,0 +1,150 @@
+schema_version = 3
+# ══════════════════════════════════════════════════════════════
+# ZeroClaw — Dellmology Pro Orchestrator Config
+#
+# ZeroClaw berperan sebagai "otak" yang memanggil Dellmology
+# sebagai tool, dan menggunakan Ollama sebagai LLM engine-nya.
+#
+# Cara pakai:
+#   zeroclaw run --config zeroclaw/config.toml
+# ══════════════════════════════════════════════════════════════
+
+[agent]
+name        = "DellmologyOrchestrator"
+description = "Autonomous AI Orchestrator untuk monitoring pasar saham IDX"
+
+# Ollama (local LLM) — pastikan Ollama sudah berjalan di port 11434
+ollama_url    = "http://localhost:11434"
+primary_model = "llama3.1:8b"        # Narasi & briefing (ada tools support)
+fast_model    = "phi3:latest"         # Klasifikasi cepat (urgency)
+coder_model   = "deepseek-coder:latest" # NL → JSON parameter translation
+
+[providers.models.ollama.default_2]
+model = "phi3:latest"
+
+[runtime_profiles.unbounded]
+agentic = true
+agentic_timeout_secs = 1800
+compact_context = false
+delegation_timeout_secs = 900
+keep_tool_context_turns = 8
+max_actions_per_hour = 4294967295
+max_context_tokens = 128000
+max_cost_per_day_cents = 4294967295
+max_delegation_depth = 8
+max_history_messages = 200
+max_system_prompt_chars = 64000
+max_tool_iterations = 100
+max_tool_result_chars = 64000
+memory_recall_limit = 10
+parallel_tools = true
+shell_timeout_secs = 600
+strict_tool_parsing = false
+
+[risk_profiles.yolo]
+allowed_commands = ["*"]
+auto_approve = ["*"]
+block_high_risk_commands = false
+level = "full"
+require_approval_for_medium_risk = false
+sandbox_enabled = false
+workspace_only = false
+
+[dellmology]
+base_url    = "http://localhost:3000"
+api_key_env = "ZEROCLAW_API_KEY"       # Dibaca dari environment variable
+
+[runtime_profiles.unbounded.context_compression]
+enabled = true
+identifier_policy = "strict"
+max_passes = 3
+protect_first_n = 3
+protect_last_n = 4
+source_max_chars = 50000
+summary_max_chars = 4000
+threshold_ratio = 0.5
+timeout_secs = 60
+tool_result_retrim_chars = 2000
+
+[risk_profiles.yolo.delegation_policy]
+mode = "allow"
+
+# Header yang akan dikirim ke setiap request Dellmology
+
+[dellmology.headers]
+"X-ZeroClaw-Key"  = "${ZEROCLAW_API_KEY}"
+"Content-Type"    = "application/json"
+"User-Agent"      = "ZeroClaw-Orchestrator/1.0"
+
+[runtime_profiles.unbounded.eval]
+enabled = false
+max_retries = 1
+min_quality_score = 0.5
+
+# ── Schedule Configuration ────────────────────────────────────
+
+[schedule]
+# Whale Watcher: setiap 15 menit SELAMA jam bursa (09:00–16:30 WIB)
+whale_watch_interval_minutes = 15
+whale_watch_start_wib        = "09:00"
+whale_watch_end_wib          = "16:30"
+
+# Daily Briefing: setiap hari kerja pukul 16:30 WIB = 09:30 UTC
+briefing_cron = "30 9 * * 1-5"
+
+[runtime_profiles.unbounded.history_pruning]
+collapse_tool_results = true
+enabled = false
+keep_recent = 4
+max_tokens = 8192
+
+# ── Retry & Timeout ───────────────────────────────────────────
+
+[http]
+request_timeout_seconds  = 30
+max_retries              = 3
+retry_backoff_seconds    = 5
+
+[runtime_profiles.unbounded.thinking]
+default_level = "medium"
+native_thinking = false
+
+# ── Logging ───────────────────────────────────────────────────
+
+[logging]
+level    = "info"   # debug | info | warn | error
+log_file = "zeroclaw/logs/orchestrator.log"
+
+[runtime_profiles.unbounded.tool_receipts]
+enabled = false
+inject_system_prompt = true
+show_in_response = false
+
+[onboard_state]
+quickstart_completed = true
+
+[providers]
+
+[providers.models]
+
+[providers.models.ollama]
+
+[providers.models.ollama.default]
+model = "deepseek-coder:latest"
+
+[memory]
+backend = "sqlite.sqlite"
+
+[risk_profiles]
+
+[gateway]
+paired_tokens = ["enc2:56a64af15d2a6d4e0747193b908676957b7fa4de8b9779fc61c79675b0b5d067ab55495b7f97f176f6bfb04b48e59dfa30d551a33d5be39ff6c9b8e7eee3c0fbc409faf8ec0c60c16d539762eb2f246432aa9b9737cae5a89e648875"]
+
+[agents]
+
+[agents.deepseek]
+model_provider = "ollama.default"
+runtime_profile = "unbounded"
+risk_profile = "yolo"
+
+[runtime_profiles]

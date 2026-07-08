@@ -38,6 +38,8 @@ export const metadata: Metadata = {
   },
 };
 
+import ChatOracle from "./components/ChatOracle";
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -45,7 +47,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={`${inter.variable} ${jetbrains.variable}`}>
-      <body>{children}</body>
+      <body>
+        {children}
+        <ChatOracle />
+      </body>
     </html>
   );
 }
