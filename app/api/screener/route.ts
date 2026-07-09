@@ -664,10 +664,40 @@ export async function GET(request: NextRequest) {
             }
             
             if (whaleScore > 40) { // Found a whale!
+              const topBuyers = (md?.data?.broker_summary?.brokers_buy || []).slice(0, 3).map((b: any) => ({
+                broker: b.netbs_broker_code,
+                name: getBrokerProfile(b.netbs_broker_code).name,
+                lot: parseInt(b.blot || '0')
+              }));
+              const topSellers = (md?.data?.broker_summary?.brokers_sell || []).slice(0, 2).map((s: any) => ({
+                broker: s.netbs_broker_code,
+                name: getBrokerProfile(s.netbs_broker_code).name,
+                lot: parseInt(s.slot || '0')
+              }));
+              const bd = md?.data?.bandar_detector;
+              let bandarSignal = '⚪ NEUTRAL';
+              if (bd?.top3?.accdist === 'ACCUMULATION') bandarSignal = '🟢🟢 STRONG_BUY';
+              else if (bd?.top1?.accdist === 'ACCUMULATION') bandarSignal = '🟢 BUY';
+              else if (bd?.top3?.accdist === 'DISTRIBUTION') bandarSignal = '🔴🔴 STRONG_SELL';
+
+              const smartMoneyLot = (bd?.top3?.vol || 0);
+              const foreign = (md?.data as any)?.foreign_transaction; // Assuming it exists
+              const foreignNetLot = foreign?.net_buy_vol || 0;
+              const foreignNetVal = foreign?.net_buy_val || 0;
+              const foreignStatus = foreignNetLot > 0 ? '🟢 NET BUY ASING' : (foreignNetLot < 0 ? '🔴 NET SELL ASING' : '⚪ NEUTRAL');
+
               screened.push({
                 ...cand,
                 whaleScore: Math.round(whaleScore),
                 whaleBroker: whaleBrokers.length > 0 ? whaleBrokers.join(', ') : 'Mixed Whale',
+                bandarSignal,
+                smartMoneyLot,
+                topBuyers,
+                topSellers,
+                foreignStatus,
+                foreignNetVal,
+                foreignNetLot,
+                foreignParticipation: foreign?.participation_pct || 0
               });
             }
           } catch (err) {

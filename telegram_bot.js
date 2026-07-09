@@ -227,31 +227,37 @@ async function fetchAndBroadcastSignal(sessionLabel) {
       const sign = hit.changePercent > 0 ? '+' : '';
       const changeEmoji = hit.changePercent > 0 ? '🟢' : (hit.changePercent < 0 ? '🔴' : '⚪');
 
-      let msg = `🇮🇩 *DELLMOLOGY-PRO — WHALE SIGNAL*\n_${sessionLabel}_\n\n`;
-      msg += `Saham: *${hit.code || hit.emiten}*\n`;
+      let msg = `Saham: *${hit.code || hit.emiten}*\n`;
       msg += `Signal: 🟢 BUY\n\n`;
-      msg += `💵 Entry: Rp${hit.entry ? hit.entry.toLocaleString('id-ID') : price.toLocaleString('id-ID')}\n`;
-      msg += `🎯 TP: Rp${tp.toLocaleString('id-ID')} (${Math.round((tp-price)/price*100)}%)\n`;
-      msg += `🛑 SL: Rp${sl.toLocaleString('id-ID')} (${Math.round((sl-price)/price*100)}%)\n`;
-      msg += `${changeEmoji} Change: ${sign}${hit.changePercent}%\n\n`;
+      msg += `💵 Entry Price: Rp${hit.entry ? hit.entry.toLocaleString('id-ID') : price.toLocaleString('id-ID')}\n`;
+      msg += `🎯 Take Profit: Rp${tp.toLocaleString('id-ID')}\n`;
+      msg += `🛑 Stop Loss: Rp${sl.toLocaleString('id-ID')}\n\n`;
 
-      // Broker info jika tersedia
-      if (hit.whaleBroker) {
-        msg += `🏦 *Whale Broker:*\n${hit.whaleBroker}\n`;
-        msg += `⚡ Whale Score: ${hit.whaleScore}/100\n`;
+      if (hit.bandarSignal) {
+        msg += `🏢 *Bandarmology (IPOT Broker Flow):*\n`;
+        msg += `Sinyal Bandar: ${hit.bandarSignal}\n`;
+        msg += `Smart Money Net: ${hit.smartMoneyLot > 0 ? '+' : ''}${(hit.smartMoneyLot / 1000000).toFixed(1)}M lot\n`;
+        
+        if (hit.topBuyers && hit.topBuyers.length > 0) {
+          msg += `🟢 *Top Buyer:*\n`;
+          for (let b of hit.topBuyers) {
+            msg += `  ${b.broker} (${b.name}): +${b.lot.toLocaleString('id-ID')} lot\n`;
+          }
+        }
+        if (hit.topSellers && hit.topSellers.length > 0) {
+          msg += `🔴 *Top Seller:*\n`;
+          for (let s of hit.topSellers) {
+            msg += `  ${s.broker} (${s.name}): -${s.lot.toLocaleString('id-ID')} lot\n`;
+          }
+        }
+        msg += `\n`;
       }
-      if (hit.fibBouncing) {
-        msg += `📐 *Fibonacci:* Mantul dari level ${hit.fibNearest}\n`;
-      }
-      if (hit.swingScore) {
-        msg += `📊 Teknikal Score: ${hit.swingScore}/100\n`;
-      }
-      if (hit.rsi14) {
-        msg += `📈 RSI: ${hit.rsi14}\n`;
-      }
-      if (hit.entry_strategy) {
-        msg += `\n🎯 *Entry Strategy:*\n${hit.entry_strategy}\n`;
-      }
+
+      msg += `📊 *Foreign Flow (IDX):*\n`;
+      msg += `Status: ${hit.foreignStatus || '⚪ NEUTRAL'}\n`;
+      msg += `Net Asing: Rp${hit.foreignNetVal ? (hit.foreignNetVal / 1000000).toFixed(1) : '0'}M (${hit.foreignNetLot ? hit.foreignNetLot.toLocaleString('id-ID') : '0'} lot)\n`;
+      msg += `Partisipasi Asing: ${hit.foreignParticipation ? hit.foreignParticipation.toFixed(1) : '0'}% volume\n`;
+
 
       await bot.sendMessage(allowedChatId, msg, { parse_mode: 'Markdown' });
       await new Promise(r => setTimeout(r, 600));
