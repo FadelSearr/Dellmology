@@ -1,36 +1,38 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { runBacktest, compareStrategies } from '@/lib/backtest';
-import type { BacktestConfig } from '@/lib/backtest';
+import { exec } from 'child_process';
+import util from 'util';
+
+const execAsync = util.promisify(exec);
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { data, brokerData, config, challengerConfig } = body;
+    const { ticker } = body;
 
-    if (!data || !Array.isArray(data) || data.length < 30) {
-      return NextResponse.json(
-        { success: false, error: 'Need at least 30 OHLCV bars in "data" array' },
-        { status: 400 }
-      );
+    if (!ticker) {
+      return NextResponse.json({ success: false, error: 'Ticker is required' }, { status: 400 });
     }
 
-    const brokers = brokerData || data.map(() => ({ netValue: 0, consistency: 50, hakaRatio: 0.5 }));
+    const command = `python engine/backtest.py --ticker ${ticker}`;
+    const { stdout, stderr } = await execAsync(command);
+    
+    // Parse the JSON output from python
+    let result;
+    try {
+      result = JSON.parse(stdout.trim());
+    } catch (e) {
+      return NextResponse.json({ success: false, error: `Invalid python output: ${stdout}` }, { status: 500 });
+    }
 
-    // Run champion backtest
-    const champion = runBacktest(data, brokers, config);
-
-    // If challenger config provided, run comparison
-    let comparison = null;
-    if (challengerConfig) {
-      const challenger = runBacktest(data, brokers, challengerConfig);
-      comparison = compareStrategies(champion, challenger);
+    if (result.error) {
+      return NextResponse.json({ success: false, error: result.error }, { status: 500 });
     }
 
     return NextResponse.json({
       success: true,
       data: {
-        result: champion,
-        comparison,
+        result: result,
+        comparison: null,
       },
     });
   } catch (error) {

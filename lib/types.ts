@@ -225,9 +225,12 @@ export interface ScreenerResult {
 // ── Market Detector Response ─────────────────────────────────
 export interface MarketDetectorBroker {
   netbs_broker_code: string;
-  bval: string;
-  blot: string;
-  netbs_buy_avg_price: string;
+  bval?: string;
+  blot?: string;
+  sval?: string;
+  slot?: string;
+  netbs_buy_avg_price?: string;
+  netbs_sell_avg_price?: string;
 }
 
 export interface MarketDetectorResponse {

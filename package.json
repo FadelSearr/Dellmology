@@ -2,6 +2,9 @@
   "name": "dellmology-pro",
   "version": "0.1.0",
   "private": true,
+  "bin": {
+    "dellmology-pro": "./bin/dellmology.js"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -15,10 +18,12 @@
     "lightweight-charts": "^5.2.0",
     "lucide-react": "^1.14.0",
     "next": "16.2.4",
+    "node-cron": "^4.6.0",
     "node-telegram-bot-api": "^1.1.2",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "recharts": "^3.8.1",
+    "redis": "^6.1.0",
     "socket.io": "^4.8.3",
     "socket.io-client": "^4.8.3",
     "technicalindicators": "^3.1.0"

@@ -198,15 +198,15 @@ export async function GET(request: NextRequest) {
                   }
               }
 
-              const bidVol = ob ? (ob.data.total_bid_vol || 1) : 1;
-              const offerVol = ob ? (ob.data.total_offer_vol || 1) : 1;
+              const bidVol = ob ? parseInt(ob.data.total_bid_offer?.bid?.lot || '1') : 1;
+              const offerVol = ob ? parseInt(ob.data.total_bid_offer?.offer?.lot || '1') : 1;
               const hakaRatio = bidVol / (bidVol + offerVol);
 
               // Compute UPS with whatever we can infer
               const ups = calculateUPS({
                 rsiValue: 50, // default if no TA
                 macdHistogram: 0,
-                trendDirection: pData.changePercent > 0 ? 'uptrend' : 'sideways',
+                trendDirection: (pData?.changePercent || 0) > 0 ? 'uptrend' : 'sideways',
                 whaleNetValue,
                 brokerConsistency,
                 zScore: 0,

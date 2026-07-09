@@ -797,6 +797,77 @@ export function calculatePairingScore(buyers: { code: string; netValue: number }
   return score;
 }
 
+// ── Fibonacci Retracement Levels ────────────────────────────
+export interface FibonacciOutput {
+  high: number;
+  low: number;
+  fib236: number;
+  fib382: number;
+  fib500: number;
+  fib618: number;
+  fib786: number;
+  nearestLevel: string;
+  isBouncing: boolean;
+  distancePct: number;
+}
+
+export function calculateFibonacciLevels(
+  highs: number[],
+  lows: number[],
+  currentPrice: number,
+  lookback = 60
+): FibonacciOutput | null {
+  if (highs.length < lookback) return null;
+  
+  const recentHighs = highs.slice(-lookback);
+  const recentLows = lows.slice(-lookback);
+  
+  const high = Math.max(...recentHighs);
+  const low = Math.min(...recentLows);
+  const diff = high - low;
+  
+  if (diff === 0) return null;
+
+  const fib236 = Math.round(high - diff * 0.236);
+  const fib382 = Math.round(high - diff * 0.382);
+  const fib500 = Math.round(high - diff * 0.500);
+  const fib618 = Math.round(high - diff * 0.618);
+  const fib786 = Math.round(high - diff * 0.786);
+
+  const levels = [
+    { name: '0.236', val: fib236 },
+    { name: '0.382', val: fib382 },
+    { name: '0.5', val: fib500 },
+    { name: '0.618 (Golden Pocket)', val: fib618 },
+    { name: '0.786', val: fib786 }
+  ];
+
+  let nearestLevel = '';
+  let minDistancePct = Infinity;
+  let isBouncing = false;
+
+  for (const lvl of levels) {
+    const distPct = Math.abs((currentPrice - lvl.val) / lvl.val) * 100;
+    if (distPct < minDistancePct) {
+      minDistancePct = distPct;
+      nearestLevel = lvl.name;
+    }
+  }
+
+  // Jika harga saat ini berada di dalam area ±2.5% dari level Fib (terutama 0.5 / 0.618)
+  if (minDistancePct <= 2.5 && (nearestLevel.includes('0.5') || nearestLevel.includes('0.618'))) {
+    isBouncing = true;
+  }
+
+  return {
+    high, low,
+    fib236, fib382, fib500, fib618, fib786,
+    nearestLevel,
+    isBouncing,
+    distancePct: Math.round(minDistancePct * 10) / 10
+  };
+}
+
 export function calculateUPS(params: {
   rsiValue: number;
   macdHistogram: number;

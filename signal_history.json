@@ -1,0 +1,47 @@
+[
+  {
+    "emiten": "ECII",
+    "entry": 136,
+    "tp": 144,
+    "sl": 126,
+    "sentAt": "2026-07-09T01:30:06.070Z",
+    "status": "PENDING",
+    "dayHighChecked": null
+  },
+  {
+    "emiten": "APLN",
+    "entry": 126,
+    "tp": 134,
+    "sl": 117,
+    "sentAt": "2026-07-09T01:30:06.070Z",
+    "status": "PENDING",
+    "dayHighChecked": null
+  },
+  {
+    "emiten": "PPGL",
+    "entry": 216,
+    "tp": 229,
+    "sl": 201,
+    "sentAt": "2026-07-09T01:30:06.070Z",
+    "status": "PENDING",
+    "dayHighChecked": null
+  },
+  {
+    "emiten": "ASRI",
+    "entry": 117,
+    "tp": 124,
+    "sl": 109,
+    "sentAt": "2026-07-09T01:30:06.070Z",
+    "status": "PENDING",
+    "dayHighChecked": null
+  },
+  {
+    "emiten": "FAST",
+    "entry": 290,
+    "tp": 307,
+    "sl": 270,
+    "sentAt": "2026-07-09T01:30:06.070Z",
+    "status": "PENDING",
+    "dayHighChecked": null
+  }
+]

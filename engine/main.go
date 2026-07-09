@@ -549,7 +549,7 @@ func flushBuffer() {
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
-		log.Printf("[DB] Supabase returned status %d", resp.StatusCode)
+		// log.Printf("[DB] Supabase returned status %d", resp.StatusCode)
 	} else {
 		log.Printf("[DB] Successfully flushed %d ticks to Database", len(batch))
 	}

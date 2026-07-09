@@ -3,6 +3,7 @@ import { fetchWatchlistGroups, fetchWatchlist, fetchMarketDetector } from '@/lib
 import { IDX_TICKERS } from '@/lib/idx-tickers';
 import { getBrokerProfile } from '@/lib/broker-profiles';
 import { rateLimit } from '@/lib/rateLimit';
+import { calculateFibonacciLevels, atr } from '@/lib/analysis';
 
 /* ══════════════════════════════════════════════════════════════
    Screener Engine — Dellmology Pro
@@ -212,6 +213,17 @@ function screenDayTrade(ticker: string, bars: OHLCVBar[], minPrice: number, maxP
 
   const dayScore = Math.max(0, Math.round(volScore + momentumScore + rangeScore + liquidityScore + vwapScore));
 
+  // ── Smart Entry Strategy (ATR) ─────────────────────────────
+  const highs = bars.map(b => b.high);
+  const lows = bars.map(b => b.low);
+  const atrVals = atr(highs, lows, closes, 14);
+  const atr14 = atrVals.length > 0 ? Math.round(atrVals[atrVals.length - 1]) : Math.round(currentPrice * 0.02);
+  
+  const entry = currentPrice; 
+  const sl = Math.max(1, Math.round(currentPrice - atr14 * 1.5));
+  const tp = Math.round(currentPrice + atr14 * 3);
+  const entry_strategy = `Momentum Buy di area Rp ${entry.toLocaleString('id-ID')}.\nKetat SL di Rp ${sl.toLocaleString('id-ID')} (-1.5 ATR) karena volatilitas harian tinggi.\nTake Profit bertahap mulai Rp ${tp.toLocaleString('id-ID')} (3 ATR).`;
+
   return {
     code:           ticker,
     price:          currentPrice,
@@ -225,6 +237,7 @@ function screenDayTrade(ticker: string, bars: OHLCVBar[], minPrice: number, maxP
     aboveVWAP,
     aboveMA5,
     dayScore,
+    entry, tp, sl, entry_strategy,
     // Swing fields (empty)
     ma5: 0, ma20: 0, ma50: 0, rsi14: 0, swingScore: 0,
   };
@@ -260,6 +273,11 @@ function screenSwing(ticker: string, bars: OHLCVBar[], minPrice: number, maxPric
   const changePercent = yesterday.close > 0
     ? ((currentPrice - yesterday.close) / yesterday.close) * 100
     : 0;
+
+  // ── Fibonacci ──────────────────────────────────────────────
+  const highs = bars.map(b => b.high);
+  const lows = bars.map(b => b.low);
+  const fib = calculateFibonacciLevels(highs, lows, currentPrice, 60);
 
   // ── Moving Averages ────────────────────────────────────────
   const ma5  = computeMA(closes, 5);
@@ -349,7 +367,32 @@ function screenSwing(ticker: string, bars: OHLCVBar[], minPrice: number, maxPric
   // 5. Trend Slope (max 10 pts) — steeper MA20 slope = stronger trend
   const slopeScore = Math.min(10, Math.round(Math.abs(ma20Slope / currentPrice * 100) * 50));
 
-  const swingScore = Math.round(rsiScore + pullbackScore + volScore + maScore + slopeScore);
+  // 6. Fibonacci Bouncing Bonus (max 20 pts)
+  let fibScore = 0;
+  if (fib && fib.isBouncing) {
+    fibScore = 20 - Math.round(fib.distancePct * 5); // semakin dekat (distance kecil), skor makin tinggi
+  }
+
+  const swingScore = Math.round(rsiScore + pullbackScore + volScore + maScore + slopeScore + fibScore);
+
+  // ── Smart Entry Strategy (ATR & Fib) ───────────────────────
+  const atrVals = atr(highs, lows, closes, 14);
+  const atr14 = atrVals.length > 0 ? Math.round(atrVals[atrVals.length - 1]) : Math.round(currentPrice * 0.02);
+  
+  let entry = currentPrice;
+  let entry_strategy = "";
+  if (fib && fib.isBouncing) {
+    entry = Math.round((currentPrice + Number(fib.nearestLevel)) / 2);
+    entry_strategy = `Buy on Weakness (Fibonacci Bounce) area Rp ${entry.toLocaleString('id-ID')}.\nSL ketat jika breakdown Rp ${Math.round(entry - atr14 * 1.5).toLocaleString('id-ID')} (-1.5 ATR).\nTarget Profit di area Rp ${Math.round(entry + atr14 * 3).toLocaleString('id-ID')} (3 ATR).`;
+  } else if (distFromMA20pct > 0.5 && distFromMA20pct < 5) {
+    entry = Math.round((currentPrice + ma20) / 2);
+    entry_strategy = `Buy on Pullback dekat MA20 area Rp ${entry.toLocaleString('id-ID')}.\nSL di Rp ${Math.round(entry - atr14 * 2).toLocaleString('id-ID')} (-2 ATR).\nTarget di Rp ${Math.round(entry + atr14 * 3).toLocaleString('id-ID')}.`;
+  } else {
+    entry = Math.round(currentPrice - atr14 * 0.5);
+    entry_strategy = `Buy cicil di area Rp ${entry.toLocaleString('id-ID')} antisipasi fluktuasi normal.\nSL di Rp ${Math.round(entry - atr14 * 2).toLocaleString('id-ID')} (-2 ATR).\nTarget di Rp ${Math.round(entry + atr14 * 3).toLocaleString('id-ID')}.`;
+  }
+  const sl = Math.max(1, Math.round(entry - atr14 * 2));
+  const tp = Math.round(entry + atr14 * 3);
 
   // ── Determine entry quality label ──────────────────────────
   const goldenCross = ma50 > 0 && ma20 > ma50;
@@ -371,6 +414,10 @@ function screenSwing(ticker: string, bars: OHLCVBar[], minPrice: number, maxPric
     distFromMA20pct: parseFloat(distFromMA20pct.toFixed(2)),
     goldenCross,
     swingScore,
+    fibNearest:      fib ? fib.nearestLevel : null,
+    fibDistancePct:  fib ? fib.distancePct : null,
+    fibBouncing:     fib ? fib.isBouncing : false,
+    entry, tp, sl, entry_strategy,
     // Day fields (empty)
     volumeRatio: 0, aboveVWAP: true, dayScore: 0,
   };
@@ -422,6 +469,9 @@ async function getWatchlistData() {
   }
 }
 
+import fs from 'fs';
+import path from 'path';
+
 // ── Main Route ────────────────────────────────────────────────
 export async function GET(request: NextRequest) {
   // ── Rate Limit Guard (20 req/60s — expensive endpoint) ────
@@ -433,7 +483,22 @@ export async function GET(request: NextRequest) {
   const minPrice    = Number(searchParams.get('minPrice') || 0);
   const maxPrice    = Number(searchParams.get('maxPrice') || 999999);
   const searchQuery = (searchParams.get('q') || '').toUpperCase().trim();
-  const sortBy      = searchParams.get('sortBy') || 'score'; // score | price_asc | price_desc | change
+  const sortBy      = searchParams.get('sort') || 'score';
+
+  // ── 🛡️ Check Market Guardian State ──────────────────────────
+  let isRiskOff = false;
+  try {
+    const statePath = path.join(process.cwd(), 'engine', 'market_state.json');
+    if (fs.existsSync(statePath)) {
+      const state = JSON.parse(fs.readFileSync(statePath, 'utf8'));
+      if (state?.kill_switch_active === true) {
+        isRiskOff = true;
+        console.warn(`[Screener] RISK-OFF MODE ACTIVE. IHSG: ${state.ihsg_change_pct}%. Only allowing high quality setups.`);
+      }
+    }
+  } catch (err) {
+    console.error('Failed to read market state:', err);
+  }
 
   try {
     // ── WATCHLIST DATA (for watchlist tab + inWatchlist flag) ─
@@ -510,10 +575,18 @@ export async function GET(request: NextRequest) {
     for (const [ticker, bars] of barsMap) {
       if (mode === 'daytrade') {
         const hit = screenDayTrade(ticker, bars, minPrice, maxPrice);
-        if (hit) screened.push({ ...hit, id: ticker, emiten: ticker, name: wl.names.get(ticker) || ticker, inWatchlist: wl.codes.has(ticker) });
+        if (hit) {
+          if (hit.dayScore < 60) continue;
+          if (isRiskOff && hit.dayScore < 80) continue;
+          screened.push({ ...hit, id: ticker, emiten: ticker, name: wl.names.get(ticker) || ticker, inWatchlist: wl.codes.has(ticker) });
+        }
       } else if (mode === 'swing') {
         const hit = screenSwing(ticker, bars, minPrice, maxPrice);
-        if (hit) screened.push({ ...hit, id: ticker, emiten: ticker, name: wl.names.get(ticker) || ticker, inWatchlist: wl.codes.has(ticker) });
+        if (hit) {
+          if (hit.swingScore < 50) continue;
+          if (isRiskOff && (hit.swingScore < 70 || !hit.goldenCross)) continue;
+          screened.push({ ...hit, id: ticker, emiten: ticker, name: wl.names.get(ticker) || ticker, inWatchlist: wl.codes.has(ticker) });
+        }
       } else if (mode === 'whale') {
         // Pre-filter: use swing logic but slightly looser (min swing score > 0)
         const hit = screenSwing(ticker, bars, minPrice, maxPrice);
@@ -625,7 +698,7 @@ export async function GET(request: NextRequest) {
             messages: [{ role: 'user', content: prompt }],
             temperature: 0.3
           }),
-          signal: AbortSignal.timeout(15000)
+          signal: AbortSignal.timeout(60000)
         });
         
         let aiJsonStr = '';

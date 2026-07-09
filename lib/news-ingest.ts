@@ -46,24 +46,52 @@ export async function getNewsSentiment(tickers: string[]): Promise<NewsSentiment
           }
 
           if (headlines.length > 0) {
-            // Determine sentiment using lightweight keyword heuristics
-            const primaryHeadline = headlines[0];
-            const textLower = primaryHeadline.toLowerCase();
+            // Evaluate sentiment using local Ollama (Llama3 or Mistral)
+            const prompt = `Analyze these news headlines for the Indonesian stock '${ticker}':\n${headlines.join('\n')}\nReply ONLY with one word: Bullish, Bearish, or Neutral.`;
+            
             let sentiment: 'Bullish' | 'Bearish' | 'Neutral' = 'Neutral';
-
-            const bullishWords = ['laba', 'naik', 'untung', 'melesat', 'rekomendasi buy', 'akuisisi', 'ekspansi', 'tumbuh', 'positif', 'bullish'];
-            const bearishWords = ['rugi', 'turun', 'anjlok', 'merosot', 'gagal', 'divestasi', 'negatif', 'bearish', 'ambruk', 'sanksi'];
-
-            const bullHits = bullishWords.filter(w => textLower.includes(w)).length;
-            const bearHits = bearishWords.filter(w => textLower.includes(w)).length;
-
-            if (bullHits > bearHits) sentiment = 'Bullish';
-            else if (bearHits > bullHits) sentiment = 'Bearish';
+            try {
+              const ollamaRes = await fetch('http://localhost:11434/api/generate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  model: 'llama3.1',
+                  prompt: prompt,
+                  stream: false,
+                }),
+                signal: AbortSignal.timeout(10000), // 10s timeout per batch
+              });
+              
+              if (ollamaRes.ok) {
+                const ollamaData = await ollamaRes.json();
+                const responseText = ollamaData.response?.trim().toLowerCase() || '';
+                if (responseText.includes('bullish')) sentiment = 'Bullish';
+                else if (responseText.includes('bearish')) sentiment = 'Bearish';
+                
+                // 🧠 Send to Memory Agent (ChromaDB)
+                try {
+                  await fetch('http://localhost:8001/store', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      ticker: ticker,
+                      text: headlines.join(' | '),
+                      sentiment: sentiment,
+                      timestamp: Date.now()
+                    }),
+                  });
+                } catch (dbErr) {
+                  console.warn(`[MemoryAgent] Failed to store ${ticker}:`, dbErr instanceof Error ? dbErr.message : dbErr);
+                }
+              }
+            } catch (ollamaErr) {
+              console.warn(`[Ollama] Failed for ${ticker}, fallback to Neutral:`, ollamaErr instanceof Error ? ollamaErr.message : ollamaErr);
+            }
 
             results.push({
               ticker,
               sentiment,
-              headline: primaryHeadline,
+              headline: headlines[0] || '',
             });
           } else {
             results.push({

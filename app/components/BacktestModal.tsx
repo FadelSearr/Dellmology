@@ -45,33 +45,6 @@ export default function BacktestModal({ emiten, isOpen, onClose, chartData }: Ba
   if (!isOpen) return null;
 
   const runBacktest = async () => {
-    if (!chartData || chartData.length < 30) {
-      setError('Not enough real historical data available for backtesting (Need at least 30 days).');
-      return;
-    }
-
-    // Convert Lightweight Chart Data to OHLCV format expected by Backtest engine
-    const mappedData = chartData.map(d => ({
-      date: new Date(d.time * 1000).toISOString().split('T')[0],
-      open: d.open,
-      high: d.high,
-      low: d.low,
-      close: d.close,
-      volume: d.value || 0
-    }));
-
-    // Generate synthetic broker data since we only have OHLCV from Yahoo Finance.
-    // If price closes higher than open, simulate whale accumulation (HAKA > 0.5).
-    const syntheticBrokerData = mappedData.map(d => {
-      const isGreen = d.close > d.open;
-      const bodySize = Math.abs(d.close - d.open) / d.open;
-      return {
-        netValue: isGreen ? d.volume * d.close * bodySize * 0.3 : -d.volume * d.close * bodySize * 0.3,
-        consistency: isGreen ? 60 + (bodySize * 100) : 40 - (bodySize * 100),
-        hakaRatio: isGreen ? 0.55 + (bodySize * 2) : 0.45 - (bodySize * 2),
-      };
-    });
-
     setLoading(true);
     setError(null);
     try {
@@ -79,13 +52,7 @@ export default function BacktestModal({ emiten, isOpen, onClose, chartData }: Ba
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          data: mappedData,
-          brokerData: syntheticBrokerData,
-          config: {
-            strategy: 'ups_momentum',
-            version: 'v1.0',
-            ...config,
-          },
+          ticker: `${emiten}.JK`
         }),
       });
       const json = await res.json();
