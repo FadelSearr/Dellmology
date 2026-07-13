@@ -13,11 +13,17 @@ from pydantic import BaseModel
 import numpy as np
 import logging
 
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from engine.fundamental_analyzer import FundamentalAnalyzer
+
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Dellmology CNN Vision Engine", version="1.0.0")
+analyzer = FundamentalAnalyzer()
 
 # ── Mock Model Loading ─────────────────────────────────────────
 # In production, this would load a real .h5 or .pt model
@@ -34,6 +40,14 @@ class PatternResponse(BaseModel):
 @app.get("/health")
 def health_check():
     return {"status": "online", "engine": "CNN Vision Engine (FastAPI)"}
+
+@app.get("/analyze/fundamental/{ticker}")
+def analyze_fundamental(ticker: str):
+    """
+    Runs fundamental analysis using Yahoo Finance via yfinance.
+    """
+    result = analyzer.analyze_stock(ticker)
+    return result
 
 @app.post("/analyze/chart", response_model=PatternResponse)
 async def analyze_chart(file: UploadFile = File(...)):
@@ -106,5 +120,5 @@ def analyze_timeseries(data: list[dict]):
     }
 
 if __name__ == "__main__":
-    logger.info("Starting Dellmology CNN Worker on port 8001...")
-    uvicorn.run(app, host="0.0.0.0", port=8001)
+    logger.info("Starting Dellmology CNN Worker on port 8002...")
+    uvicorn.run(app, host="0.0.0.0", port=8002)

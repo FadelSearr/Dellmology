@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getPrice, getCacheStats, type PriceData } from '@/lib/price-sync';
 import { fetchOrderbook } from '@/lib/stockbit';
-import { mockWatchlist } from '@/lib/mock-data';
 
 /* ══════════════════════════════════════════════════════════════
    Data Integrity Health Check
@@ -29,7 +28,6 @@ interface IntegrityResult {
     unified: SourcePrice;
     stockbit: SourcePrice;
     yahoo: SourcePrice;
-    mock: SourcePrice;
   };
   maxDiffPercent: number;
   status: 'ok' | 'warning' | 'error';
@@ -72,11 +70,6 @@ async function fetchStockbitPrice(ticker: string): Promise<number> {
   }
 }
 
-// Get mock price
-function getMockPrice(ticker: string): number {
-  const mock = mockWatchlist.find(m => m.code === ticker);
-  return mock?.price || 0;
-}
 
 // Calculate price variance
 function calculateVariance(prices: number[]): { maxDiff: number; maxDiffPercent: number } {
@@ -100,11 +93,10 @@ export async function GET() {
     for (const ticker of TEST_TICKERS) {
       try {
         // Fetch from all sources in parallel
-        const [unifiedData, stockbitPrice, yahooPrice, mockPrice] = await Promise.all([
+        const [unifiedData, stockbitPrice, yahooPrice] = await Promise.all([
           getPrice(ticker, true), // Force refresh to bypass cache
           fetchStockbitPrice(ticker),
           fetchYahooPrice(ticker),
-          Promise.resolve(getMockPrice(ticker)),
         ]);
 
         // Build price comparison
@@ -123,15 +115,10 @@ export async function GET() {
             source: 'yahoo',
             error: yahooPrice === 0 ? 'Failed to fetch' : undefined,
           },
-          mock: {
-            price: mockPrice,
-            source: 'mock',
-            error: mockPrice === 0 ? 'Not in mock data' : undefined,
-          },
         };
 
         // Calculate variance
-        const allPrices = [stockbitPrice, yahooPrice, mockPrice].filter(p => p > 0);
+        const allPrices = [stockbitPrice, yahooPrice].filter(p => p > 0);
         const { maxDiffPercent } = calculateVariance(allPrices);
 
         // Determine status
@@ -157,7 +144,6 @@ export async function GET() {
             unified: { price: 0, source: 'unknown', error: 'Failed' },
             stockbit: { price: 0, source: 'stockbit', error: 'Failed' },
             yahoo: { price: 0, source: 'yahoo', error: 'Failed' },
-            mock: { price: 0, source: 'mock', error: 'Failed' },
           },
           maxDiffPercent: 0,
           status: 'error',
@@ -239,12 +225,6 @@ function generateRecommendations(results: IntegrityResult[]): string[] {
     acc[r.prices.unified.source] = (acc[r.prices.unified.source] || 0) + 1;
     return acc;
   }, {} as Record<string, number>);
-
-  if (sourceCounts.mock && sourceCounts.mock > results.length / 2) {
-    recommendations.push(
-      `⚠️ More than 50% of prices are from mock data. Real data sources may be unavailable.`
-    );
-  }
 
   if (recommendations.length === 0) {
     recommendations.push('✅ All data sources are healthy and synchronized.');

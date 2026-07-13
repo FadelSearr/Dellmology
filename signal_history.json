@@ -5,7 +5,7 @@
     "tp": 144,
     "sl": 126,
     "sentAt": "2026-07-09T01:30:06.070Z",
-    "status": "PENDING",
+    "status": "EXPIRED",
     "dayHighChecked": null
   },
   {
@@ -14,7 +14,7 @@
     "tp": 134,
     "sl": 117,
     "sentAt": "2026-07-09T01:30:06.070Z",
-    "status": "PENDING",
+    "status": "EXPIRED",
     "dayHighChecked": null
   },
   {
@@ -23,7 +23,7 @@
     "tp": 229,
     "sl": 201,
     "sentAt": "2026-07-09T01:30:06.070Z",
-    "status": "PENDING",
+    "status": "EXPIRED",
     "dayHighChecked": null
   },
   {
@@ -32,7 +32,7 @@
     "tp": 124,
     "sl": 109,
     "sentAt": "2026-07-09T01:30:06.070Z",
-    "status": "PENDING",
+    "status": "EXPIRED",
     "dayHighChecked": null
   },
   {
@@ -41,6 +41,96 @@
     "tp": 307,
     "sl": 270,
     "sentAt": "2026-07-09T01:30:06.070Z",
+    "status": "EXPIRED",
+    "dayHighChecked": null
+  },
+  {
+    "emiten": "KAEF",
+    "entry": 450,
+    "tp": 524,
+    "sl": 399,
+    "sentAt": "2026-07-10T01:30:02.419Z",
+    "status": "EXPIRED",
+    "dayHighChecked": null
+  },
+  {
+    "emiten": "AISA",
+    "entry": 106,
+    "tp": 112,
+    "sl": 99,
+    "sentAt": "2026-07-10T01:30:02.419Z",
+    "status": "EXPIRED",
+    "dayHighChecked": null
+  },
+  {
+    "emiten": "SKLT",
+    "entry": 185,
+    "tp": 220,
+    "sl": 160,
+    "sentAt": "2026-07-10T01:30:02.419Z",
+    "status": "EXPIRED",
+    "dayHighChecked": null
+  },
+  {
+    "emiten": "ECII",
+    "entry": 136,
+    "tp": 166,
+    "sl": 106,
+    "sentAt": "2026-07-10T01:30:02.419Z",
+    "status": "EXPIRED",
+    "dayHighChecked": null
+  },
+  {
+    "emiten": "TRUK",
+    "entry": 420,
+    "tp": 531,
+    "sl": 336,
+    "sentAt": "2026-07-10T01:30:02.419Z",
+    "status": "EXPIRED",
+    "dayHighChecked": null
+  },
+  {
+    "emiten": "NELY",
+    "entry": 206,
+    "tp": 233,
+    "sl": 183,
+    "sentAt": "2026-07-13T01:30:02.196Z",
+    "status": "PENDING",
+    "dayHighChecked": null
+  },
+  {
+    "emiten": "PTPP",
+    "entry": 195,
+    "tp": 218,
+    "sl": 173,
+    "sentAt": "2026-07-13T01:30:02.196Z",
+    "status": "PENDING",
+    "dayHighChecked": null
+  },
+  {
+    "emiten": "SPMA",
+    "entry": 172,
+    "tp": 192,
+    "sl": 152,
+    "sentAt": "2026-07-13T01:30:02.196Z",
+    "status": "PENDING",
+    "dayHighChecked": null
+  },
+  {
+    "emiten": "ASRI",
+    "entry": 117,
+    "tp": 124,
+    "sl": 109,
+    "sentAt": "2026-07-13T01:30:02.196Z",
+    "status": "PENDING",
+    "dayHighChecked": null
+  },
+  {
+    "emiten": "SKLT",
+    "entry": 190,
+    "tp": 201,
+    "sl": 177,
+    "sentAt": "2026-07-13T01:30:02.196Z",
     "status": "PENDING",
     "dayHighChecked": null
   }

@@ -9,7 +9,7 @@ import Brain from './components/Brain';
 import OracleScreen from './components/OracleScreen';
 import CombatMode from './components/CombatMode';
 import BacktestModal from './components/BacktestModal';
-import { useStockData, useWatchlist, useNarrative, useChartData, useAutoRefresh, usePortfolio, useBrokerHistory } from '@/app/hooks/useData';
+import { useStockData, useWatchlist, useFundamental, useChartData, useAutoRefresh, usePortfolio, useBrokerHistory } from '@/app/hooks/useData';
 import { calculateBeta } from '@/lib/analysis';
 import type { BrokerData } from '@/lib/types';
 
@@ -59,24 +59,7 @@ export default function Home() {
     );
   }
 
-  const { data: aiNarrative, loading: aiLoading } = useNarrative({
-    emiten:        selectedEmiten,
-    price:         price,
-    change:        stockData?.change || 0,
-    changePercent: stockData?.changePercent || 0,
-    ups:           stockData?.ups || 50,
-    regime:        (stockData?.ups || 50) >= 60 ? 'uptrend' : (stockData?.ups || 50) <= 40 ? 'downtrend' : 'sideways',
-    zScore:        stockData?.zScore || 0,
-    atr:           atr,
-    topBrokers:    [...topBuyers, ...topSellers],
-    mfi:           stockData?.mfi ?? 50,
-    orderFlow: {
-      spoofingDetected: stockData?.spoofingAlert || false,
-      icebergDetected: stockData?.icebergDetected || false,
-      bigWalls: (stockData?.totalBid || 0) > (stockData?.totalOffer || 0) * 2 ? [stockData?.totalBid || 0] : [],
-    },
-    whaleZHeatmap: [stockData?.zScore || 0], // placeholder for now
-  });
+  const { data: fundamentalData, loading: fundamentalLoading, error: fundamentalError } = useFundamental(selectedEmiten);
 
   if (stockError) {
     return (
@@ -216,8 +199,9 @@ export default function Home() {
             />
             <Brain
               selectedEmiten={selectedEmiten}
-              narrativeData={aiNarrative}
-              loading={aiLoading}
+              fundamentalData={fundamentalData}
+              loading={fundamentalLoading}
+              error={fundamentalError}
               price={price}
               atr={atr}
               ups={selectedStock.ups}

@@ -4,8 +4,9 @@ import { fmt } from '@/lib/utils';
 
 interface BrainProps {
   selectedEmiten: string;
-  narrativeData?: any;
+  fundamentalData?: any;
   loading?: boolean;
+  error?: string | null;
   price?: number;
   atr?: number;
   ups?: number;
@@ -14,97 +15,159 @@ interface BrainProps {
   onRunBacktest?: () => void;
 }
 
-export default function Brain({ selectedEmiten, narrativeData, loading, price, atr = 0, ups = 50, signal = 'neutral', beta = 1, onRunBacktest }: BrainProps) {
-  // narrativeData comes from apiFetch which already returns json.data
-  const n = narrativeData || {
-    confidence: 'medium',
-    summary: loading ? '⏳ Generating AI narrative...' : 'Menunggu data harga untuk analisis.',
-    bullCase: loading ? '...' : '-',
-    bearCase: loading ? '...' : '-',
-    keyPoints: [],
-  };
-
+export default function Brain({ selectedEmiten, fundamentalData, loading, error, price, atr = 0, ups = 50, signal = 'neutral', beta = 1, onRunBacktest }: BrainProps) {
+  const f = fundamentalData?.data || fundamentalData || null;
+  const metrics = f?.metrics || {};
+  const insight = f?.insight || {};
+  
   const p = price || 0;
   const stopLoss = p - atr * 1.5;
   const takeProfit = p + atr * 2;
 
   return (
     <div className="brain" id="brain">
-      {/* AI Narrative */}
+      {/* Fundamental Analysis */}
       <div className="brain__narrative">
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, color: 'var(--text-secondary)' }}>
-            <BrainIcon size={13} color={loading ? 'var(--text-muted)' : 'var(--accent-cyan)'} className={loading ? 'spin-slow' : ''} /> AI Narrative — {selectedEmiten}
+            <BrainIcon size={13} color={loading ? 'var(--text-muted)' : 'var(--accent-cyan)'} className={loading ? 'spin-slow' : ''} /> Fundamental Analysis — {selectedEmiten}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            {n.riskLevel && (
+            {insight.overall_rating && (
               <span style={{ 
                 fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 4, display: 'flex', alignItems: 'center', gap: 3,
-                background: n.riskLevel === 'Low' ? 'rgba(46,189,133,0.15)' : n.riskLevel === 'Medium' ? 'rgba(245,158,11,0.15)' : 'rgba(224,41,74,0.15)',
-                color: n.riskLevel === 'Low' ? 'var(--color-bullish)' : n.riskLevel === 'Medium' ? 'var(--color-warning)' : 'var(--color-bearish)'
+                background: insight.overall_rating.includes('BUY') ? 'rgba(46,189,133,0.15)' : insight.overall_rating.includes('SELL') ? 'rgba(224,41,74,0.15)' : 'rgba(245,158,11,0.15)',
+                color: insight.overall_rating.includes('BUY') ? 'var(--color-bullish)' : insight.overall_rating.includes('SELL') ? 'var(--color-bearish)' : 'var(--color-warning)'
               }}>
-                <Shield size={9} /> {n.riskLevel} Risk
+                <Shield size={9} /> {insight.overall_rating}
               </span>
             )}
-            <span className={`confidence-badge confidence-badge--${n.confidence}`}>
-              {(n.confidence || 'medium').toUpperCase()}
-            </span>
           </div>
         </div>
 
         {loading ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <div style={{ height: 12, background: 'var(--border-default)', borderRadius: 4, width: '100%', animation: 'shimmer 1.5s ease-in-out infinite' }} />
-            <div style={{ height: 12, background: 'var(--border-default)', borderRadius: 4, width: '80%', animation: 'shimmer 1.5s ease-in-out infinite 0.2s' }} />
-            <div style={{ height: 12, background: 'var(--border-default)', borderRadius: 4, width: '60%', animation: 'shimmer 1.5s ease-in-out infinite 0.4s' }} />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '10px 0' }}>
+            <div style={{ fontSize: 10, color: 'var(--text-muted)', display: 'flex', justifyContent: 'space-between' }}>
+              <span>Menganalisis Fundamental...</span>
+              <span className="loading-dots"></span>
+            </div>
+            <div style={{ width: '100%', height: 4, background: 'rgba(255,255,255,0.1)', borderRadius: 2, overflow: 'hidden' }}>
+              <div style={{ 
+                height: '100%', 
+                background: 'linear-gradient(90deg, var(--accent-cyan), #3b82f6)', 
+                width: '50%',
+                borderRadius: 2,
+                animation: 'progress-bar 1.5s ease-in-out infinite alternate'
+              }} />
+            </div>
+            <style>{`
+              @keyframes progress-bar {
+                0% { width: 0%; opacity: 0.8; }
+                100% { width: 100%; opacity: 1; }
+              }
+              .loading-dots::after {
+                content: '';
+                animation: loading-dots 1.5s infinite steps(4, end);
+              }
+              @keyframes loading-dots {
+                0%, 20% { content: ''; }
+                40% { content: '.'; }
+                60% { content: '..'; }
+                80%, 100% { content: '...'; }
+              }
+            `}</style>
           </div>
+        ) : error ? (
+          <div style={{ fontSize: 11, color: 'var(--color-bearish)', padding: '10px 0', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span>⚠️</span> {error === 'fetch failed' ? 'Gagal menghubungi server Python. Pastikan worker berjalan.' : error}
+          </div>
+        ) : !f ? (
+          <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Menunggu data fundamental...</div>
         ) : (
           <>
-            <div className="brain__narrative-text" dangerouslySetInnerHTML={{
-              __html: (n.summary || '').replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-            }} />
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12 }}>
+              {/* Valuation */}
+              <div style={{ padding: 8, background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border-color)', borderRadius: 6 }}>
+                <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--accent-cyan)', marginBottom: 4, textTransform: 'uppercase' }}>Valuation</div>
+                <div style={{ fontSize: 10, color: 'var(--text-main)', display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: 'var(--text-muted)' }}>P/E Ratio</span>
+                    <span>{metrics.pe_ratio || '-'} {insight.valuation?.pe_status}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: 'var(--text-muted)' }}>P/B Ratio</span>
+                    <span>{metrics.pb_ratio || '-'} {insight.valuation?.pb_status}</span>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Profitability */}
+              <div style={{ padding: 8, background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border-color)', borderRadius: 6 }}>
+                <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--accent-cyan)', marginBottom: 4, textTransform: 'uppercase' }}>Profitability</div>
+                <div style={{ fontSize: 10, color: 'var(--text-main)', display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: 'var(--text-muted)' }}>ROE</span>
+                    <span>{metrics.roe ? `${metrics.roe}%` : '-'} {insight.profitability?.roe_status?.includes('✅') ? '✅' : '⚠️'}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: 'var(--text-muted)' }}>Margin</span>
+                    <span>{metrics.net_profit_margin ? `${metrics.net_profit_margin}%` : '-'} {insight.profitability?.margin_status?.includes('✅') ? '✅' : '⚠️'}</span>
+                  </div>
+                </div>
+              </div>
 
-            {/* Key Points */}
-            {n.keyPoints && n.keyPoints.length > 0 && (
+              {/* Liquidity */}
+              <div style={{ padding: 8, background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border-color)', borderRadius: 6 }}>
+                <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--accent-cyan)', marginBottom: 4, textTransform: 'uppercase' }}>Liquidity & Debt</div>
+                <div style={{ fontSize: 10, color: 'var(--text-main)', display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: 'var(--text-muted)' }}>Current Ratio</span>
+                    <span>{metrics.current_ratio || '-'} {insight.liquidity?.status?.includes('✅') ? '✅' : '⚠️'}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: 'var(--text-muted)' }}>DER</span>
+                    <span>{metrics.debt_to_equity || '-'} {insight.liquidity?.debt_status?.includes('✅') ? '✅' : '⚠️'}</span>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Dividend */}
+              <div style={{ padding: 8, background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border-color)', borderRadius: 6 }}>
+                <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--accent-cyan)', marginBottom: 4, textTransform: 'uppercase' }}>Income</div>
+                <div style={{ fontSize: 10, color: 'var(--text-main)', display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: 'var(--text-muted)' }}>Dividend Yield</span>
+                    <span>{insight.growth?.dividend || '-'}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Recommendation */}
+            {insight.recommendation && (
+              <div style={{ marginTop: 8, padding: '8px 10px', background: 'rgba(0,0,0,0.2)', border: '1px dashed var(--border-color)', borderRadius: 6 }}>
+                <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--accent-cyan)', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 4, textTransform: 'uppercase' }}>
+                  <Target size={10} /> Insight Generation
+                </div>
+                <div style={{ fontSize: 10, color: 'var(--text-main)', lineHeight: 1.4 }}>
+                  {insight.recommendation}
+                </div>
+              </div>
+            )}
+            
+            {/* Warnings */}
+            {insight.warning && insight.warning.length > 0 && (
               <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 3 }}>
-                {n.keyPoints.map((kp: string, i: number) => (
-                  <div key={i} style={{ fontSize: 10, color: 'var(--text-secondary)', display: 'flex', gap: 6, alignItems: 'flex-start' }}>
-                    <span style={{ color: 'var(--accent-cyan)', fontWeight: 700, flexShrink: 0 }}>•</span>
-                    <span>{kp}</span>
+                {insight.warning.map((warn: string, i: number) => (
+                  <div key={i} style={{ fontSize: 10, color: 'var(--color-warning)', display: 'flex', gap: 6, alignItems: 'flex-start' }}>
+                    <span style={{ fontWeight: 700, flexShrink: 0 }}>⚠️</span>
+                    <span>{warn}</span>
                   </div>
                 ))}
               </div>
             )}
-            {/* Entry Strategy */}
-            {n.entryStrategy && (
-              <div style={{ marginTop: 10, padding: '8px 10px', background: 'rgba(0,0,0,0.2)', border: '1px dashed var(--border-color)', borderRadius: 6 }}>
-                <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--accent-cyan)', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 4, textTransform: 'uppercase' }}>
-                  <Target size={10} /> Entry Strategy
-                </div>
-                <div style={{ fontSize: 10, color: 'var(--text-main)', lineHeight: 1.4 }}>
-                  {n.entryStrategy}
-                </div>
-              </div>
-            )}
           </>
         )}
-
-        {/* ── Adversarial Prompting Split View ── */}
-        <div style={{ marginTop: 12 }}>
-          <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
-            <span>⚡ Adversarial Mode (AI vs AI)</span>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-            <div style={{ padding: 8, background: 'var(--color-bullish-glow)', border: '1px solid rgba(46,189,133,0.2)', borderRadius: 6, fontSize: 11 }}>
-              <div style={{ fontWeight: 800, color: 'var(--color-bullish)', marginBottom: 4 }}>🐂 BULL CASE</div>
-              <div style={{ color: 'var(--text-secondary)', lineHeight: 1.5 }}>{n.bullCase}</div>
-            </div>
-            <div style={{ padding: 8, background: 'var(--color-bearish-glow)', border: '1px solid rgba(224,41,74,0.2)', borderRadius: 6, fontSize: 11 }}>
-              <div style={{ fontWeight: 800, color: 'var(--color-bearish)', marginBottom: 4 }}>🐻 BEAR CASE</div>
-              <div style={{ color: 'var(--text-secondary)', lineHeight: 1.5 }}>{n.bearCase}</div>
-            </div>
-          </div>
-        </div>
       </div>
 
       <style>{`
@@ -188,7 +251,7 @@ export default function Brain({ selectedEmiten, narrativeData, loading, price, a
                     emiten: selectedEmiten,
                     price: p,
                     ups,
-                    summary: n.summary,
+                    summary: insight.recommendation || 'Fundamental analysis',
                     signal,
                     atr,
                     stopLoss,

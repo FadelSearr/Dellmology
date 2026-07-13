@@ -4,6 +4,10 @@ import { IDX_TICKERS } from '@/lib/idx-tickers';
 import { getBrokerProfile } from '@/lib/broker-profiles';
 import { rateLimit } from '@/lib/rateLimit';
 import { calculateFibonacciLevels, atr } from '@/lib/analysis';
+import { getPrices } from '@/lib/price-sync';
+
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 /* ══════════════════════════════════════════════════════════════
    Screener Engine — Dellmology Pro
@@ -529,6 +533,19 @@ export async function GET(request: NextRequest) {
           ma20: 0, ma50: 0, rsi14: 0,
         };
       });
+
+      if (results.length > 0) {
+        const realPrices = await getPrices(results.map(r => r.code));
+        for (const item of results) {
+          const p = realPrices.get(item.code);
+          if (p && p.price > 0) {
+            item.price = p.price;
+            if (p.changePercent !== undefined) item.changePercent = p.changePercent;
+            if (p.change !== undefined) item.change = p.change;
+          }
+        }
+      }
+
       return NextResponse.json({
         success: true,
         data: { mode: 'search', count: results.length, results },
@@ -560,6 +577,19 @@ export async function GET(request: NextRequest) {
           ma20: 0, ma50: 0, rsi14: 0,
         };
       }).sort((a, b) => b.volume - a.volume);
+
+      if (results.length > 0) {
+        const realPrices = await getPrices(results.map(r => r.code));
+        for (const item of results) {
+          const p = realPrices.get(item.code);
+          if (p && p.price > 0) {
+            item.price = p.price;
+            if (p.changePercent !== undefined) item.changePercent = p.changePercent;
+            if (p.change !== undefined) item.change = p.change;
+          }
+        }
+      }
+
       return NextResponse.json({
         success: true,
         data: { mode: 'watchlist', count: results.length, results },
@@ -768,8 +798,29 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // ── Apply Real-Time Prices ───────────────────────────────
+    if (screened.length > 0) {
+      const tickers = screened.map((s: any) => s.emiten);
+      const realPrices = await getPrices(tickers);
+      
+      for (const item of screened) {
+        const p = realPrices.get(item.emiten);
+        if (p && p.price > 0) {
+          item.price = p.price;
+          // Only override changePercent if we have a valid previous close to compare against, 
+          // or trust the real-time source's changePercent if available
+          if (p.changePercent !== undefined) {
+             item.changePercent = p.changePercent;
+          }
+          if (p.change !== undefined) {
+             item.change = p.change;
+          }
+        }
+      }
+    }
+
     // ── Sort ─────────────────────────────────────────────────
-    screened.sort((a, b) => {
+    screened.sort((a: any, b: any) => {
       if (sortBy === 'price_asc')  return a.price - b.price;
       if (sortBy === 'price_desc') return b.price - a.price;
       if (sortBy === 'change')     return b.changePercent - a.changePercent;

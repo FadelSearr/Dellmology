@@ -104,79 +104,39 @@ export function useChartData(emiten: string, timeframe: string = '1D') {
   return { data, atr, loading, error };
 }
 
-// ── useNarrative ─────────────────────────────────────────────
-export function useNarrative(params: {
-  emiten: string;
-  price?: number;
-  change?: number;
-  changePercent?: number;
-  ups?: number;
-  regime?: string;
-  zScore?: number;
-  atr?: number;
-  topBrokers?: BrokerData[];
-  mfi?: number;
-  fiveDayFlow?: number;
-  orderFlow?: {
-    spoofingDetected: boolean;
-    icebergDetected: boolean;
-    bigWalls: number[];
-  };
-  whaleZHeatmap?: number[];
-}) {
-  const [data, setData] = useState<AINarrative | null>(null);
+// ── useFundamental ─────────────────────────────────────────────
+export function useFundamental(emiten: string) {
+  const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const lastFetched = useRef<string>('');
 
   useEffect(() => {
-    // Only fetch when we have real price data loaded
-    if (!params.emiten || !params.price || params.price <= 0) return;
+    if (!emiten) return;
 
-    // Avoid re-fetching for same emiten (debounce)
-    const key = `${params.emiten}-${params.price}`;
-    if (lastFetched.current === key) return;
-    lastFetched.current = key;
+    const ticker = emiten.endsWith('.JK') ? emiten : `${emiten}.JK`;
+    if (lastFetched.current === ticker) return;
+    lastFetched.current = ticker;
 
-    async function fetchNarrative() {
+    async function fetchFundamental() {
       setLoading(true);
       setError(null);
       try {
-        const result = await apiFetch<AINarrative>('/api/narrative', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(params),
-        });
+        const res = await fetch(`/api/fundamental?ticker=${ticker}`);
+        const result = await res.json();
+        if (!result.success) throw new Error(result.error || 'Failed');
         setData(result);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Narrative failed');
+        setError(err instanceof Error ? err.message : 'Fundamental analysis failed');
       } finally {
         setLoading(false);
       }
     }
 
-    fetchNarrative();
-  }, [params.emiten, params.price, params.ups, params.zScore]);
+    fetchFundamental();
+  }, [emiten]);
 
-  const refetch = useCallback(async () => {
-    lastFetched.current = ''; // force refresh
-    if (!params.emiten || !params.price) return;
-    setLoading(true);
-    try {
-      const result = await apiFetch<AINarrative>('/api/narrative', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(params),
-      });
-      setData(result);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Narrative failed');
-    } finally {
-      setLoading(false);
-    }
-  }, [params.emiten, params.price]);
-
-  return { data, loading, error, refetch };
+  return { data, loading, error };
 }
 
 // ── useTokenHealth ───────────────────────────────────────────

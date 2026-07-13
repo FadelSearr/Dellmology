@@ -37,16 +37,8 @@ export async function GET(request: NextRequest) {
     if (cachedData) {
       try {
         const parsedCache = JSON.parse(cachedData);
-        // If it's a mock injection, we always return it regardless of TTL
-        if (parsedCache.isMock) {
-            return NextResponse.json({
-                success: true,
-                data: parsedCache.data,
-                cached: true,
-                generatedAt: parsedCache.timestamp,
-                ttlMinutes: 9999, // Infinite TTL for mock
-            });
-        }
+        // Proceed with parsing cached data
+
         
         const ttl = getAdaptiveCacheTTL();
         const invalidPick = parsedCache.data?.topPicks?.some((p: any) => {
@@ -317,66 +309,3 @@ export async function GET(request: NextRequest) {
   }
 }
 
-export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json();
-    
-    if (!body || !body.macroSentiment || !body.topPicks) {
-        return NextResponse.json({ success: false, error: 'Invalid mock payload structure' }, { status: 400 });
-    }
-
-    // ── PRICE RANGE VALIDATOR (100-500) ──────────────────────────
-    const PRICE_MIN = 100;
-    const PRICE_MAX = 500;
-    const validationErrors: string[] = [];
-
-    if (Array.isArray(body.topPicks)) {
-      body.topPicks.forEach((pick: any, idx: number) => {
-        if (!pick.emiten) {
-          validationErrors.push(`Pick ${idx}: Missing emiten`);
-        }
-        if (typeof pick.probability !== 'number' || pick.probability < 0 || pick.probability > 100) {
-          validationErrors.push(`Pick ${idx} (${pick.emiten}): Probability must be 0-100`);
-        }
-        // Note: SL/TP are strings in the data, so we parse them
-        const slPrice = parseFloat(pick.stopLoss);
-        const tpPrice = parseFloat(pick.takeProfit);
-        if (isNaN(slPrice) || slPrice < PRICE_MIN || slPrice > PRICE_MAX) {
-          validationErrors.push(`Pick ${idx} (${pick.emiten}): Stop Loss ${slPrice} outside 100-500 range`);
-        }
-        if (isNaN(tpPrice) || tpPrice < PRICE_MIN || tpPrice > PRICE_MAX) {
-          validationErrors.push(`Pick ${idx} (${pick.emiten}): Take Profit ${tpPrice} outside 100-500 range`);
-        }
-      });
-    }
-
-    if (validationErrors.length > 0) {
-      console.warn('[Oracle] Validation warnings:', validationErrors);
-      return NextResponse.json({
-        success: false,
-        error: 'Price range validation failed (100-500 range required)',
-        details: validationErrors
-      }, { status: 400 });
-    }
-    // ────────────────────────────────────────────────────────────
-
-    const now = Date.now();
-    const cachePayload = {
-      timestamp: now,
-      data: body,
-      isMock: true
-    };
-    
-    // Store the injected mock analysis
-    await upsertSession(CACHE_KEY, JSON.stringify(cachePayload), new Date(now + (24 * 60 * 60 * 1000))); // 24h TTL for DB storage
-
-    return NextResponse.json({
-      success: true,
-      message: 'Mock analysis injected successfully (100-500 range validated)',
-      generatedAt: now,
-    });
-  } catch (error: any) {
-    console.error('Oracle Mock Injection Error:', error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
-  }
-}

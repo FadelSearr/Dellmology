@@ -32,10 +32,10 @@ export async function GET() {
     checks.engine = { status: 'offline', latency: Date.now() - engineStart };
   }
 
-  // Check CNN Worker (Python FastAPI on port 8000)
+  // Check CNN Worker (Python FastAPI on port 8001)
   const cnnStart = Date.now();
   try {
-    const cnnUrl = process.env.CNN_HEALTH_URL || 'http://localhost:8000/health';
+    const cnnUrl = process.env.CNN_HEALTH_URL || 'http://localhost:8001/health';
     const res = await fetch(cnnUrl, { signal: AbortSignal.timeout(3000) });
     if (res.ok) {
       checks.cnnWorker = { status: 'online', latency: Date.now() - cnnStart };

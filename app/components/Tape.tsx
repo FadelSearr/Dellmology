@@ -1,7 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { Users, Activity, AlertTriangle, Newspaper, ShieldAlert, TrendingUp } from 'lucide-react';
-import { mockZScores } from '@/lib/mock-data';
 import { fmtCompact } from '@/lib/utils';
 import { getBrokerProfile } from '@/lib/broker-profiles';
 import { detectVolumeAnomalies, calculateBrokerFlowMatrix } from '@/lib/analysis';
@@ -103,7 +102,8 @@ export default function Tape({ selectedEmiten, topBuyers, topSellers, zScore = 0
       };
     });
   } else {
-    liveZScores = [...mockZScores.slice(1), { date: 'Today', zScore: zScore, volume: 0, isAnomaly: Math.abs(zScore) > 1.5 }];
+    // If no chart data, show only today's Z-Score
+    liveZScores = [{ date: 'Today', zScore: zScore, volume: 0, isAnomaly: Math.abs(zScore) > 1.5 }];
   }
 
   // Concentration ratio check

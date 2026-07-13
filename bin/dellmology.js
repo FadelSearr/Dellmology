@@ -48,6 +48,12 @@ const venvPython = path.join(pythonDir, 'venv', 'Scripts', 'python.exe');
 const pythonExec = fs.existsSync(venvPython) ? venvPython : 'python';
 startProcess('PYTHON', pythonExec, ['main.py'], pythonDir, '33'); // Yellow
 
+// 1b. CNN API Worker (FastAPI on port 8001)
+const cnnDir = path.join(rootDir, 'cnn-worker');
+const cnnVenv = path.join(cnnDir, 'venv', 'Scripts', 'python.exe');
+const cnnExec = fs.existsSync(cnnVenv) ? cnnVenv : 'python';
+startProcess('FASTAPI', cnnExec, ['main.py'], cnnDir, '33'); // Yellow
+
 // 2. Go Engine
 const goDir = path.join(rootDir, 'engine');
 startProcess('GO', 'go build -o engine.exe main.go && .\\engine.exe', [], goDir, '35'); // Magenta
