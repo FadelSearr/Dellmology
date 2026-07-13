@@ -2,5 +2,9 @@ fastapi==0.110.0
 uvicorn==0.27.1
 pydantic==2.6.3
 numpy==1.26.4
-# tensorflow==2.15.0  # Uncomment when deploying actual CNN model
-# Pillow==10.2.0      # Uncomment for image processing
+yfinance==0.2.37
+mplfinance==0.9.0
+pandas==2.2.1
+torch==2.2.1
+torchvision==0.17.1
+Pillow==10.2.0

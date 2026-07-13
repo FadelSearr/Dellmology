@@ -25,10 +25,27 @@ logger = logging.getLogger(__name__)
 app = FastAPI(title="Dellmology CNN Vision Engine", version="1.0.0")
 analyzer = FundamentalAnalyzer()
 
-# ── Mock Model Loading ─────────────────────────────────────────
-# In production, this would load a real .h5 or .pt model
-# e.g., model = tf.keras.models.load_model('cnn_pattern_v1.h5')
-logger.info("Loading CNN Pattern Recognition Model...")
+# ── PyTorch Model Loading (Scaffold) ───────────────────────────
+import torch
+import torch.nn as nn
+from torchvision import models, transforms
+from PIL import Image
+
+MODEL_PATH = "pattern_model.pt"
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+# Scaffold for loading the model (Will throw error if file not found)
+try:
+    logger.info(f"Attempting to load CNN Model from {MODEL_PATH} on {device}...")
+    # Example using ResNet18
+    # model = models.resnet18()
+    # model.fc = nn.Linear(model.fc.in_features, 3) # 3 classes
+    # model.load_state_dict(torch.load(MODEL_PATH, map_location=device))
+    # model.eval()
+    # model = model.to(device)
+    logger.info("Model scaffold ready. Waiting for actual pattern_model.pt file.")
+except Exception as e:
+    logger.warning(f"Model not loaded. Using fallback/mock mode. Error: {e}")
 
 class PatternResponse(BaseModel):
     pattern: str
