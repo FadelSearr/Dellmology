@@ -706,15 +706,45 @@ export async function GET(request: NextRequest) {
               }));
               const bd = md?.data?.bandar_detector;
               let bandarSignal = '⚪ NEUTRAL';
-              if (bd?.top3?.accdist === 'ACCUMULATION') bandarSignal = '🟢🟢 STRONG_BUY';
-              else if (bd?.top1?.accdist === 'ACCUMULATION') bandarSignal = '🟢 BUY';
-              else if (bd?.top3?.accdist === 'DISTRIBUTION') bandarSignal = '🔴🔴 STRONG_SELL';
+              const top3Acc = bd?.top3?.accdist?.toLowerCase() || '';
+              const top1Acc = bd?.top1?.accdist?.toLowerCase() || '';
+
+              if (top3Acc.includes('accum')) bandarSignal = '🟢🟢 STRONG_BUY';
+              else if (top1Acc.includes('accum')) bandarSignal = '🟢 BUY';
+              else if (top3Acc.includes('dist')) bandarSignal = '🔴🔴 STRONG_SELL';
 
               const smartMoneyLot = (bd?.top3?.vol || 0);
-              const foreign = (md?.data as any)?.foreign_transaction; // Assuming it exists
-              const foreignNetLot = foreign?.net_buy_vol || 0;
-              const foreignNetVal = foreign?.net_buy_val || 0;
+              let foreignNetLot = 0;
+              let foreignNetVal = 0;
+              let totalForeignVol = 0;
+              let totalVol = 0;
+
+              (md?.data?.broker_summary?.brokers_buy || []).forEach((b: any) => {
+                const lot = parseInt(b.blot || '0');
+                const val = parseFloat(b.bval || '0');
+                const lotv = parseInt(b.blotv || '0');
+                totalVol += lotv;
+                if (b.type === 'Asing') {
+                  foreignNetLot += lot;
+                  foreignNetVal += val;
+                  totalForeignVol += lotv;
+                }
+              });
+
+              (md?.data?.broker_summary?.brokers_sell || []).forEach((s: any) => {
+                const lot = parseInt(s.slot || '0'); // slot is negative
+                const val = parseFloat(s.sval || '0'); // sval is negative
+                const lotv = parseInt(s.slotv || '0');
+                totalVol += lotv;
+                if (s.type === 'Asing') {
+                  foreignNetLot += lot;
+                  foreignNetVal += val;
+                  totalForeignVol += lotv;
+                }
+              });
+
               const foreignStatus = foreignNetLot > 0 ? '🟢 NET BUY ASING' : (foreignNetLot < 0 ? '🔴 NET SELL ASING' : '⚪ NEUTRAL');
+              const foreignParticipation = totalVol > 0 ? (totalForeignVol / totalVol) * 100 : 0;
 
               screened.push({
                 ...cand,

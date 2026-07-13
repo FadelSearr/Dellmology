@@ -15,32 +15,42 @@ function formatTelegramMessage(hit: any, buyers: any[], sellers: any[]): string 
   let smartMoneyNetLot = 0;
   let foreignNetLot = 0;
 
-  const topBuyers = buyers.slice(0, 3).map((b: any) => {
+  buyers.forEach((b: any) => {
     const p = getBrokerProfile(b.netbs_broker_code);
-    const lot = Math.round(parseFloat(b.bval) / 100 / hit.price);
+    const lot = parseInt(b.blot || '0');
     if (p.character === 'institutional_accumulator' || p.character === 'foreign_flow') {
       smartMoneyNetLot += lot;
     }
-    if (p.character === 'foreign_flow') {
+    if (b.type === 'Asing') {
       foreignNetLot += lot;
     }
-    return `  ${b.netbs_broker_code} (${p.name}): +${lot.toLocaleString('en-US')} lot`;
+  });
+
+  sellers.forEach((s: any) => {
+    const p = getBrokerProfile(s.netbs_broker_code);
+    const lot = parseInt(s.slot || '0'); // slot is negative
+    if (p.character === 'institutional_accumulator' || p.character === 'foreign_flow') {
+      smartMoneyNetLot += lot;
+    }
+    if (s.type === 'Asing') {
+      foreignNetLot += lot;
+    }
+  });
+
+  const topBuyers = buyers.slice(0, 3).map((b: any) => {
+    const p = getBrokerProfile(b.netbs_broker_code);
+    const lot = parseInt(b.blot || '0');
+    return `  ${b.netbs_broker_code} (${p.name}): +${lot.toLocaleString('id-ID')} lot`;
   }).join('\n');
 
   const topSellers = sellers.slice(0, 3).map((s: any) => {
     const p = getBrokerProfile(s.netbs_broker_code);
-    const lot = Math.round(parseFloat(s.sval) / 100 / hit.price);
-    if (p.character === 'institutional_accumulator' || p.character === 'foreign_flow') {
-      smartMoneyNetLot -= lot;
-    }
-    if (p.character === 'foreign_flow') {
-      foreignNetLot -= lot;
-    }
-    return `  ${s.netbs_broker_code} (${p.name}): -${lot.toLocaleString('en-US')} lot`;
+    const lot = parseInt(s.slot || '0'); // slot is negative
+    return `  ${s.netbs_broker_code} (${p.name}): ${lot.toLocaleString('id-ID')} lot`;
   }).join('\n');
 
   const bandarSignal = smartMoneyNetLot > 5000 ? '🟢🟢 STRONG_BUY' : (smartMoneyNetLot > 0 ? '🟢 BUY' : '🔴 SELL');
-  const foreignStatus = foreignNetLot > 0 ? '🟢 NET BUY ASING' : '🔴 NET SELL ASING';
+  const foreignStatus = foreignNetLot > 0 ? '🟢 NET BUY ASING' : (foreignNetLot < 0 ? '🔴 NET SELL ASING' : '⚪ NEUTRAL');
   const foreignValString = foreignNetLot > 0 
     ? `Rp${((foreignNetLot * 100 * hit.price) / 1e9).toFixed(1)}B`
     : `Rp${((Math.abs(foreignNetLot) * 100 * hit.price) / 1e9).toFixed(1)}B`;
