@@ -94,6 +94,7 @@ export default function Navbar({ searchQuery, onSearchChange, onCombatMode }: Na
 
   // Build macro items for marquee duplication
   const macroItems = macros.length > 0 ? macros : [];
+
   const macroMarkup = macroItems.map(m => (
     <div key={m.id} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
       <span style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>{m.id}</span>
@@ -107,9 +108,11 @@ export default function Navbar({ searchQuery, onSearchChange, onCombatMode }: Na
   return (
     <nav className="navbar" id="navbar" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexShrink: 0 }}>
-        <div className="navbar__brand">
-          <div className="navbar__brand-icon">⚡</div>
-          <span>DELLMOLOGY <span style={{ color: 'var(--accent-cyan)' }}>PRO</span></span>
+        <div className="navbar__brand" style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+          <div className="navbar__brand-icon" style={{ position: 'absolute', left: 0, zIndex: 2 }}>
+            <img src="/logo.png" alt="Logo" style={{ width: 24, height: 24, objectFit: 'contain' }} className="brand-logo-anim" />
+          </div>
+          <span className="brand-text-anim" style={{ marginLeft: '32px' }}>DELLMOLOGY <span style={{ color: 'var(--accent-cyan)' }}>PRO</span></span>
         </div>
 
         <div className="navbar__search">

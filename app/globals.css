@@ -151,11 +151,34 @@ html, body {
   width: 28px;
   height: 28px;
   border-radius: var(--radius-sm);
-  background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+  background: transparent;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 14px;
+}
+
+.brand-logo-anim {
+  animation: moveIconRight 4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+.brand-text-anim {
+  display: inline-block;
+  white-space: nowrap;
+  animation: wipeTextOut 4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  vertical-align: middle;
+}
+
+@keyframes moveIconRight {
+  0%, 10% { transform: translateX(0); }
+  40%, 60% { transform: translateX(160px); }
+  90%, 100% { transform: translateX(0); }
+}
+
+@keyframes wipeTextOut {
+  0%, 10% { clip-path: inset(0 0 0 0%); opacity: 1; }
+  40%, 60% { clip-path: inset(0 0 0 100%); opacity: 0.5; }
+  90%, 100% { clip-path: inset(0 0 0 0%); opacity: 1; }
 }
 
 .navbar__search {
