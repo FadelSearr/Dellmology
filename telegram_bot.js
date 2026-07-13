@@ -291,13 +291,57 @@ cron.schedule('30 8 * * 1-5', () => {
 
 // 13:30 WIB — Siang (Mid-Session)
 cron.schedule('30 13 * * 1-5', () => {
-  fetchAndBroadcastSignal('☀️ SINYAL SIANG (13:30 WIB)');
+  broadcastOracleReport('☀️ SINYAL SIANG (13:30 WIB)');
 }, { timezone: 'Asia/Jakarta' });
 
 // 16:30 WIB — Sore (Pre-Close)
 cron.schedule('30 16 * * 1-5', () => {
-  fetchAndBroadcastSignal('🌆 SINYAL SORE (16:30 WIB)');
+  broadcastOracleReport('🌆 SINYAL SORE (16:30 WIB)');
 }, { timezone: 'Asia/Jakarta' });
+
+async function broadcastOracleReport(sessionLabel) {
+  const waitMsg = await bot.sendMessage(allowedChatId, `⏳ *${sessionLabel}*\nOracle AI sedang menganalisis pasar...`, { parse_mode: 'Markdown' });
+  try {
+    const res = await fetch('http://127.0.0.1:3000/api/oracle?refresh=true', { signal: AbortSignal.timeout(120000) });
+    const data = await res.json();
+    const picks = data?.data?.topPicks || [];
+    const macro = data?.data?.macroSentiment || 'Market sentiment neutral.';
+
+    if (picks.length === 0) {
+      await bot.editMessageText(`❌ *${sessionLabel}*\nGagal mendapatkan rekomendasi Oracle.`, { chat_id: allowedChatId, message_id: waitMsg.message_id, parse_mode: 'Markdown' });
+      return;
+    }
+
+    let message = `✨ *Dellmology Oracle Report — ${sessionLabel}* ✨\n\n`;
+    message += `🌍 *Macro Sentiment:*\n_${macro}_\n\n`;
+    message += `🚀 *Top 5 Breakout Picks:*\n\n`;
+
+    picks.forEach((p, i) => {
+      const riskEmoji = p.riskLevel === 'Low' ? '🛡️' : p.riskLevel === 'Medium' ? '⚠️' : '🔥';
+      message += `${i + 1}. *${p.emiten}* — Prob: ${p.probability}%\n`;
+      message += `   ${riskEmoji} Risk: ${p.riskLevel} | RRR: ${p.rewardToRiskRatio}:1\n`;
+      message += `   🎯 Entry: ${p.entryStrategy}\n`;
+      message += `   🛑 SL: ${p.stopLoss} | ✅ TP: ${p.takeProfit}\n`;
+      message += `   💡 Reason: ${p.reasoning}\n\n`;
+    });
+
+    // Save to history so audit can track them
+    const historyHits = picks.map(p => ({
+        code: p.emiten,
+        entry: parseInt(p.entryStrategy.replace(/[^0-9]/g, '')) || 0,
+        tp: parseInt(p.takeProfit),
+        sl: parseInt(p.stopLoss),
+        changePercent: 0 
+    }));
+    saveSignalToHistory(historyHits);
+
+    await bot.deleteMessage(allowedChatId, waitMsg.message_id).catch(() => {});
+    await bot.sendMessage(allowedChatId, message, { parse_mode: 'Markdown' });
+  } catch(err) {
+    console.error(`[${sessionLabel}] Error:`, err.message);
+    await bot.editMessageText(`❌ *${sessionLabel}*\nTerjadi kesalahan saat menghubungi Oracle AI.`, { chat_id: allowedChatId, message_id: waitMsg.message_id, parse_mode: 'Markdown' });
+  }
+}
 
 // ══════════════════════════════════════════════════════════
 // CRON JOBS — AUDIT WIN/LOSS

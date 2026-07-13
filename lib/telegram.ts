@@ -246,14 +246,8 @@ export async function processAlerts(params: {
     }).catch(() => {});
   }
 
-  // 6. Upper Shadow
-  if (params.upperShadowAlert) {
-    sendAnomalyAlert({
-      emiten: e, type: 'upper_shadow', emoji: '⚡',
-      title: 'LATE ENTRY WARNING',
-      message: 'Net Buy di harga pucuk (Upper Shadow besar). Rawan distribusi.',
-    }).catch(() => {});
-  }
+  // 6. Upper Shadow (Notification disabled per user request, only visible in dashboard)
+  // if (params.upperShadowAlert) { ... }
 
   // 7. MFI Divergence
   if (params.mfiDivergence) {
