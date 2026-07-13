@@ -15,6 +15,13 @@ if (!token) {
 
 const bot = new TelegramBot(token, { polling: true });
 
+// Mendaftarkan menu command autocomplete di Telegram
+bot.setMyCommands([
+  { command: '/start', description: 'Mulai bot dan lihat panduan' },
+  { command: '/history', description: 'Lihat ringkasan riwayat sinyal' },
+  { command: '/audit', description: 'Cek manual TP/SL sinyal aktif' }
+]).catch(console.error);
+
 console.log('🤖 Dellmology Telegram Bot (Chat Oracle) is running...');
 console.log('📅 Scheduled signals: 08:30 | 13:30 | 16:30 WIB');
 console.log('🔍 Signal audit: 09:00 | 14:00 | 17:00 WIB');
@@ -122,7 +129,7 @@ async function runSignalAudit() {
     const msg = auditLines.join('\n\n━━━━━━━━━━━━━━━━━━━\n\n');
     await bot.sendMessage(allowedChatId, msg, { parse_mode: 'MarkdownV2' });
   } else if (allowedChatId) {
-    console.log('[Audit] No TP/SL hit this cycle.');
+    await bot.sendMessage(allowedChatId, '✔️ Audit selesai. Tidak ada sinyal yang menyentuh TP atau SL saat ini.');
   }
 }
 
