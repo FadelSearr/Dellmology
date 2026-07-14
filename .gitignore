@@ -43,6 +43,14 @@ next-env.d.ts
 # python
 venv/
 __pycache__/
+*.pyc
+
+# cnn dataset & models
+cnn-worker/dataset/
+cnn-worker/dataset_split/
+cnn-worker/best_model.pth
+*.pth
+*.pt
 
 # engine binary
 engine/engine.exe

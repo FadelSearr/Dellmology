@@ -8,7 +8,7 @@
 
 import io
 import uvicorn
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, UploadFile, File, Form
 from pydantic import BaseModel
 import numpy as np
 import logging
@@ -25,27 +25,91 @@ logger = logging.getLogger(__name__)
 app = FastAPI(title="Dellmology CNN Vision Engine", version="1.0.0")
 analyzer = FundamentalAnalyzer()
 
-# ── PyTorch Model Loading (Scaffold) ───────────────────────────
+# ── PyTorch Model Loading ──────────────────────────────────────
 import torch
 import torch.nn as nn
-from torchvision import models, transforms
+from torchvision import transforms
 from PIL import Image
 
-MODEL_PATH = "pattern_model.pt"
+MODEL_PATH = os.path.join(os.path.dirname(__file__), "best_model.pth")
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-# Scaffold for loading the model (Will throw error if file not found)
+CLASSES = ['breakout', 'bullish_flag', 'sideways', 'trash']
+
+from torchvision import models
+
+class ChartPatternResNet(nn.Module):
+    """
+    Optimized ResNet18 Multi-Modal Architecture for fast CPU training.
+    """
+    def __init__(self, num_classes=4):
+        super(ChartPatternResNet, self).__init__()
+        # Load ResNet18 base
+        self.model = models.resnet18(weights=None)
+        
+        self.pool = nn.AdaptiveAvgPool2d((1, 1))
+        
+        # Tabular MLP Branch
+        self.tab_mlp = nn.Sequential(
+            nn.Linear(7, 16),
+            nn.ReLU(),
+            nn.Linear(16, 16),
+            nn.ReLU()
+        )
+        
+        # ResNet18 layer2 output features: 128, layer4 output features: 512
+        # Total visual features = 128 + 512 = 640
+        # Fused layer: 640 + 16 (tabular) = 656 inputs -> 128 -> num_classes
+        self.fc = nn.Sequential(
+            nn.Linear(128 + 512 + 16, 128),
+            nn.ReLU(),
+            nn.Dropout(0.4),
+            nn.Linear(128, num_classes)
+        )
+        
+    def forward(self, x_img, x_tab):
+        # 1. Visual Feature Extraction (Multi-Scale Fusion)
+        x = self.model.conv1(x_img)
+        x = self.model.bn1(x)
+        x = self.model.relu(x)
+        x = self.model.maxpool(x)
+        
+        x1 = self.model.layer1(x)
+        x2 = self.model.layer2(x1) # (B, 128, 28, 28)
+        x3 = self.model.layer3(x2)
+        x4 = self.model.layer4(x3) # (B, 512, 7, 7)
+        
+        feat2 = torch.flatten(self.pool(x2), 1) # (B, 128)
+        feat4 = torch.flatten(self.pool(x4), 1) # (B, 512)
+        fused_visual = torch.cat((feat2, feat4), dim=1) # (B, 640)
+        
+        # 2. Tabular Feature Extraction
+        fused_tab = self.tab_mlp(x_tab) # (B, 16)
+        
+        # 3. Concatenate and Classify
+        fused_all = torch.cat((fused_visual, fused_tab), dim=1) # (B, 656)
+        return self.fc(fused_all)
+
+
+model = ChartPatternResNet(num_classes=len(CLASSES))
+
+# Load model weights
 try:
     logger.info(f"Attempting to load CNN Model from {MODEL_PATH} on {device}...")
-    # Example using ResNet18
-    # model = models.resnet18()
-    # model.fc = nn.Linear(model.fc.in_features, 3) # 3 classes
-    # model.load_state_dict(torch.load(MODEL_PATH, map_location=device))
-    # model.eval()
-    # model = model.to(device)
-    logger.info("Model scaffold ready. Waiting for actual pattern_model.pt file.")
+    model.load_state_dict(torch.load(MODEL_PATH, map_location=device))
+    model.eval()
+    model = model.to(device)
+    logger.info("Successfully loaded CNN best_model.pth")
 except Exception as e:
     logger.warning(f"Model not loaded. Using fallback/mock mode. Error: {e}")
+    model = None
+
+# Preprocessing transforms (matches train_cnn.py)
+preprocess = transforms.Compose([
+    transforms.Resize((224, 224)),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+])
 
 class PatternResponse(BaseModel):
     pattern: str
@@ -67,26 +131,64 @@ def analyze_fundamental(ticker: str):
     return result
 
 @app.post("/analyze/chart", response_model=PatternResponse)
-async def analyze_chart(file: UploadFile = File(...)):
+async def analyze_chart(
+    file: UploadFile = File(...),
+    rsi: float = Form(50.0),
+    macd: float = Form(0.0),
+    macd_signal: float = Form(0.0),
+    ma20_ratio: float = Form(1.0),
+    ma50_ratio: float = Form(1.0),
+    vwap_ratio: float = Form(1.0),
+    volume_ratio: float = Form(1.0)
+):
     """
-    Receives an image (screenshot of chart or plotted candles),
-    runs it through the CNN, and detects technical patterns.
+    Receives an image (screenshot of chart or plotted candles) and optional
+    tabular technical indicators, runs them through the Multi-Modal ResNet50,
+    and detects technical patterns.
     """
     image_bytes = await file.read()
     
-    # Process image bytes to numpy array
-    # image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-    # tensor = preprocess(image)
-    # prediction = model.predict(tensor)
-    
-    # Mock response for now
-    logger.info(f"Received chart image for analysis: {file.filename} ({len(image_bytes)} bytes)")
-    
-    return PatternResponse(
-        pattern="Bull Flag",
-        confidence=0.87,
-        bbox=[120, 45, 300, 150]
-    )
+    if model is None:
+        logger.warning("CNN model not loaded. Using fallback mock.")
+        return PatternResponse(
+            pattern="Mock: Bull Flag",
+            confidence=0.87
+        )
+        
+    try:
+        image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+        tensor = preprocess(image).unsqueeze(0).to(device)
+        
+        # Package tabular features
+        tab_features = torch.FloatTensor([
+            rsi / 100.0,
+            macd,
+            macd_signal,
+            ma20_ratio,
+            ma50_ratio,
+            vwap_ratio,
+            volume_ratio
+        ]).unsqueeze(0).to(device)
+        
+        with torch.no_grad():
+            outputs = model(tensor, tab_features)
+            probabilities = torch.softmax(outputs, dim=1)
+            confidence, predicted_idx = torch.max(probabilities, 1)
+            
+        pattern = CLASSES[predicted_idx.item()]
+        conf_val = confidence.item()
+        
+        logger.info(f"CNN predicted pattern: {pattern} with {conf_val*100:.2f}% confidence")
+        return PatternResponse(
+            pattern=pattern,
+            confidence=conf_val
+        )
+    except Exception as e:
+        logger.error(f"Classification error: {e}")
+        return PatternResponse(
+            pattern="Error",
+            confidence=0.0
+        )
 
 @app.post("/analyze/timeseries")
 def analyze_timeseries(data: list[dict]):
