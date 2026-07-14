@@ -757,7 +757,7 @@ export async function GET(request: NextRequest) {
                 foreignStatus,
                 foreignNetVal,
                 foreignNetLot,
-                foreignParticipation: foreign?.participation_pct || 0
+                foreignParticipation
               });
             }
           } catch (err) {
