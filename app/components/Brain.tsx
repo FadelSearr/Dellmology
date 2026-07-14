@@ -12,10 +12,11 @@ interface BrainProps {
   ups?: number;
   signal?: string;
   beta?: number;
+  stockData?: any;
   onRunBacktest?: () => void;
 }
 
-export default function Brain({ selectedEmiten, fundamentalData, loading, error, price, atr = 0, ups = 50, signal = 'neutral', beta = 1, onRunBacktest }: BrainProps) {
+export default function Brain({ selectedEmiten, fundamentalData, loading, error, price, atr = 0, ups = 50, signal = 'neutral', beta = 1, stockData, onRunBacktest }: BrainProps) {
   const f = fundamentalData?.data || fundamentalData || null;
   const metrics = f?.metrics || {};
   const insight = f?.insight || {};
@@ -85,87 +86,194 @@ export default function Brain({ selectedEmiten, fundamentalData, loading, error,
           <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Menunggu data fundamental...</div>
         ) : (
           <>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12 }}>
-              {/* Valuation */}
-              <div style={{ padding: 8, background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border-color)', borderRadius: 6 }}>
-                <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--accent-cyan)', marginBottom: 4, textTransform: 'uppercase' }}>Valuation</div>
-                <div style={{ fontSize: 10, color: 'var(--text-main)', display: 'flex', flexDirection: 'column', gap: 2 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: 'var(--text-muted)' }}>P/E Ratio</span>
-                    <span>{metrics.pe_ratio || '-'} {insight.valuation?.pe_status}</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: 'var(--text-muted)' }}>P/B Ratio</span>
-                    <span>{metrics.pb_ratio || '-'} {insight.valuation?.pb_status}</span>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr', gap: 16 }}>
+            {/* Left Column: Fundamental Analysis */}
+            <div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12 }}>
+                {/* Valuation */}
+                <div style={{ padding: 8, background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border-color)', borderRadius: 6 }}>
+                  <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--accent-cyan)', marginBottom: 4, textTransform: 'uppercase' }}>Valuation</div>
+                  <div style={{ fontSize: 10, color: 'var(--text-main)', display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: 'var(--text-muted)' }}>P/E Ratio</span>
+                      <span>{metrics.pe_ratio || '-'} {insight.valuation?.pe_status}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: 'var(--text-muted)' }}>P/B Ratio</span>
+                      <span>{metrics.pb_ratio || '-'} {insight.valuation?.pb_status}</span>
+                    </div>
                   </div>
                 </div>
-              </div>
-              
-              {/* Profitability */}
-              <div style={{ padding: 8, background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border-color)', borderRadius: 6 }}>
-                <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--accent-cyan)', marginBottom: 4, textTransform: 'uppercase' }}>Profitability</div>
-                <div style={{ fontSize: 10, color: 'var(--text-main)', display: 'flex', flexDirection: 'column', gap: 2 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: 'var(--text-muted)' }}>ROE</span>
-                    <span>{metrics.roe ? `${metrics.roe}%` : '-'} {insight.profitability?.roe_status?.includes('✅') ? '✅' : '⚠️'}</span>
+                
+                {/* Profitability */}
+                <div style={{ padding: 8, background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border-color)', borderRadius: 6 }}>
+                  <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--accent-cyan)', marginBottom: 4, textTransform: 'uppercase' }}>Profitability</div>
+                  <div style={{ fontSize: 10, color: 'var(--text-main)', display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: 'var(--text-muted)' }}>ROE</span>
+                      <span>{metrics.roe ? `${metrics.roe}%` : '-'} {insight.profitability?.roe_status?.includes('✅') ? '✅' : '⚠️'}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: 'var(--text-muted)' }}>Margin</span>
+                      <span>{metrics.net_profit_margin ? `${metrics.net_profit_margin}%` : '-'} {insight.profitability?.margin_status?.includes('✅') ? '✅' : '⚠️'}</span>
+                    </div>
                   </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: 'var(--text-muted)' }}>Margin</span>
-                    <span>{metrics.net_profit_margin ? `${metrics.net_profit_margin}%` : '-'} {insight.profitability?.margin_status?.includes('✅') ? '✅' : '⚠️'}</span>
+                </div>
+
+                {/* Liquidity */}
+                <div style={{ padding: 8, background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border-color)', borderRadius: 6 }}>
+                  <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--accent-cyan)', marginBottom: 4, textTransform: 'uppercase' }}>Liquidity & Debt</div>
+                  <div style={{ fontSize: 10, color: 'var(--text-main)', display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: 'var(--text-muted)' }}>Current Ratio</span>
+                      <span>{metrics.current_ratio || '-'} {insight.liquidity?.status?.includes('✅') ? '✅' : '⚠️'}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: 'var(--text-muted)' }}>DER</span>
+                      <span>{metrics.debt_to_equity || '-'} {insight.liquidity?.debt_status?.includes('✅') ? '✅' : '⚠️'}</span>
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Dividend */}
+                <div style={{ padding: 8, background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border-color)', borderRadius: 6 }}>
+                  <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--accent-cyan)', marginBottom: 4, textTransform: 'uppercase' }}>Income</div>
+                  <div style={{ fontSize: 10, color: 'var(--text-main)', display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: 'var(--text-muted)' }}>Dividend Yield</span>
+                      <span>{insight.growth?.dividend || '-'}</span>
+                    </div>
                   </div>
                 </div>
               </div>
 
-              {/* Liquidity */}
-              <div style={{ padding: 8, background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border-color)', borderRadius: 6 }}>
-                <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--accent-cyan)', marginBottom: 4, textTransform: 'uppercase' }}>Liquidity & Debt</div>
-                <div style={{ fontSize: 10, color: 'var(--text-main)', display: 'flex', flexDirection: 'column', gap: 2 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: 'var(--text-muted)' }}>Current Ratio</span>
-                    <span>{metrics.current_ratio || '-'} {insight.liquidity?.status?.includes('✅') ? '✅' : '⚠️'}</span>
+              {/* Recommendation */}
+              {insight.recommendation && (
+                <div style={{ marginTop: 8, padding: '8px 10px', background: 'rgba(0,0,0,0.2)', border: '1px dashed var(--border-color)', borderRadius: 6 }}>
+                  <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--accent-cyan)', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 4, textTransform: 'uppercase' }}>
+                    <Target size={10} /> Insight Generation
                   </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: 'var(--text-muted)' }}>DER</span>
-                    <span>{metrics.debt_to_equity || '-'} {insight.liquidity?.debt_status?.includes('✅') ? '✅' : '⚠️'}</span>
+                  <div style={{ fontSize: 10, color: 'var(--text-main)', lineHeight: 1.4 }}>
+                    {insight.recommendation}
+                  </div>
+                </div>
+              )}
+              
+              {/* Warnings */}
+              {insight.warning && insight.warning.length > 0 && (
+                <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 3 }}>
+                  {insight.warning.map((warn: string, i: number) => (
+                    <div key={i} style={{ fontSize: 10, color: 'var(--color-warning)', display: 'flex', gap: 6, alignItems: 'flex-start' }}>
+                      <span style={{ fontWeight: 700, flexShrink: 0 }}>⚠️</span>
+                      <span>{warn}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Right Column: Technical & Flow Analysis */}
+            <div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12 }}>
+                {/* Whale Accumulation */}
+                <div style={{ padding: 8, background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border-color)', borderRadius: 6 }}>
+                  <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--accent-primary)', marginBottom: 4, textTransform: 'uppercase' }}>Whale Flow</div>
+                  <div style={{ fontSize: 10, color: 'var(--text-main)', display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: 'var(--text-muted)' }}>Z-Score</span>
+                      <span style={{ 
+                        color: stockData?.zScore > 1.5 ? 'var(--color-bullish)' : stockData?.zScore < -1.5 ? 'var(--color-bearish)' : 'var(--text-primary)',
+                        fontWeight: 600
+                      }}>
+                        {stockData?.zScore ? stockData.zScore.toFixed(2) : '0.00'}
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: 'var(--text-muted)' }}>MFI (Money Flow)</span>
+                      <span style={{ color: stockData?.mfiDivergence ? 'var(--color-warning)' : 'var(--text-primary)' }}>
+                        {stockData?.mfi || 50}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Concentration & Iceberg */}
+                <div style={{ padding: 8, background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border-color)', borderRadius: 6 }}>
+                  <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--accent-primary)', marginBottom: 4, textTransform: 'uppercase' }}>Market Anomalies</div>
+                  <div style={{ fontSize: 10, color: 'var(--text-main)', display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: 'var(--text-muted)' }}>Concentration</span>
+                      <span style={{ color: stockData?.artificialLiquidity ? 'var(--color-warning)' : 'var(--text-primary)' }}>
+                        {stockData?.concentrationRatio ? `${stockData.concentrationRatio.toFixed(1)}%` : '0.0%'}
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: 'var(--text-muted)' }}>Iceberg Buy</span>
+                      <span style={{ color: stockData?.icebergDetected ? 'var(--color-bullish)' : 'var(--text-muted)', fontWeight: 600 }}>
+                        {stockData?.icebergDetected ? `🚨 ${stockData.icebergBroker || 'Yes'}` : 'Clear'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Manipulations */}
+                <div style={{ padding: 8, background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border-color)', borderRadius: 6 }}>
+                  <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--accent-primary)', marginBottom: 4, textTransform: 'uppercase' }}>Orderbook Spoof</div>
+                  <div style={{ fontSize: 10, color: 'var(--text-main)', display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: 'var(--text-muted)' }}>Spoofing</span>
+                      <span style={{ color: stockData?.spoofingAlert ? 'var(--color-bearish)' : 'var(--color-bullish)', fontWeight: 600 }}>
+                        {stockData?.spoofingAlert ? '🚨 Spoofing' : '✅ Clear'}
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: 'var(--text-muted)' }}>Wash Sale</span>
+                      <span style={{ color: stockData?.washSaleAlert ? 'var(--color-bearish)' : 'var(--color-bullish)', fontWeight: 600 }}>
+                        {stockData?.washSaleAlert ? '🚨 Wash' : '✅ Clear'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Multi-Timeframe */}
+                <div style={{ padding: 8, background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border-color)', borderRadius: 6 }}>
+                  <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--accent-primary)', marginBottom: 4, textTransform: 'uppercase' }}>Consensus</div>
+                  <div style={{ fontSize: 10, color: 'var(--text-main)', display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: 'var(--text-muted)' }}>MTF consensus</span>
+                      <span style={{ 
+                        color: stockData?.mtfResult?.consensus === 'BULLISH' ? 'var(--color-bullish)' : stockData?.mtfResult?.consensus === 'BEARISH' ? 'var(--color-bearish)' : 'var(--text-primary)',
+                        fontWeight: 700
+                      }}>
+                        {stockData?.mtfResult?.consensus || 'NEUTRAL'}
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>
-              
-              {/* Dividend */}
-              <div style={{ padding: 8, background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border-color)', borderRadius: 6 }}>
-                <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--accent-cyan)', marginBottom: 4, textTransform: 'uppercase' }}>Income</div>
-                <div style={{ fontSize: 10, color: 'var(--text-main)', display: 'flex', flexDirection: 'column', gap: 2 }}>
+
+              {/* Risk Guards */}
+              <div style={{ padding: '8px 10px', background: 'rgba(0,0,0,0.2)', border: '1px dashed var(--border-color)', borderRadius: 6 }}>
+                <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--accent-cyan)', marginBottom: 4, textTransform: 'uppercase' }}>
+                  Risk Guardians & Guardrails
+                </div>
+                <div style={{ fontSize: 10, color: 'var(--text-main)', display: 'flex', flexDirection: 'column', gap: 3 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: 'var(--text-muted)' }}>Dividend Yield</span>
-                    <span>{insight.growth?.dividend || '-'}</span>
+                    <span style={{ color: 'var(--text-muted)' }}>ROC Flash-Drop Kill-Switch</span>
+                    <span style={{ color: stockData?.rocResult?.killSwitchActive ? 'var(--color-bearish)' : 'var(--color-bullish)', fontWeight: 600 }}>
+                      {stockData?.rocResult?.killSwitchActive ? '🚨 TRIGGERED (SUSPEND)' : '✅ Guarded'}
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: 'var(--text-muted)' }}>Global Correlation Safeguard</span>
+                    <span style={{ color: stockData?.globalKillSwitch ? 'var(--color-warning)' : 'var(--color-bullish)', fontWeight: 600 }}>
+                      {stockData?.globalKillSwitch ? '🚨 RISK-OFF (IHSG Crash)' : '✅ RISK-ON (Normal)'}
+                    </span>
                   </div>
                 </div>
               </div>
             </div>
-
-            {/* Recommendation */}
-            {insight.recommendation && (
-              <div style={{ marginTop: 8, padding: '8px 10px', background: 'rgba(0,0,0,0.2)', border: '1px dashed var(--border-color)', borderRadius: 6 }}>
-                <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--accent-cyan)', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 4, textTransform: 'uppercase' }}>
-                  <Target size={10} /> Insight Generation
-                </div>
-                <div style={{ fontSize: 10, color: 'var(--text-main)', lineHeight: 1.4 }}>
-                  {insight.recommendation}
-                </div>
-              </div>
-            )}
-            
-            {/* Warnings */}
-            {insight.warning && insight.warning.length > 0 && (
-              <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 3 }}>
-                {insight.warning.map((warn: string, i: number) => (
-                  <div key={i} style={{ fontSize: 10, color: 'var(--color-warning)', display: 'flex', gap: 6, alignItems: 'flex-start' }}>
-                    <span style={{ fontWeight: 700, flexShrink: 0 }}>⚠️</span>
-                    <span>{warn}</span>
-                  </div>
-                ))}
-              </div>
-            )}
+          </div>
           </>
         )}
       </div>

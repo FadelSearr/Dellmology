@@ -43,7 +43,7 @@ export default function Canvas({ selectedEmiten, selectedStock, stockData, chart
     label: string; emoji: string; shouldTrade: boolean;
     voters: ConsensusVoter[]; description: string;
   } | null>(null);
-  const [cnnRegime, setCnnRegime] = useState<{ regime: string; confidence: number } | null>(null);
+  const [cnnRegime, setCnnRegime] = useState<{ regime: string; confidence: number; pattern?: string } | null>(null);
 
   // Fetch patterns
   useEffect(() => {
