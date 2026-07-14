@@ -43,10 +43,10 @@ export async function GET(request: NextRequest) {
     // Also try calling Python CNN worker if available
     let cnnResult = null;
     try {
-      const cnnRes = await fetch('http://localhost:8000/analyze/timeseries', {
+      const cnnRes = await fetch('http://localhost:8002/analyze/timeseries', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(bars.slice(-30)),
+        body: JSON.stringify(bars),
         signal: AbortSignal.timeout(3000),
       });
       if (cnnRes.ok) {

@@ -2,7 +2,7 @@ import requests
 import os
 import json
 
-url = 'http://localhost:8003/analyze/chart'
+url = 'http://localhost:8002/analyze/chart'
 image_path = os.path.join(os.path.dirname(__file__), 'dataset_split', 'val', 'breakout', 'AAPL_20211210.png')
 json_path = image_path.replace('.png', '.json')
 

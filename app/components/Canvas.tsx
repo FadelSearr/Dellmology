@@ -309,6 +309,16 @@ export default function Canvas({ selectedEmiten, selectedStock, stockData, chart
                   {p.pattern} {p.confidence}%
                 </span>
               ))}
+              {cnnRegime && cnnRegime.pattern && cnnRegime.pattern !== 'None' && (
+                <span style={{
+                  fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 3,
+                  color: '#a855f7',
+                  background: 'rgba(168,85,247,0.12)',
+                  border: '1px solid rgba(168,85,247,0.4)',
+                }}>
+                  {cnnRegime.pattern} {cnnRegime.confidence}% (CNN)
+                </span>
+              )}
               <span style={{ color: 'var(--text-muted)', fontSize: 9, margin: '0 4px' }}>|</span>
               {['1m', '5m', '15m', '30m', '1H', '4H', '1D', '1W'].map(tf => (
                 <button 
