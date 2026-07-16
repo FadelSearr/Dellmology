@@ -208,6 +208,7 @@ export default function Home() {
               beta={beta}
               signal={selectedStock.ups >= 70 ? 'buy' : selectedStock.ups <= 30 ? 'sell' : 'neutral'}
               stockData={stockData}
+              chartData={chartData}
               onRunBacktest={() => setShowBacktest(true)}
             />
           </>

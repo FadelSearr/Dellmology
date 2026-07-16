@@ -1,8 +1,8 @@
 {
   "regime": "RISK_OFF",
   "ihsg_change_pct": null,
-  "us_10y_yield": 4.58,
-  "usd_idr": 18094.0,
+  "us_10y_yield": 4.55,
+  "usd_idr": 18059.0,
   "kill_switch_active": true,
-  "updated_at": "2026-07-15 00:14:55"
+  "updated_at": "2026-07-16 00:29:38"
 }

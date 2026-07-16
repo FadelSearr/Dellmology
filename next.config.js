@@ -1,6 +1,4 @@
-import type { NextConfig } from "next";
-
-const nextConfig: NextConfig = {
+const nextConfig = {
   // Security headers
   async headers() {
     return [
@@ -40,9 +38,6 @@ const nextConfig: NextConfig = {
     unoptimized: true,
   },
 
-  // Server-side only packages
-  serverExternalPackages: ["@supabase/supabase-js"],
-
   // Strict mode
   reactStrictMode: true,
 
@@ -50,4 +45,4 @@ const nextConfig: NextConfig = {
   experimental: {},
 };
 
-export default nextConfig;
+module.exports = nextConfig;

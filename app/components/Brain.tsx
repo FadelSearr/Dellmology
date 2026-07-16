@@ -1,10 +1,20 @@
 'use client';
 import { Brain as BrainIcon, Calculator, Send, Play, Shield, Target } from 'lucide-react';
 import { fmt } from '@/lib/utils';
+import TechnicalMatrix from './TechnicalMatrix';
+
+type IndicatorSignal = 'Bullish' | 'Neutral' | 'Bearish' | 'Strong';
+type IndicatorRow = { name: string; value: string; signal: IndicatorSignal; note: string };
+type TechnicalAnalysis = {
+  score: number;
+  verdict: 'BUY' | 'WATCH' | 'NEUTRAL' | 'AVOID';
+  groups: Partial<Record<'volume' | 'volatility' | 'trend' | 'momentum', IndicatorRow[]>>;
+};
+type StockData = Record<string, unknown> & { technicalAnalysis?: TechnicalAnalysis | null };
 
 interface BrainProps {
   selectedEmiten: string;
-  fundamentalData?: any;
+  fundamentalData?: Record<string, unknown> | null;
   loading?: boolean;
   error?: string | null;
   price?: number;
@@ -12,11 +22,12 @@ interface BrainProps {
   ups?: number;
   signal?: string;
   beta?: number;
-  stockData?: any;
+  stockData?: StockData | null;
+  chartData?: any[];
   onRunBacktest?: () => void;
 }
 
-export default function Brain({ selectedEmiten, fundamentalData, loading, error, price, atr = 0, ups = 50, signal = 'neutral', beta = 1, stockData, onRunBacktest }: BrainProps) {
+export default function Brain({ selectedEmiten, fundamentalData, loading, error, price, atr = 0, ups = 50, signal = 'neutral', beta = 1, stockData, chartData, onRunBacktest }: BrainProps) {
   const f = fundamentalData?.data || fundamentalData || null;
   const metrics = f?.metrics || {};
   const insight = f?.insight || {};
@@ -172,106 +183,9 @@ export default function Brain({ selectedEmiten, fundamentalData, loading, error,
               )}
             </div>
 
-            {/* Right Column: Technical & Flow Analysis */}
-            <div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12 }}>
-                {/* Whale Accumulation */}
-                <div style={{ padding: 8, background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border-color)', borderRadius: 6 }}>
-                  <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--accent-primary)', marginBottom: 4, textTransform: 'uppercase' }}>Whale Flow</div>
-                  <div style={{ fontSize: 10, color: 'var(--text-main)', display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ color: 'var(--text-muted)' }}>Z-Score</span>
-                      <span style={{ 
-                        color: stockData?.zScore > 1.5 ? 'var(--color-bullish)' : stockData?.zScore < -1.5 ? 'var(--color-bearish)' : 'var(--text-primary)',
-                        fontWeight: 600
-                      }}>
-                        {stockData?.zScore ? stockData.zScore.toFixed(2) : '0.00'}
-                      </span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ color: 'var(--text-muted)' }}>MFI (Money Flow)</span>
-                      <span style={{ color: stockData?.mfiDivergence ? 'var(--color-warning)' : 'var(--text-primary)' }}>
-                        {stockData?.mfi || 50}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Concentration & Iceberg */}
-                <div style={{ padding: 8, background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border-color)', borderRadius: 6 }}>
-                  <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--accent-primary)', marginBottom: 4, textTransform: 'uppercase' }}>Market Anomalies</div>
-                  <div style={{ fontSize: 10, color: 'var(--text-main)', display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ color: 'var(--text-muted)' }}>Concentration</span>
-                      <span style={{ color: stockData?.artificialLiquidity ? 'var(--color-warning)' : 'var(--text-primary)' }}>
-                        {stockData?.concentrationRatio ? `${stockData.concentrationRatio.toFixed(1)}%` : '0.0%'}
-                      </span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ color: 'var(--text-muted)' }}>Iceberg Buy</span>
-                      <span style={{ color: stockData?.icebergDetected ? 'var(--color-bullish)' : 'var(--text-muted)', fontWeight: 600 }}>
-                        {stockData?.icebergDetected ? `🚨 ${stockData.icebergBroker || 'Yes'}` : 'Clear'}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Manipulations */}
-                <div style={{ padding: 8, background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border-color)', borderRadius: 6 }}>
-                  <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--accent-primary)', marginBottom: 4, textTransform: 'uppercase' }}>Orderbook Spoof</div>
-                  <div style={{ fontSize: 10, color: 'var(--text-main)', display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ color: 'var(--text-muted)' }}>Spoofing</span>
-                      <span style={{ color: stockData?.spoofingAlert ? 'var(--color-bearish)' : 'var(--color-bullish)', fontWeight: 600 }}>
-                        {stockData?.spoofingAlert ? '🚨 Spoofing' : '✅ Clear'}
-                      </span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ color: 'var(--text-muted)' }}>Wash Sale</span>
-                      <span style={{ color: stockData?.washSaleAlert ? 'var(--color-bearish)' : 'var(--color-bullish)', fontWeight: 600 }}>
-                        {stockData?.washSaleAlert ? '🚨 Wash' : '✅ Clear'}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Multi-Timeframe */}
-                <div style={{ padding: 8, background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border-color)', borderRadius: 6 }}>
-                  <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--accent-primary)', marginBottom: 4, textTransform: 'uppercase' }}>Consensus</div>
-                  <div style={{ fontSize: 10, color: 'var(--text-main)', display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ color: 'var(--text-muted)' }}>MTF consensus</span>
-                      <span style={{ 
-                        color: stockData?.mtfResult?.consensus === 'BULLISH' ? 'var(--color-bullish)' : stockData?.mtfResult?.consensus === 'BEARISH' ? 'var(--color-bearish)' : 'var(--text-primary)',
-                        fontWeight: 700
-                      }}>
-                        {stockData?.mtfResult?.consensus || 'NEUTRAL'}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Risk Guards */}
-              <div style={{ padding: '8px 10px', background: 'rgba(0,0,0,0.2)', border: '1px dashed var(--border-color)', borderRadius: 6 }}>
-                <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--accent-cyan)', marginBottom: 4, textTransform: 'uppercase' }}>
-                  Risk Guardians & Guardrails
-                </div>
-                <div style={{ fontSize: 10, color: 'var(--text-main)', display: 'flex', flexDirection: 'column', gap: 3 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: 'var(--text-muted)' }}>ROC Flash-Drop Kill-Switch</span>
-                    <span style={{ color: stockData?.rocResult?.killSwitchActive ? 'var(--color-bearish)' : 'var(--color-bullish)', fontWeight: 600 }}>
-                      {stockData?.rocResult?.killSwitchActive ? '🚨 TRIGGERED (SUSPEND)' : '✅ Guarded'}
-                    </span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: 'var(--text-muted)' }}>Global Correlation Safeguard</span>
-                    <span style={{ color: stockData?.globalKillSwitch ? 'var(--color-warning)' : 'var(--color-bullish)', fontWeight: 600 }}>
-                      {stockData?.globalKillSwitch ? '🚨 RISK-OFF (IHSG Crash)' : '✅ RISK-ON (Normal)'}
-                    </span>
-                  </div>
-                </div>
-              </div>
+            {/* Right Column: Technical Analysis Matrix (client-computed from chartData) */}
+            <div style={{ overflowY: 'auto', maxHeight: 260 }}>
+              <TechnicalMatrix chartData={chartData} />
             </div>
           </div>
           </>
@@ -368,8 +282,8 @@ export default function Brain({ selectedEmiten, fundamentalData, loading, error,
                 });
                 if (res.ok) btn.innerHTML = '✅ Sent to Telegram';
                 else btn.innerHTML = '❌ Failed';
-              } catch (err) {
-                btn.innerHTML = '❌ Error';
+              } catch (e) {
+                console.error('Failed to send Telegram message:', e);
               }
               setTimeout(() => { btn.innerHTML = originalText; }, 3000);
             }}

@@ -27,7 +27,7 @@ const CACHE_TTL = 5 * 60 * 1000;
 
 async function getRealFundamentalData(ticker: string): Promise<any> {
   try {
-    const url = `http://127.0.0.1:8002/analyze/fundamental/${ticker}`;
+    const url = `http://localhost:8002/analyze/fundamental/${ticker}`;
     const response = await fetch(url);
     if (!response.ok) throw new Error(`Python Worker API error: ${response.status}`);
     

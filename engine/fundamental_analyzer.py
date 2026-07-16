@@ -12,6 +12,7 @@ from typing import Dict, List, Optional
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 import logging
+import sys
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -437,6 +438,8 @@ class FundamentalAnalyzer:
 
 # CLI Testing
 if __name__ == "__main__":
+    import json
+    import sys
     analyzer = FundamentalAnalyzer()
     
     # Test single stock
@@ -444,6 +447,7 @@ if __name__ == "__main__":
     print("FUNDAMENTAL ANALYSIS - SINGLE STOCK")
     print("=" * 80)
     result = analyzer.analyze_stock("BBRI.JK")
+    sys.stdout.reconfigure(encoding='utf-8')
     print(json.dumps(result, indent=2, ensure_ascii=False))
     
     # Test screening
