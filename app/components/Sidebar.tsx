@@ -363,9 +363,10 @@ export default function Sidebar({
 
         {/* Items */}
         {(!screenerLoading) && displayed.map((item, rank) => {
-          const isUp      = item.changePercent >= 0;
+          const isUp      = item.changePercent > 0;
+          const isDown    = item.changePercent < 0;
           const priceColor = item.price > 0
-            ? (isUp ? 'var(--color-bullish)' : 'var(--color-bearish)')
+            ? (isUp ? 'var(--color-bullish)' : isDown ? 'var(--color-bearish)' : 'var(--text-muted)')
             : 'var(--text-muted)';
           const isSelected = selectedEmiten === item.code;
 

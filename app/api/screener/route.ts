@@ -694,6 +694,7 @@ export async function GET(request: NextRequest) {
           valueBillion:  0,
           inWatchlist:   wl.codes.has(code),
           ma20: 0, ma50: 0, rsi14: 0,
+          previousClose: prev?.close ?? 0,
           technicalAnalysis: bars.length >= 25 ? buildTechnicalAnalysis(bars) : null,
         };
       });
@@ -704,8 +705,13 @@ export async function GET(request: NextRequest) {
           const p = realPrices.get(item.code);
           if (p && p.price > 0) {
             item.price = p.price;
-            if (p.changePercent !== undefined) item.changePercent = p.changePercent;
-            if (p.change !== undefined) item.change = p.change;
+            if (item.previousClose > 0) {
+              item.change = item.price - item.previousClose;
+              item.changePercent = parseFloat(((item.change / item.previousClose) * 100).toFixed(2));
+            } else if (p.changePercent !== undefined && p.change !== undefined && p.changePercent !== 0) {
+              item.changePercent = p.changePercent;
+              item.change = p.change;
+            }
           }
         }
       }
@@ -738,6 +744,7 @@ export async function GET(request: NextRequest) {
           valueBillion:  0,
           inWatchlist:   true,
           ma20: 0, ma50: 0, rsi14: 0,
+          previousClose: prev?.close ?? 0,
           technicalAnalysis: bars.length >= 25 ? buildTechnicalAnalysis(bars) : null,
         };
       }).sort((a, b) => b.volume - a.volume);
@@ -748,8 +755,13 @@ export async function GET(request: NextRequest) {
           const p = realPrices.get(item.code);
           if (p && p.price > 0) {
             item.price = p.price;
-            if (p.changePercent !== undefined) item.changePercent = p.changePercent;
-            if (p.change !== undefined) item.change = p.change;
+            if (item.previousClose > 0) {
+              item.change = item.price - item.previousClose;
+              item.changePercent = parseFloat(((item.change / item.previousClose) * 100).toFixed(2));
+            } else if (p.changePercent !== undefined && p.change !== undefined && p.changePercent !== 0) {
+              item.changePercent = p.changePercent;
+              item.change = p.change;
+            }
           }
         }
       }

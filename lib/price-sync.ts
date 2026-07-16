@@ -28,7 +28,7 @@ const PRICE_CACHE = new Map<string, PriceData>();
 const CACHE_TTL = 30 * 1000; // 30 seconds
 
 // ── Fetch from Yahoo Finance ─────────────────────────────────
-async function fetchYahooPrice(ticker: string): Promise<{ price: number; changePercent: number; change: number; volume: number } | null> {
+export async function fetchYahooPrice(ticker: string): Promise<{ price: number; changePercent: number; change: number; volume: number, previousClose: number } | null> {
   try {
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}.JK?range=2d&interval=1d`;
     const res = await fetch(url, {
@@ -68,6 +68,7 @@ async function fetchYahooPrice(ticker: string): Promise<{ price: number; changeP
       changePercent: parseFloat(changePercent.toFixed(2)),
       change,
       volume: volumes[volumes.length - 1] || 0,
+      previousClose,
     };
   } catch (error) {
     return null;

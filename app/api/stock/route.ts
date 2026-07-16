@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { fetchMarketDetector, fetchOrderbook, fetchEmitenInfo } from '@/lib/stockbit';
-import { getPrice } from '@/lib/price-sync';
+import { getPrice, fetchYahooPrice } from '@/lib/price-sync';
 import {
   calculateUPS, rsi, macd, atr as computeAtr, detectMarketRegime,
   calculateZScore, detectWashSale, adjustUPSThreshold,
@@ -58,6 +58,7 @@ async function getIHSGChange(): Promise<number> {
   return ihsgCache.changePercent;
 }
 
+export const dynamic = 'force-dynamic';
 export async function GET(request: NextRequest) {
   // ── Rate Limit Guard ────────────────────────────────────────
   const rateLimitResponse = rateLimit(request, 60, 60);
@@ -80,11 +81,12 @@ export async function GET(request: NextRequest) {
     const fromDate = from || pastStr;
     const toDate = to || todayStr;
 
-    const [marketDetector, orderbook, emitenInfo, ihsgChange] = await Promise.allSettled([
+    const [marketDetector, orderbook, emitenInfo, ihsgChange, yahooPrice] = await Promise.allSettled([
       fetchMarketDetector(emiten, fromDate, toDate),
       fetchOrderbook(emiten),
       fetchEmitenInfo(emiten),
       getIHSGChange(),
+      fetchYahooPrice(emiten),
     ]);
 
     // ── Check token errors and fallback ───────────────────────
@@ -106,9 +108,19 @@ export async function GET(request: NextRequest) {
       fallbackUsed = true;
     } else {
       price = ob.lastprice || ob.close || 0;
-      const previousClose = ob.previousclose || 0;
+      const yp = yahooPrice.status === 'fulfilled' ? yahooPrice.value : null;
+      let previousClose = yp?.previousClose || ob.previousclose || ob.previousprice || ob.prev_close || 0;
+      
+      // If previous close is suspiciously 0 or identical to price (due to missing field mapped to lastprice),
+      // we try to use Yahoo's change values instead if available.
+      if (previousClose === 0 || previousClose === price) {
+        if (yp) {
+          previousClose = yp.previousClose;
+        }
+      }
+      
       change = price && previousClose ? price - previousClose : 0;
-      changePercent = price && previousClose ? (change / previousClose) * 100 : 0;
+      changePercent = price && previousClose ? parseFloat(((change / previousClose) * 100).toFixed(2)) : 0;
     }
 
     const mdData = marketDetector.status === 'fulfilled' ? marketDetector.value : null;

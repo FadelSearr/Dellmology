@@ -263,11 +263,11 @@ export default function Canvas({ selectedEmiten, selectedStock, stockData, chart
             <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{selectedStock.name}</div>
           </div>
           <div style={{ textAlign: 'right' }}>
-            <div style={{ fontSize: 24, fontWeight: 800, fontFamily: 'var(--font-mono)', color: selectedStock.change >= 0 ? 'var(--color-bullish)' : 'var(--color-bearish)' }}>
+            <div style={{ fontSize: 24, fontWeight: 800, fontFamily: 'var(--font-mono)', color: selectedStock.change > 0 ? 'var(--color-bullish)' : selectedStock.change < 0 ? 'var(--color-bearish)' : 'var(--text-muted)' }}>
               Rp {fmt(selectedStock.price)}
             </div>
-            <div style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: selectedStock.change >= 0 ? 'var(--color-bullish)' : 'var(--color-bearish)' }}>
-              {selectedStock.change >= 0 ? '+' : ''}{selectedStock.change} ({selectedStock.changePercent.toFixed(2)}%)
+            <div style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: selectedStock.change > 0 ? 'var(--color-bullish)' : selectedStock.change < 0 ? 'var(--color-bearish)' : 'var(--text-muted)' }}>
+              {selectedStock.change > 0 ? '+' : ''}{selectedStock.change} ({selectedStock.changePercent.toFixed(2)}%)
             </div>
           </div>
         </div>

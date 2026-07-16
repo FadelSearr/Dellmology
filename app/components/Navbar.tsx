@@ -1,5 +1,5 @@
 'use client';
-import { Search, Zap, Globe2, TrendingUp, TrendingDown, Clock, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import { Search, Zap, BookOpen, Clock, ArrowUpRight, ArrowDownRight, TrendingUp, TrendingDown } from 'lucide-react';
 import { useState, useEffect } from 'react';
 
 interface NavbarProps {
@@ -114,6 +114,9 @@ export default function Navbar({ searchQuery, onSearchChange, onCombatMode }: Na
           </div>
           <span className="brand-text-anim" style={{ marginLeft: '32px' }}>DELLMOLOGY <span style={{ color: 'var(--accent-cyan)' }}>PRO</span></span>
         </div>
+        <a href="/journal" className="btn btn--ghost btn--sm" style={{ color: 'var(--accent-cyan)', marginLeft: 16 }}>
+           <BookOpen size={12} /> JURNAL
+        </a>
 
         <div className="navbar__search">
           <Search size={14} className="navbar__search-icon" />
