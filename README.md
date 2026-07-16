@@ -14,8 +14,6 @@
 
 ### 🤖 **Chat Oracle (Natural Language Screener)**
 - Interface chat AI untuk screening saham menggunakan bahasa natural
-- Contoh: *"Cari saham breakout yang lagi diakumulasi bandar asing"*
-- Otomatis menerjemahkan instruksi ke parameter screener
 - Terintegrasi dengan **Deep Broker Flow Analysis**
 - Filter otomatis: hanya saham yang diakumulasi **institutional_accumulator** atau **foreign_flow**
 
@@ -24,6 +22,11 @@ Setiap rekomendasi dilengkapi:
 - **Analisis mendalam**: Mengapa saham ini layak diperhatikan
 - **Entry strategy**: Timing dan level masuk yang optimal
 - **Broker context**: Detail broker whale yang sedang akumulasi
+
+### 📓 **Trading Journal & Signal Tracker**
+- Otomatis mencatat setiap signal yang dikirim ke Telegram.
+- **Smart Audit System**: Mengecek otomatis pencapaian Target Profit (TP) atau Stop Loss (SL).
+- **Calendar View**: Antarmuka jurnal berbasis kalender interaktif yang mencakup rekam historis bulanan.
 
 ### 📱 **Telegram Bot Integration**
 - Akses penuh ke Chat Oracle via Telegram
@@ -196,6 +199,7 @@ node telegram_bot.js
 ### 1. **Web Dashboard**
 Buka `http://localhost:3000` untuk akses:
 - **Screener Tabs**: Daytrade, Swing, Whale, Watchlist, AI
+- **Journal Tab**: Rekap kalender hasil signal (TP/SL/Open)
 - **Stock Detail**: Chart, broker flow, technical indicators
 - **Chat Oracle**: Floating chat button di kanan bawah
 
