@@ -12,6 +12,7 @@ import BacktestModal from './components/BacktestModal';
 import { useStockData, useWatchlist, useFundamental, useChartData, useAutoRefresh, usePortfolio, useBrokerHistory } from '@/app/hooks/useData';
 import { calculateBeta } from '@/lib/analysis';
 import type { BrokerData } from '@/lib/types';
+import { Group, Panel, Separator } from 'react-resizable-panels';
 
 export default function Home() {
   const [selectedEmiten, setSelectedEmiten]   = useState('BBRI');
@@ -126,77 +127,90 @@ export default function Home() {
         chartData={chartData}
       />
 
-      {/* Main Grid */}
+      {/* Main Layout */}
       <div className="app-shell">
         <Navbar
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
           onCombatMode={() => setCombatMode(true)}
         />
-        <Sidebar
-          watchlistData={watchlistData}
-          screenerData={screenerData}
-          screenerLoading={screenerLoading}
-          selectedEmiten={selectedEmiten}
-          onSelectEmiten={setSelectedEmiten}
-          screenerMode={screenerMode}
-          onScreenerModeChange={setScreenerMode}
-          searchQuery={searchQuery}
-          minPrice={minPrice}
-          maxPrice={maxPrice}
-          setMinPrice={setMinPrice}
-          setMaxPrice={setMaxPrice}
-          sortBy={screenerSortBy}
-          onSortByChange={setScreenerSortBy}
-          activeTab={activeTab}
-          onTabChange={setActiveTab}
-          onRunScreener={refetchScreener}
-          portfolioData={portfolioData}
-          portfolioLoading={portfolioLoading}
-          portfolioError={portfolioError}
-          onPortfolioRefresh={refetchPortfolio}
-        />
-        {activeTab === 'oracle' ? (
-          <div style={{ gridColumn: '2 / 4', gridRow: '2', background: 'var(--bg-primary)', overflow: 'hidden' }}>
-            <OracleScreen onSelectEmiten={(code) => {
-              setSelectedEmiten(code);
-              setActiveTab('watchlist'); // switch back to chart view
-            }} />
-          </div>
-        ) : (
-          <>
-            <Canvas 
-              selectedEmiten={selectedEmiten} 
-              selectedStock={selectedStock} 
-              stockData={stockData} 
-              chartData={chartData} 
-              chartLoading={chartLoading} 
-              timeframe={chartTimeframe}
-              onTimeframeChange={setChartTimeframe}
-            />
-            <Tape
-              selectedEmiten={selectedEmiten}
-              topBuyers={topBuyers}
-              topSellers={topSellers}
-              zScore={stockData.zScore as number}
-              spoofingAlert={stockData.spoofingAlert as boolean}
-              washSaleAlert={stockData.washSaleAlert as boolean}
-              upperShadowAlert={stockData.upperShadowAlert as boolean}
-              upperShadowLabel={stockData.upperShadowLabel as string}
-              upperShadowPct={stockData.upperShadowPct as number}
-              concentrationLabel={stockData.concentrationLabel as string}
-              concentrationTopBroker={stockData.concentrationTopBroker as string}
-              opposingBrokerCount={stockData.opposingBrokerCount as number}
-              chartData={chartData}
-              icebergDetected={stockData.icebergDetected as boolean}
-              icebergBroker={stockData.icebergBroker as string}
-              icebergAvgLot={stockData.icebergAvgLot as number}
-              icebergFrequency={stockData.icebergFrequency as number}
-              mfi={stockData.mfi as number}
-              mfiLabel={stockData.mfiLabel as string}
-              mfiDivergence={stockData.mfiDivergence as boolean}
-              brokerHistory={brokerHistory}
-            />
+        <Group orientation="vertical" className="app-body">
+          <Panel defaultSize={70} minSize={30}>
+            <Group orientation="horizontal">
+              <Panel defaultSize={20} minSize={10} className="sidebar">
+                <Sidebar
+                  watchlistData={watchlistData}
+                  screenerData={screenerData}
+                  screenerLoading={screenerLoading}
+                  selectedEmiten={selectedEmiten}
+                  onSelectEmiten={setSelectedEmiten}
+                  screenerMode={screenerMode}
+                  onScreenerModeChange={setScreenerMode}
+                  searchQuery={searchQuery}
+                  minPrice={minPrice}
+                  maxPrice={maxPrice}
+                  setMinPrice={setMinPrice}
+                  setMaxPrice={setMaxPrice}
+                  sortBy={screenerSortBy}
+                  onSortByChange={setScreenerSortBy}
+                  activeTab={activeTab}
+                  onTabChange={setActiveTab}
+                  onRunScreener={refetchScreener}
+                  portfolioData={portfolioData}
+                  portfolioLoading={portfolioLoading}
+                  portfolioError={portfolioError}
+                  onPortfolioRefresh={refetchPortfolio}
+                />
+              </Panel>
+              <Separator className="resize-handle-h" />
+              <Panel defaultSize={55} minSize={25} className="canvas">
+                {activeTab === 'oracle' ? (
+                  <OracleScreen onSelectEmiten={(code) => {
+                      setSelectedEmiten(code);
+                      setActiveTab('watchlist'); 
+                    }} />
+                ) : (
+                  <Canvas 
+                    selectedEmiten={selectedEmiten} 
+                    selectedStock={selectedStock} 
+                    stockData={stockData} 
+                    chartData={chartData} 
+                    chartLoading={chartLoading} 
+                    timeframe={chartTimeframe}
+                    onTimeframeChange={setChartTimeframe}
+                  />
+                )}
+              </Panel>
+              <Separator className="resize-handle-h" />
+              <Panel defaultSize={25} minSize={10} className="tape">
+                <Tape
+                  selectedEmiten={selectedEmiten}
+                  topBuyers={topBuyers}
+                  topSellers={topSellers}
+                  zScore={stockData.zScore as number}
+                  spoofingAlert={stockData.spoofingAlert as boolean}
+                  washSaleAlert={stockData.washSaleAlert as boolean}
+                  upperShadowAlert={stockData.upperShadowAlert as boolean}
+                  upperShadowLabel={stockData.upperShadowLabel as string}
+                  upperShadowPct={stockData.upperShadowPct as number}
+                  concentrationLabel={stockData.concentrationLabel as string}
+                  concentrationTopBroker={stockData.concentrationTopBroker as string}
+                  opposingBrokerCount={stockData.opposingBrokerCount as number}
+                  chartData={chartData}
+                  icebergDetected={stockData.icebergDetected as boolean}
+                  icebergBroker={stockData.icebergBroker as string}
+                  icebergAvgLot={stockData.icebergAvgLot as number}
+                  icebergFrequency={stockData.icebergFrequency as number}
+                  mfi={stockData.mfi as number}
+                  mfiLabel={stockData.mfiLabel as string}
+                  mfiDivergence={stockData.mfiDivergence as boolean}
+                  brokerHistory={brokerHistory}
+                />
+              </Panel>
+            </Group>
+          </Panel>
+          <Separator className="resize-handle-v" />
+          <Panel defaultSize={30} minSize={10} className="brain">
             <Brain
               selectedEmiten={selectedEmiten}
               fundamentalData={fundamentalData}
@@ -211,8 +225,8 @@ export default function Home() {
               chartData={chartData}
               onRunBacktest={() => setShowBacktest(true)}
             />
-          </>
-        )}
+          </Panel>
+        </Group>
       </div>
     </>
   );

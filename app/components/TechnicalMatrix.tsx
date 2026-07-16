@@ -176,7 +176,36 @@ export default function TechnicalMatrix({ chartData }: TechnicalMatrixProps) {
 
     const totalSignal: Signal = total >= 60 ? 'bullish' : total <= 40 ? 'bearish' : 'neutral';
 
-    return { volumeCat, volatilityCat, trendCat, momentumCat, candlePatterns, total, totalSignal };
+    // ── INSIGHT GENERATION ────────────────────────────────────────────────────
+    const insights: string[] = [];
+    
+    if (total >= 70) insights.push('Kondisi teknikal sangat kuat. Momentum dan tren mendukung kenaikan lebih lanjut.');
+    else if (total >= 60) insights.push('Teknikal menunjukkan sinyal positif dengan peluang kenaikan.');
+    else if (total <= 30) insights.push('Kondisi teknikal sangat lemah. Tekanan jual mendominasi.');
+    else if (total <= 40) insights.push('Teknikal menunjukkan pelemahan. Waspada potensi penurunan berlanjut.');
+    else insights.push('Pergerakan harga cenderung konsolidasi atau belum ada arah tren yang jelas.');
+
+    const trendBulls = trendCat.indicators.filter(i => i.signal === 'bullish').length;
+    const trendBears = trendCat.indicators.filter(i => i.signal === 'bearish').length;
+    if (trendBulls > trendBears) insights.push('Tren mayor berada dalam fase uptrend.');
+    else if (trendBears > trendBulls) insights.push('Harga berada dalam tekanan downtrend secara mayor.');
+
+    if (momentumCat.indicators.some(i => i.name.includes('RSI') && i.signal === 'bearish')) {
+      insights.push('RSI menunjukkan kondisi overbought (jenuh beli) - rentan koreksi.');
+    } else if (momentumCat.indicators.some(i => i.name.includes('RSI') && i.signal === 'bullish')) {
+      insights.push('RSI menunjukkan kondisi oversold (jenuh jual) - potensi technical rebound.');
+    }
+
+    if (volatilityCat.indicators.some(i => i.name.includes('BB %B') && i.signal === 'bearish')) {
+      insights.push('Harga menyentuh pita atas Bollinger Bands - rawan pullback.');
+    } else if (volatilityCat.indicators.some(i => i.name.includes('BB %B') && i.signal === 'bullish')) {
+      insights.push('Harga menyentuh pita bawah Bollinger Bands - mencari titik support.');
+    }
+
+    if (volRatio > 2 && volSignal === 'bullish') insights.push('Lonjakan volume mendukung pergerakan harga naik (akumulasi kuat).');
+    else if (volRatio > 2 && volSignal === 'bearish') insights.push('Lonjakan volume menyertai penurunan harga (distribusi kuat).');
+
+    return { volumeCat, volatilityCat, trendCat, momentumCat, candlePatterns, total, totalSignal, insights };
   }, [chartData]);
 
   // ── STYLES ────────────────────────────────────────────────────────────────
@@ -224,7 +253,7 @@ export default function TechnicalMatrix({ chartData }: TechnicalMatrixProps) {
     );
   }
 
-  const { volumeCat, volatilityCat, trendCat, momentumCat, candlePatterns, total, totalSignal } = result;
+  const { volumeCat, volatilityCat, trendCat, momentumCat, candlePatterns, total, totalSignal, insights } = result;
   const categories = [volumeCat, volatilityCat, trendCat, momentumCat];
 
   const scoreColor = total >= 60 ? '#2ebd85' : total <= 40 ? '#e0294a' : '#f59e0b';
@@ -294,6 +323,21 @@ export default function TechnicalMatrix({ chartData }: TechnicalMatrixProps) {
             </div>
           );
         })}
+
+        {/* Insight Generation */}
+        <div style={{ marginTop: 12, padding: '8px 10px', background: 'rgba(0,0,0,0.2)', border: '1px dashed var(--border-default)', borderRadius: 6 }}>
+          <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--accent-cyan)', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 4, textTransform: 'uppercase' }}>
+            <span>🎯</span> Insight Generation
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {insights.map((text, i) => (
+              <div key={i} style={{ fontSize: 10, color: 'var(--text-main)', display: 'flex', gap: 6, alignItems: 'flex-start', lineHeight: 1.4 }}>
+                <span style={{ fontWeight: 700, color: 'var(--accent-primary)', flexShrink: 0 }}>•</span>
+                <span>{text}</span>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   );

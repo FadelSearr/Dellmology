@@ -70,11 +70,12 @@ startProcess('TELEGRAM', 'node', ['telegram_bot.js'], rootDir, '34'); // Blue
 // 6. Whale Detective
 startProcess('WHALE', 'python', ['engine/whale_detective.py'], rootDir, '32'); // Green
 
-// 7. Market Guardian
-startProcess('MACRO', 'python', ['engine/market_guardian.py'], rootDir, '33'); // Yellow
+// 7. Market Guardian (needs yfinance - use Python 3.14)
+const python314 = 'C:\\Users\\fadel\\AppData\\Local\\Python\\pythoncore-3.14-64\\python.exe';
+startProcess('MACRO', python314, ['engine/market_guardian.py'], rootDir, '33'); // Yellow
 
-// 8. Memory Agent
-startProcess('MEMORY', 'python', ['engine/memory_agent.py'], rootDir, '36'); // Cyan
+// 8. Memory Agent (needs flask - use Python 3.14)
+startProcess('MEMORY', python314, ['engine/memory_agent.py'], rootDir, '36'); // Cyan
 
 // Handle graceful shutdown
 process.on('SIGINT', () => {

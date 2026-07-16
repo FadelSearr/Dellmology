@@ -4,6 +4,7 @@
    ══════════════════════════════════════════════════════════════ */
 
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+@import './resize-handles.css';
 
 :root {
   /* Color Palette — Dark Trading Terminal */
@@ -96,37 +97,65 @@ html, body {
 ::-webkit-scrollbar-thumb { background: var(--border-default); border-radius: 10px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
 
-/* ── LAYOUT GRID ─────────────────────────────────────────── */
+/* ── LAYOUT (Resizable Panels) ───────────────────────────── */
 .app-shell {
-  display: grid;
-  grid-template-rows: var(--navbar-height) 1fr var(--bottom-panel-height);
-  grid-template-columns: var(--sidebar-width) 1fr var(--right-panel-width);
-  grid-template-areas:
-    "navbar navbar navbar"
-    "sidebar canvas tape"
-    "brain brain brain";
+  display: flex;
+  flex-direction: column;
   height: 100vh;
-  gap: 1px;
-  background: var(--border-default);
+  background: var(--bg-primary);
+  overflow: hidden;
+}
+
+.app-body {
+  flex: 1;
+  overflow: hidden;
 }
 
 .navbar {
-  grid-area: navbar;
   background: rgba(17, 24, 39, 0.85);
   backdrop-filter: blur(16px) saturate(1.4);
   -webkit-backdrop-filter: blur(16px) saturate(1.4);
   z-index: 100;
+  flex-shrink: 0;
 }
-.sidebar { grid-area: sidebar; background: var(--bg-secondary); overflow-y: auto; }
+
+.sidebar { background: var(--bg-secondary); overflow-y: auto; height: 100%; }
 .canvas {
-  grid-area: canvas;
   background: var(--bg-primary);
   overflow-y: auto;
+  height: 100%;
   background-image: radial-gradient(circle, rgba(99, 102, 241, 0.03) 1px, transparent 1px);
   background-size: 24px 24px;
 }
-.tape { grid-area: tape; background: var(--bg-secondary); overflow-y: auto; }
-.brain { grid-area: brain; background: var(--bg-secondary); overflow-y: auto; }
+.tape { background: var(--bg-secondary); overflow-y: auto; height: 100%; }
+.brain { background: var(--bg-secondary); overflow-y: auto; height: 100%; }
+
+/* ── RESIZE HANDLES ─────────────────────────────────────── */
+.resize-handle-h {
+  width: 3px !important;
+  background: var(--border-default);
+  transition: background var(--transition-fast);
+  cursor: col-resize;
+  flex-shrink: 0;
+}
+.resize-handle-h:hover,
+.resize-handle-h[data-state="dragging"] {
+  background: var(--accent-primary);
+  box-shadow: 0 0 8px var(--accent-primary-glow);
+}
+
+.resize-handle-v {
+  height: 3px !important;
+  background: var(--border-default);
+  transition: background var(--transition-fast);
+  cursor: row-resize;
+  flex-shrink: 0;
+}
+.resize-handle-v:hover,
+.resize-handle-v[data-state="dragging"] {
+  background: var(--accent-primary);
+  box-shadow: 0 0 8px var(--accent-primary-glow);
+}
 
 /* ── NAVBAR ──────────────────────────────────────────────── */
 .navbar {

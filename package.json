@@ -24,6 +24,7 @@
     "node-telegram-bot-api": "^1.1.2",
     "react": "18.2.0",
     "react-dom": "18.2.0",
+    "react-resizable-panels": "^4.12.2",
     "recharts": "^3.8.1",
     "redis": "^6.1.0",
     "socket.io": "^4.8.3",

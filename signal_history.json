@@ -178,5 +178,50 @@
     "sentAt": "2026-07-15T01:30:01.951Z",
     "status": "PENDING",
     "dayHighChecked": null
+  },
+  {
+    "emiten": "KBLV",
+    "entry": 0,
+    "tp": 0,
+    "sl": 0,
+    "sentAt": "2026-07-16T06:31:36.885Z",
+    "status": "PENDING",
+    "dayHighChecked": null
+  },
+  {
+    "emiten": "BUKA",
+    "entry": 0,
+    "tp": 0,
+    "sl": 0,
+    "sentAt": "2026-07-16T06:31:36.885Z",
+    "status": "PENDING",
+    "dayHighChecked": null
+  },
+  {
+    "emiten": "NRCA",
+    "entry": 0,
+    "tp": 0,
+    "sl": 0,
+    "sentAt": "2026-07-16T06:31:36.885Z",
+    "status": "PENDING",
+    "dayHighChecked": null
+  },
+  {
+    "emiten": "KIJA",
+    "entry": 0,
+    "tp": 0,
+    "sl": 0,
+    "sentAt": "2026-07-16T06:31:36.885Z",
+    "status": "PENDING",
+    "dayHighChecked": null
+  },
+  {
+    "emiten": "MTDL",
+    "entry": 0,
+    "tp": 0,
+    "sl": 0,
+    "sentAt": "2026-07-16T06:31:36.885Z",
+    "status": "PENDING",
+    "dayHighChecked": null
   }
 ]

@@ -1,0 +1,20 @@
+.resize-handle {
+  width: 2px;
+  height: 2px;
+  background: var(--border-default);
+  transition: background 0.2s;
+}
+
+.resize-handle:hover, .resize-handle:active {
+  background: var(--accent-primary);
+}
+
+[data-panel-group-direction="horizontal"] > .resize-handle {
+  width: 4px;
+  cursor: col-resize;
+}
+
+[data-panel-group-direction="vertical"] > .resize-handle {
+  height: 4px;
+  cursor: row-resize;
+}
