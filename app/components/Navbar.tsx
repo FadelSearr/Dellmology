@@ -114,9 +114,6 @@ export default function Navbar({ searchQuery, onSearchChange, onCombatMode }: Na
           </div>
           <span className="brand-text-anim" style={{ marginLeft: '32px' }}>DELLMOLOGY <span style={{ color: 'var(--accent-cyan)' }}>PRO</span></span>
         </div>
-        <a href="/journal" className="btn btn--ghost btn--sm" style={{ color: 'var(--accent-cyan)', marginLeft: 16 }}>
-           <BookOpen size={12} /> JURNAL
-        </a>
 
         <div className="navbar__search">
           <Search size={14} className="navbar__search-icon" />
@@ -145,7 +142,6 @@ export default function Navbar({ searchQuery, onSearchChange, onCombatMode }: Na
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
-        {/* Market Breadth Badges */}
         {breadth && (
           <>
             <div className="breadth-badge" title="Advance / Decline Ratio">
@@ -154,9 +150,7 @@ export default function Navbar({ searchQuery, onSearchChange, onCombatMode }: Na
               <span style={{ color: 'var(--text-muted)' }}>/</span>
               <span style={{ color: 'var(--color-bearish)' }}>{breadth.decline}</span>
             </div>
-            <div className="breadth-badge" title="Foreign Net Flow" style={{
-              color: breadth.foreignNet >= 0 ? 'var(--color-bullish)' : 'var(--color-bearish)',
-            }}>
+            <div className="breadth-badge" title="Foreign Net Flow" style={{ color: breadth.foreignNet >= 0 ? 'var(--color-bullish)' : 'var(--color-bearish)' }}>
               {breadth.foreignNet >= 0 ? <ArrowUpRight size={11} /> : <ArrowDownRight size={11} />}
               <span>{breadth.foreignNet >= 0 ? '+' : ''}{(breadth.foreignNet / 1e9).toFixed(1)}B</span>
             </div>

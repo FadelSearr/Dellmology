@@ -1,6 +1,6 @@
 'use client';
 import { useEffect } from 'react';
-import { Eye, Crosshair, Star, TrendingUp, TrendingDown, Minus, Zap, RefreshCw, SlidersHorizontal, Briefcase, Sparkles } from 'lucide-react';
+import { Eye, Crosshair, Star, TrendingUp, TrendingDown, Minus, Zap, RefreshCw, SlidersHorizontal, Briefcase, Sparkles, BookOpen } from 'lucide-react';
 import { fmt } from '@/lib/utils';
 import Portfolio from './Portfolio';
 
@@ -175,6 +175,12 @@ export default function Sidebar({
             onClick={() => onTabChange('oracle')}
           >
             <Sparkles size={11} style={{ marginRight: 4, verticalAlign: -1, color: 'var(--accent-cyan)' }} />Oracle
+          </button>
+          <button
+            className="screener-tab"
+            onClick={() => { window.location.href = '/journal'; }}
+          >
+            <BookOpen size={11} style={{ marginRight: 4, verticalAlign: -1, color: 'var(--accent-cyan)' }} />Journal
           </button>
         </div>
       </div>
