@@ -14,11 +14,15 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 export async function getSessionValue(key: string): Promise<string | null> {
   const { data, error } = await supabase
     .from('session')
-    .select('value')
+    .select('value, is_valid, expires_at')
     .eq('key', key)
     .single();
 
   if (error || !data) return null;
+  
+  if (data.is_valid === false) return null;
+  if (data.expires_at && new Date(data.expires_at) < new Date()) return null;
+  
   return data.value;
 }
 

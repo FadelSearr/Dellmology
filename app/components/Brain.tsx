@@ -1,7 +1,8 @@
 'use client';
-import { Brain as BrainIcon, Calculator, Send, Play, Shield, Target } from 'lucide-react';
+import { Brain as BrainIcon, Play, Shield, Target } from 'lucide-react';
 import { fmt } from '@/lib/utils';
 import TechnicalMatrix from './TechnicalMatrix';
+import NewsPanel from './NewsPanel';
 
 type IndicatorSignal = 'Bullish' | 'Neutral' | 'Bearish' | 'Strong';
 type IndicatorRow = { name: string; value: string; signal: IndicatorSignal; note: string };
@@ -25,16 +26,14 @@ interface BrainProps {
   stockData?: StockData | null;
   chartData?: any[];
   onRunBacktest?: () => void;
+  onRunBatchBacktest?: () => void;
+  onRunDiagnostics?: () => void;
 }
 
-export default function Brain({ selectedEmiten, fundamentalData, loading, error, price, atr = 0, ups = 50, signal = 'neutral', beta = 1, stockData, chartData, onRunBacktest }: BrainProps) {
+export default function Brain({ selectedEmiten, fundamentalData, loading, error, price, atr = 0, ups = 50, signal = 'neutral', beta = 1, stockData, chartData, onRunBacktest, onRunBatchBacktest, onRunDiagnostics }: BrainProps) {
   const f = fundamentalData?.data || fundamentalData || null;
   const metrics = f?.metrics || {};
   const insight = f?.insight || {};
-  
-  const p = price || 0;
-  const stopLoss = p - atr * 1.5;
-  const takeProfit = p + atr * 2;
 
   return (
     <div className="brain" id="brain">
@@ -97,62 +96,62 @@ export default function Brain({ selectedEmiten, fundamentalData, loading, error,
           <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Menunggu data fundamental...</div>
         ) : (
           <>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr', gap: 16 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.4fr', gap: 16 }}>
             {/* Left Column: Fundamental Analysis */}
             <div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 10 }}>
                 {/* Valuation */}
-                <div style={{ padding: 8, background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border-color)', borderRadius: 6 }}>
-                  <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--accent-cyan)', marginBottom: 4, textTransform: 'uppercase' }}>Valuation</div>
-                  <div style={{ fontSize: 10, color: 'var(--text-main)', display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ color: 'var(--text-muted)' }}>P/E Ratio</span>
-                      <span>{metrics.pe_ratio || '-'} {insight.valuation?.pe_status}</span>
+                <div style={{ padding: '10px 12px', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border-color)', borderRadius: 8 }}>
+                  <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--accent-cyan)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>Valuation</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-main)', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ color: 'var(--text-muted)', fontSize: 10 }}>P/E Ratio</span>
+                      <span style={{ fontWeight: 600 }}>{metrics.pe_ratio || '-'} {insight.valuation?.pe_status}</span>
                     </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ color: 'var(--text-muted)' }}>P/B Ratio</span>
-                      <span>{metrics.pb_ratio || '-'} {insight.valuation?.pb_status}</span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ color: 'var(--text-muted)', fontSize: 10 }}>P/B Ratio</span>
+                      <span style={{ fontWeight: 600 }}>{metrics.pb_ratio || '-'} {insight.valuation?.pb_status}</span>
                     </div>
                   </div>
                 </div>
                 
                 {/* Profitability */}
-                <div style={{ padding: 8, background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border-color)', borderRadius: 6 }}>
-                  <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--accent-cyan)', marginBottom: 4, textTransform: 'uppercase' }}>Profitability</div>
-                  <div style={{ fontSize: 10, color: 'var(--text-main)', display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ color: 'var(--text-muted)' }}>ROE</span>
-                      <span>{metrics.roe ? `${metrics.roe}%` : '-'} {insight.profitability?.roe_status?.includes('✅') ? '✅' : '⚠️'}</span>
+                <div style={{ padding: '10px 12px', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border-color)', borderRadius: 8 }}>
+                  <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--accent-cyan)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>Profitability</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-main)', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ color: 'var(--text-muted)', fontSize: 10 }}>ROE</span>
+                      <span style={{ fontWeight: 600 }}>{metrics.roe ? `${metrics.roe}%` : '-'} {insight.profitability?.roe_status?.includes('✅') ? '✅' : '⚠️'}</span>
                     </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ color: 'var(--text-muted)' }}>Margin</span>
-                      <span>{metrics.net_profit_margin ? `${metrics.net_profit_margin}%` : '-'} {insight.profitability?.margin_status?.includes('✅') ? '✅' : '⚠️'}</span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ color: 'var(--text-muted)', fontSize: 10 }}>Margin</span>
+                      <span style={{ fontWeight: 600 }}>{metrics.net_profit_margin ? `${metrics.net_profit_margin}%` : '-'} {insight.profitability?.margin_status?.includes('✅') ? '✅' : '⚠️'}</span>
                     </div>
                   </div>
                 </div>
 
-                {/* Liquidity */}
-                <div style={{ padding: 8, background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border-color)', borderRadius: 6 }}>
-                  <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--accent-cyan)', marginBottom: 4, textTransform: 'uppercase' }}>Liquidity & Debt</div>
-                  <div style={{ fontSize: 10, color: 'var(--text-main)', display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ color: 'var(--text-muted)' }}>Current Ratio</span>
-                      <span>{metrics.current_ratio || '-'} {insight.liquidity?.status?.includes('✅') ? '✅' : '⚠️'}</span>
+                {/* Liquidity & Debt */}
+                <div style={{ padding: '10px 12px', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border-color)', borderRadius: 8 }}>
+                  <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--accent-cyan)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>Liquidity & Debt</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-main)', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ color: 'var(--text-muted)', fontSize: 10 }}>Current Ratio</span>
+                      <span style={{ fontWeight: 600 }}>{metrics.current_ratio || '-'} {insight.liquidity?.status?.includes('✅') ? '✅' : '⚠️'}</span>
                     </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ color: 'var(--text-muted)' }}>DER</span>
-                      <span>{metrics.debt_to_equity || '-'} {insight.liquidity?.debt_status?.includes('✅') ? '✅' : '⚠️'}</span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ color: 'var(--text-muted)', fontSize: 10 }}>DER</span>
+                      <span style={{ fontWeight: 600 }}>{metrics.debt_to_equity || '-'} {insight.liquidity?.debt_status?.includes('✅') ? '✅' : '⚠️'}</span>
                     </div>
                   </div>
                 </div>
                 
-                {/* Dividend */}
-                <div style={{ padding: 8, background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border-color)', borderRadius: 6 }}>
-                  <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--accent-cyan)', marginBottom: 4, textTransform: 'uppercase' }}>Income</div>
-                  <div style={{ fontSize: 10, color: 'var(--text-main)', display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ color: 'var(--text-muted)' }}>Dividend Yield</span>
-                      <span>{insight.growth?.dividend || '-'}</span>
+                {/* Income */}
+                <div style={{ padding: '10px 12px', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border-color)', borderRadius: 8 }}>
+                  <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--accent-cyan)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>Income</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-main)', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ color: 'var(--text-muted)', fontSize: 10 }}>Dividend Yield</span>
+                      <span style={{ fontWeight: 600 }}>{insight.growth?.dividend || '-'}</span>
                     </div>
                   </div>
                 </div>
@@ -160,11 +159,11 @@ export default function Brain({ selectedEmiten, fundamentalData, loading, error,
 
               {/* Recommendation */}
               {insight.recommendation && (
-                <div style={{ marginTop: 8, padding: '8px 10px', background: 'rgba(0,0,0,0.2)', border: '1px dashed var(--border-color)', borderRadius: 6 }}>
-                  <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--accent-cyan)', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 4, textTransform: 'uppercase' }}>
+                <div style={{ padding: '10px 12px', background: 'rgba(0,0,0,0.2)', border: '1px dashed var(--border-color)', borderRadius: 8, marginBottom: 8 }}>
+                  <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--accent-cyan)', marginBottom: 5, display: 'flex', alignItems: 'center', gap: 4, textTransform: 'uppercase', letterSpacing: 0.5 }}>
                     <Target size={10} /> Insight Generation
                   </div>
-                  <div style={{ fontSize: 10, color: 'var(--text-main)', lineHeight: 1.4 }}>
+                  <div style={{ fontSize: 11, color: 'var(--text-main)', lineHeight: 1.5 }}>
                     {insight.recommendation}
                   </div>
                 </div>
@@ -172,7 +171,7 @@ export default function Brain({ selectedEmiten, fundamentalData, loading, error,
               
               {/* Warnings */}
               {insight.warning && insight.warning.length > 0 && (
-                <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 3 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                   {insight.warning.map((warn: string, i: number) => (
                     <div key={i} style={{ fontSize: 10, color: 'var(--color-warning)', display: 'flex', gap: 6, alignItems: 'flex-start' }}>
                       <span style={{ fontWeight: 700, flexShrink: 0 }}>⚠️</span>
@@ -181,10 +180,13 @@ export default function Brain({ selectedEmiten, fundamentalData, loading, error,
                   ))}
                 </div>
               )}
+              
+              {/* News & Sentiment Panel */}
+              <NewsPanel emiten={selectedEmiten} />
             </div>
 
-            {/* Right Column: Technical Analysis Matrix (client-computed from chartData) */}
-            <div style={{ overflowY: 'auto', maxHeight: 260 }}>
+            {/* Right Column: Technical Analysis Matrix */}
+            <div style={{ overflowY: 'auto', maxHeight: 300 }}>
               <TechnicalMatrix chartData={chartData} />
             </div>
           </div>
@@ -202,96 +204,24 @@ export default function Brain({ selectedEmiten, fundamentalData, loading, error,
         @keyframes spin-slow { 100% { transform: rotate(360deg); } }
       `}</style>
 
-      {/* Position Sizing */}
-      <div className="brain__sizing">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10, fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, color: 'var(--text-secondary)' }}>
-          <Calculator size={13} color="var(--accent-primary)" /> Position Sizer
-        </div>
-        <div className="position-sizer">
-          <div className="position-sizer__row">
-            <span className="position-sizer__label">Est. ATR</span>
-            <span className="position-sizer__value">Rp {atr}</span>
-          </div>
-          <div className="position-sizer__row">
-            <span className="position-sizer__label">Suggested Max Lot</span>
-            <span className="position-sizer__value" style={{ color: 'var(--accent-cyan)' }}>
-              {Math.max(1, Math.floor(1000000 / (Math.max(p - stopLoss, 1) * 100))).toLocaleString()} lot
-            </span>
-          </div>
-          <div className="position-sizer__row">
-            <span className="position-sizer__label">Stop Loss</span>
-            <span className="position-sizer__value" style={{ color: 'var(--color-bearish)' }}>Rp {fmt(stopLoss)}</span>
-          </div>
-          <div className="position-sizer__row">
-            <span className="position-sizer__label">Take Profit</span>
-            <span className="position-sizer__value" style={{ color: 'var(--color-bullish)' }}>Rp {fmt(takeProfit)}</span>
-          </div>
-          <div className="position-sizer__row">
-            <span className="position-sizer__label">R:R Ratio</span>
-            <span className="position-sizer__value">1:2.0</span>
-          </div>
-          <div className="position-sizer__row">
-            <span className="position-sizer__label">Beta (Market Corr.)</span>
-            <span className="position-sizer__value" style={{ color: beta > 1.5 ? 'var(--color-bearish)' : 'var(--text-primary)' }}>
-              {beta.toFixed(2)}
-            </span>
-          </div>
-          <div className="position-sizer__row">
-            <span className="position-sizer__label">Slippage</span>
-            <span className="position-sizer__value">1%</span>
-          </div>
-        </div>
-
-        {beta > 1.5 && (
-          <div style={{ marginTop: 12, padding: '8px 10px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, display: 'flex', gap: 6, alignItems: 'flex-start' }}>
-            <span style={{ color: '#ef4444', marginTop: 2 }}>⚠️</span>
-            <div style={{ fontSize: 10, color: '#ef4444', fontWeight: 600, lineHeight: 1.4 }}>
-              Systemic Risk High: Portfolio too sensitive to Market Crash (Beta &gt; 1.5)
-            </div>
-          </div>
-        )}
-      </div>
-
       {/* Action Dock */}
       <div className="brain__actions">
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10, fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, color: 'var(--text-secondary)' }}>
           Action Dock
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <button 
-            className="btn btn--primary" 
-            id="btn-telegram"
-            onClick={async (e) => {
-              const btn = e.currentTarget;
-              const originalText = btn.innerHTML;
-              btn.innerHTML = 'Sending...';
-              try {
-                const res = await fetch('/api/telegram', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    emiten: selectedEmiten,
-                    price: p,
-                    ups,
-                    summary: insight.recommendation || 'Fundamental analysis',
-                    signal,
-                    atr,
-                    stopLoss,
-                    takeProfit
-                  })
-                });
-                if (res.ok) btn.innerHTML = '✅ Sent to Telegram';
-                else btn.innerHTML = '❌ Failed';
-              } catch (e) {
-                console.error('Failed to send Telegram message:', e);
-              }
-              setTimeout(() => { btn.innerHTML = originalText; }, 3000);
-            }}
-          >
-            <Send size={13} /> Send to Telegram
-          </button>
+          {onRunDiagnostics && (
+            <button className="btn btn--primary" id="btn-diagnostics" onClick={onRunDiagnostics} style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', color: 'var(--text-primary)' }}>
+              <Shield size={13} /> AI Diagnostics
+            </button>
+          )}
+          {onRunBatchBacktest && (
+            <button className="btn btn--primary" id="btn-train-test" onClick={onRunBatchBacktest}>
+              <BrainIcon size={13} /> Train & Test Model
+            </button>
+          )}
           <button className="btn btn--ghost" id="btn-backtest" onClick={onRunBacktest}>
-            <Play size={13} /> Run Backtest
+            <Play size={13} /> Run Backtest ({selectedEmiten})
           </button>
         </div>
       </div>

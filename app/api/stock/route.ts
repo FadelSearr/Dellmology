@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+export const dynamic = 'force-dynamic';
 import { fetchMarketDetector, fetchOrderbook, fetchEmitenInfo } from '@/lib/stockbit';
 import { getPrice, fetchYahooPrice } from '@/lib/price-sync';
 import {
@@ -58,7 +59,7 @@ async function getIHSGChange(): Promise<number> {
   return ihsgCache.changePercent;
 }
 
-export const dynamic = 'force-dynamic';
+
 export async function GET(request: NextRequest) {
   // ── Rate Limit Guard ────────────────────────────────────────
   const rateLimitResponse = rateLimit(request, 60, 60);

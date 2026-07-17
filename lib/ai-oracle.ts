@@ -15,6 +15,9 @@ export interface OracleAnalysis {
     catalysts: string[];
     riskLevel: 'Low' | 'Medium' | 'High';
     entryStrategy: string;
+    entryPrice: string;
+    takeProfit: string;
+    stopLoss: string;
   }>;
 }
 
@@ -41,7 +44,10 @@ Instruksi Analisis:
 5. Sebutkan 'catalysts' (katalis spesifik, max 3 poin).
 6. Tentukan 'riskLevel' (Low/Medium/High) berdasarkan volatilitas dan seberapa jauh dari titik akumulasi (atau jika sedang didistribusi, set ke High).
 7. Berikan 'entryStrategy' singkat (misal: "Buy on Weakness di area 1200-1220" atau "Hindari karena distribusi asing").
-8. Dari 5 emiten tersebut, pilih 1 emiten sebagai 'goldenOracle' yang paling layak dibeli saat ini beserta alasannya secara singkat (1 kalimat). Tidak boleh memilih saham yang sedang didistribusi asing.
+8. Tentukan 'entryPrice' (harga atau range harga ideal untuk masuk).
+9. Tentukan 'takeProfit' (target harga realistis).
+10. Tentukan 'stopLoss' (level harga pembatasan risiko/cut loss).
+11. Dari 5 emiten tersebut, pilih 1 emiten sebagai 'goldenOracle' yang paling layak dibeli saat ini beserta alasannya secara singkat (1 kalimat). Tidak boleh memilih saham yang sedang didistribusi asing.
 
 Kembalikan jawaban HANYA DALAM FORMAT JSON yang persis sama dengan struktur berikut, tanpa tambahan markdown (\`\`\`json) atau teks pengantar:
 {
@@ -54,7 +60,10 @@ Kembalikan jawaban HANYA DALAM FORMAT JSON yang persis sama dengan struktur beri
       "reasoning": "...",
       "catalysts": ["..."],
       "riskLevel": "Low",
-      "entryStrategy": "..."
+      "entryStrategy": "...",
+      "entryPrice": "4500 - 4550",
+      "takeProfit": "4800",
+      "stopLoss": "4350"
     }
   ]
 }

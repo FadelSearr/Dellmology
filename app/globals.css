@@ -526,13 +526,12 @@ html, body {
 /* ── BOTTOM PANEL ────────────────────────────────────────── */
 .brain {
   display: grid;
-  grid-template-columns: 1fr 280px 240px;
+  grid-template-columns: 1fr 240px;
   gap: 1px;
   background: var(--border-default);
 }
 
 .brain__narrative,
-.brain__sizing,
 .brain__actions {
   background: var(--bg-secondary);
   padding: var(--gap-md) var(--gap-lg);
@@ -1760,6 +1759,10 @@ html, body {
   border: 1px solid rgba(251,191,36,0.3);
   background: linear-gradient(135deg, rgba(251,191,36,0.06), rgba(245,158,11,0.03));
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: min-content;
+  height: auto;
 }
 
 .oracle-golden__shimmer {

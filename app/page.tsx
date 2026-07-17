@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import Navbar from './components/Navbar';
+import SectorHeatmap from './components/SectorHeatmap';
 import Sidebar from './components/Sidebar';
 import Canvas from './components/Canvas';
 import Tape from './components/Tape';
@@ -9,6 +10,8 @@ import Brain from './components/Brain';
 import OracleScreen from './components/OracleScreen';
 import CombatMode from './components/CombatMode';
 import BacktestModal from './components/BacktestModal';
+import TrainTestModal from './components/TrainTestModal';
+import ModelDiagnosticsModal from './components/ModelDiagnosticsModal';
 import { useStockData, useWatchlist, useFundamental, useChartData, useAutoRefresh, usePortfolio, useBrokerHistory } from '@/app/hooks/useData';
 import { calculateBeta } from '@/lib/analysis';
 import type { BrokerData } from '@/lib/types';
@@ -22,6 +25,8 @@ export default function Home() {
   const [searchQuery, setSearchQuery]         = useState('');
   const [combatMode, setCombatMode]           = useState(false);
   const [showBacktest, setShowBacktest]       = useState(false);
+  const [showTrainTest, setShowTrainTest]     = useState(false);
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
   const [screenerSortBy, setScreenerSortBy]   = useState<'score' | 'price_asc' | 'price_desc' | 'change'>('score');
   const [activeTab, setActiveTab]             = useState<'watchlist' | 'screener' | 'portfolio' | 'oracle'>('watchlist');
   const [chartTimeframe, setChartTimeframe]   = useState('1D');
@@ -127,6 +132,19 @@ export default function Home() {
         chartData={chartData}
       />
 
+      {/* Train Test Modal */}
+      <TrainTestModal
+        isOpen={showTrainTest}
+        onClose={() => setShowTrainTest(false)}
+        emitens={(watchlistData || []).map(w => w.emiten || w.code)}
+      />
+
+      {/* Diagnostics Modal */}
+      <ModelDiagnosticsModal
+        isOpen={showDiagnostics}
+        onClose={() => setShowDiagnostics(false)}
+      />
+
       {/* Main Layout */}
       <div className="app-shell">
         <Navbar
@@ -134,6 +152,7 @@ export default function Home() {
           onSearchChange={setSearchQuery}
           onCombatMode={() => setCombatMode(true)}
         />
+        <SectorHeatmap />
         <Group orientation="vertical" className="app-body">
           <Panel defaultSize={70} minSize={30}>
             <Group orientation="horizontal">
@@ -224,6 +243,8 @@ export default function Home() {
               stockData={stockData}
               chartData={chartData}
               onRunBacktest={() => setShowBacktest(true)}
+              onRunBatchBacktest={() => setShowTrainTest(true)}
+              onRunDiagnostics={() => setShowDiagnostics(true)}
             />
           </Panel>
         </Group>

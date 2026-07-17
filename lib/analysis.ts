@@ -807,6 +807,7 @@ export interface FibonacciOutput {
   fib618: number;
   fib786: number;
   nearestLevel: string;
+  nearestPrice: number;
   isBouncing: boolean;
   distancePct: number;
 }
@@ -843,6 +844,7 @@ export function calculateFibonacciLevels(
   ];
 
   let nearestLevel = '';
+  let nearestPrice = 0;
   let minDistancePct = Infinity;
   let isBouncing = false;
 
@@ -851,6 +853,7 @@ export function calculateFibonacciLevels(
     if (distPct < minDistancePct) {
       minDistancePct = distPct;
       nearestLevel = lvl.name;
+      nearestPrice = lvl.val;
     }
   }
 
@@ -863,6 +866,7 @@ export function calculateFibonacciLevels(
     high, low,
     fib236, fib382, fib500, fib618, fib786,
     nearestLevel,
+    nearestPrice,
     isBouncing,
     distancePct: Math.round(minDistancePct * 10) / 10
   };

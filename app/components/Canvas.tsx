@@ -44,6 +44,34 @@ export default function Canvas({ selectedEmiten, selectedStock, stockData, chart
     voters: ConsensusVoter[]; description: string;
   } | null>(null);
   const [cnnRegime, setCnnRegime] = useState<{ regime: string; confidence: number; pattern?: string } | null>(null);
+  const [inWatchlist, setInWatchlist] = useState(false);
+
+  // Check if in watchlist
+  useEffect(() => {
+    fetch('/api/watchlist')
+      .then(res => res.json())
+      .then(data => {
+        if (data.success && data.data) {
+          setInWatchlist(data.data.includes(selectedEmiten));
+        }
+      }).catch(console.error);
+  }, [selectedEmiten]);
+
+  const toggleWatchlist = async () => {
+    try {
+      const method = inWatchlist ? 'DELETE' : 'POST';
+      const url = inWatchlist ? `/api/watchlist?emiten=${selectedEmiten}` : '/api/watchlist';
+      const opts = inWatchlist ? { method } : { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ emiten: selectedEmiten }) };
+      
+      const res = await fetch(url, opts);
+      const json = await res.json();
+      if (json.success) {
+        setInWatchlist(!inWatchlist);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   // Fetch patterns
   useEffect(() => {
@@ -259,7 +287,20 @@ export default function Canvas({ selectedEmiten, selectedStock, stockData, chart
       <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border-default)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
           <div>
-            <div style={{ fontSize: 22, fontWeight: 800, fontFamily: 'var(--font-mono)', letterSpacing: -1 }}>{selectedEmiten}</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ fontSize: 22, fontWeight: 800, fontFamily: 'var(--font-mono)', letterSpacing: -1 }}>{selectedEmiten}</div>
+              <button 
+                onClick={toggleWatchlist} 
+                style={{ 
+                  background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, 
+                  color: inWatchlist ? '#fbbf24' : 'var(--text-muted)',
+                  padding: 0, display: 'flex', alignItems: 'center' 
+                }}
+                title={inWatchlist ? "Hapus dari Watchlist" : "Tambah ke Watchlist"}
+              >
+                {inWatchlist ? '⭐' : '☆'}
+              </button>
+            </div>
             <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{selectedStock.name}</div>
           </div>
           <div style={{ textAlign: 'right' }}>

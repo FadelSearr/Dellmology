@@ -2,6 +2,7 @@ export interface NewsSentiment {
   ticker: string;
   sentiment: 'Bullish' | 'Bearish' | 'Neutral';
   headline: string;
+  headlines?: string[];
 }
 
 export async function getNewsSentiment(tickers: string[]): Promise<NewsSentiment[]> {
@@ -92,12 +93,14 @@ export async function getNewsSentiment(tickers: string[]): Promise<NewsSentiment
               ticker,
               sentiment,
               headline: headlines[0] || '',
+              headlines: headlines,
             });
           } else {
             results.push({
               ticker,
               sentiment: 'Neutral',
               headline: `${ticker}: No recent public headlines found.`,
+              headlines: [],
             });
           }
         } catch (err) {

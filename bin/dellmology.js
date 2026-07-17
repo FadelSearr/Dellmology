@@ -54,6 +54,12 @@ const cnnVenv = path.join(cnnDir, 'venv', 'Scripts', 'python.exe');
 const cnnExec = fs.existsSync(cnnVenv) ? cnnVenv : 'python';
 startProcess('FASTAPI', cnnExec, ['main.py'], cnnDir, '33'); // Yellow
 
+// 1c. Unified ML Server (CNN, NLP, LSTM on port 8000)
+const mlServerDir = path.join(rootDir, 'engine');
+// Using the explicit global python that has vaderSentiment installed
+const mlServerPython = 'C:\\Users\\fadel\\AppData\\Local\\Programs\\Python\\Python311\\python.exe';
+startProcess('ML_SERVER', mlServerPython, ['ml_server.py'], mlServerDir, '35'); // Magenta
+
 // 2. Go Engine
 const goDir = path.join(rootDir, 'engine');
 startProcess('GO', 'go build -o engine.exe main.go && .\\engine.exe', [], goDir, '35'); // Magenta

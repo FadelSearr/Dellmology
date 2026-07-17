@@ -19,7 +19,8 @@ const bot = new TelegramBot(token, { polling: true });
 bot.setMyCommands([
   { command: '/start', description: 'Mulai bot dan lihat panduan' },
   { command: '/history', description: 'Lihat ringkasan riwayat sinyal' },
-  { command: '/audit', description: 'Cek manual TP/SL sinyal aktif' }
+  { command: '/audit', description: 'Cek manual TP/SL sinyal aktif' },
+  { command: '/watchlist', description: 'Cek status saham di watchlist (Support Fibonacci)' }
 ]).catch(console.error);
 
 console.log('🤖 Dellmology Telegram Bot (Chat Oracle) is running...');
@@ -47,14 +48,24 @@ function saveSignalToHistory(hits) {
   for (const hit of hits) {
     const emiten = hit.code || hit.emiten;
     if (!emiten) continue;
-    const price = parseFloat(hit.price) || 0;
-    const tp = hit.tp || Math.round(price * 1.06);
-    const sl = hit.sl || Math.round(price * 0.93);
-    history.push({
-      emiten,
-      entry: price,
-      tp,
-      sl,
+    const price = parseFloat(hit.price) || parseFloat(hit.entry) || 0;
+    const tp = parseFloat(hit.tp) || Math.round(price * 1.06);
+    const sl = parseFloat(hit.sl) || Math.round(price * 0.93);
+      let reasoning = null;
+      if (hit.reasoning) {
+        reasoning = hit.reasoning;
+      } else if (hit.bandarSignal) {
+        reasoning = `Bandarmology Analysis: ${hit.bandarSignal}. Smart Money Net: ${(hit.smartMoneyLot / 1000000).toFixed(1)}M lot. Foreign Flow: ${hit.foreignStatus || 'NEUTRAL'} (${hit.foreignParticipation ? hit.foreignParticipation.toFixed(1) : 0}% part).`;
+      } else {
+        reasoning = hit.entry_strategy || 'No reasoning provided';
+      }
+      
+      history.push({
+        emiten,
+        entry: price,
+        tp,
+        sl,
+        reasoning: reasoning,
       sentAt: now,
       status: 'PENDING',
       dayHighChecked: null,
@@ -65,7 +76,7 @@ function saveSignalToHistory(hits) {
 
 async function getCurrentPrice(emiten) {
   try {
-    const res = await fetch(`http://127.0.0.1:3000/api/stock?code=${emiten}`);
+    const res = await fetch(`http://127.0.0.1:3000/api/stock?emiten=${emiten}`);
     if (!res.ok) return null;
     const data = await res.json();
     return data.data?.price || data.price || null;
@@ -73,65 +84,61 @@ async function getCurrentPrice(emiten) {
 }
 
 async function runSignalAudit() {
-  const history = loadHistory();
-  if (history.length === 0) return;
+  try {
+    // Delegate audit logic to Next.js API to avoid conflicts
+    const res = await fetch('http://127.0.0.1:3000/api/audit', {
+      method: 'POST',
+      signal: AbortSignal.timeout(60000),
+    });
+    if (!res.ok) throw new Error(`Audit API returned ${res.status}`);
 
-  const now = Date.now();
-  let updated = false;
-  const auditLines = [];
+    const result = await res.json();
+    const { updated, log } = result;
 
-  for (const sig of history) {
-    if (sig.status !== 'PENDING') continue;
+    if (!allowedChatId) return;
 
-    // Expired check: lebih dari 2 hari
-    const sentAge = now - new Date(sig.sentAt).getTime();
-    if (sentAge > 2 * 24 * 60 * 60 * 1000) {
-      sig.status = 'EXPIRED';
-      updated = true;
-      continue;
+    if (updated > 0) {
+      // Build Telegram message from log lines that contain TP_HIT or SL_HIT
+      const tpLines = log.filter(l => l.startsWith('TP_HIT'));
+      const slLines = log.filter(l => l.startsWith('SL_HIT'));
+
+      let msg = '';
+      for (const line of tpLines) {
+        // e.g. "TP_HIT ECII: price=160 >= tp=144 (+11.8%)"
+        const match = line.match(/TP_HIT (\w+): price=(\d+) .* tp=(\d+) \(([^)]+)\)/);
+        if (match) {
+          const [, emiten, price, tp, pct] = match;
+          msg += `🏆 *SIGNAL TP HIT*\n`;
+          msg += `Symbol: *${emiten}*\n`;
+          msg += `Harga: Rp${price} ≥ TP: Rp${tp}\n`;
+          msg += `Profit: *+${pct}*\n\n`;
+        }
+      }
+      for (const line of slLines) {
+        const match = line.match(/SL_HIT (\w+): price=(\d+) .* sl=(\d+) \(([^)]+)\)/);
+        if (match) {
+          const [, emiten, price, sl, pct] = match;
+          msg += `⛔ *SIGNAL SL HIT*\n`;
+          msg += `Symbol: *${emiten}*\n`;
+          msg += `Harga: Rp${price} ≤ SL: Rp${sl}\n`;
+          msg += `Loss: *${pct}*\n\n`;
+        }
+      }
+
+      if (msg) {
+        await bot.sendMessage(allowedChatId, msg.trim(), { parse_mode: 'Markdown' });
+      }
+    } else {
+      await bot.sendMessage(allowedChatId, '✔️ Audit selesai. Tidak ada sinyal yang menyentuh TP atau SL saat ini.');
     }
-
-    const currentPrice = await getCurrentPrice(sig.emiten);
-    if (!currentPrice) continue;
-
-    sig.dayHighChecked = currentPrice;
-
-    if (currentPrice >= sig.tp) {
-      sig.status = 'TP_HIT';
-      const profitPct = (((sig.tp - sig.entry) / sig.entry) * 100).toFixed(1);
-      auditLines.push(
-        `🏆 *SIGNAL CONFIRMED — PROFIT\\!*\n` +
-        `\nSymbol: *${sig.emiten}*` +
-        `\nStatus: ✅ TP HIT` +
-        `\nEntry: Rp${sig.entry} → TP: Rp${sig.tp}` +
-        `\nDay High: Rp${currentPrice}` +
-        `\nProfit: *+${profitPct}%*` +
-        `\n\n📌 _Sinyal WATCHLIST terbukti cuan\\! Tracking lanjut\\.\\.\\._`
-      );
-      updated = true;
-    } else if (currentPrice <= sig.sl) {
-      sig.status = 'SL_HIT';
-      const lossPct = (((sig.sl - sig.entry) / sig.entry) * 100).toFixed(1);
-      auditLines.push(
-        `⛔ *Signal Stop Loss Triggered*\n` +
-        `\nSymbol: *${sig.emiten}*` +
-        `\nStatus: ❌ SL HIT` +
-        `\nEntry: Rp${sig.entry} → SL: Rp${sig.sl}` +
-        `\nLoss: *${lossPct}%*`
-      );
-      updated = true;
+  } catch (err) {
+    console.error('[Audit] Error:', err.message);
+    if (allowedChatId) {
+      await bot.sendMessage(allowedChatId, `⚠️ Audit gagal: ${err.message}`).catch(() => {});
     }
-  }
-
-  if (updated) saveHistory(history);
-
-  if (auditLines.length > 0 && allowedChatId) {
-    const msg = auditLines.join('\n\n━━━━━━━━━━━━━━━━━━━\n\n');
-    await bot.sendMessage(allowedChatId, msg, { parse_mode: 'MarkdownV2' });
-  } else if (allowedChatId) {
-    await bot.sendMessage(allowedChatId, '✔️ Audit selesai. Tidak ada sinyal yang menyentuh TP atau SL saat ini.');
   }
 }
+
 
 // ══════════════════════════════════════════════════════════
 // FORMAT SIGNAL (Gambar 3)
@@ -326,13 +333,22 @@ async function broadcastOracleReport(sessionLabel) {
     });
 
     // Save to history so audit can track them
-    const historyHits = picks.map(p => ({
-        code: p.emiten,
-        entry: parseInt(p.entryStrategy.replace(/[^0-9]/g, '')) || 0,
-        tp: parseInt(p.takeProfit),
-        sl: parseInt(p.stopLoss),
-        changePercent: 0 
-    }));
+    const historyHits = picks.map(p => {
+        const entryStr = String(p.entryPrice || '');
+        const entryMatch = entryStr.match(/\d+/);
+        const tpMatch = String(p.takeProfit || '').match(/\d+/);
+        const slMatch = String(p.stopLoss || '').match(/\d+/);
+        
+        return {
+            emiten: p.emiten,
+            entry: entryMatch ? parseInt(entryMatch[0], 10) : (p.price || 0),
+            tp: tpMatch ? parseInt(tpMatch[0], 10) : 0,
+            sl: slMatch ? parseInt(slMatch[0], 10) : 0,
+            reasoning: p.reasoning,
+            entry_strategy: p.entryStrategy,
+            changePercent: p.changePercent || 0
+        };
+    });
     saveSignalToHistory(historyHits);
 
     await bot.deleteMessage(allowedChatId, waitMsg.message_id).catch(() => {});
@@ -351,6 +367,78 @@ async function broadcastOracleReport(sessionLabel) {
 cron.schedule('0 9 * * 1-5', runSignalAudit, { timezone: 'Asia/Jakarta' });
 cron.schedule('0 14 * * 1-5', runSignalAudit, { timezone: 'Asia/Jakarta' });
 cron.schedule('0 17 * * 1-5', runSignalAudit, { timezone: 'Asia/Jakarta' });
+
+// ══════════════════════════════════════════════════════════
+// CRON JOBS — WATCHLIST SYNC & TRIGGER (Fibonacci Support)
+// 09:15 | 10:30 | 14:15 WIB
+// ══════════════════════════════════════════════════════════
+
+async function runWatchlistCheck() {
+  const WATCHLIST_FILE = path.join(__dirname, 'watchlist.json');
+  if (!fs.existsSync(WATCHLIST_FILE)) return;
+  let watchlist = [];
+  try {
+    watchlist = JSON.parse(fs.readFileSync(WATCHLIST_FILE, 'utf8'));
+  } catch (e) { return; }
+
+  if (watchlist.length === 0) return;
+  
+  let alerts = [];
+  for (const emiten of watchlist) {
+    try {
+      const res = await fetch(`http://127.0.0.1:3000/api/stock?code=${emiten}`);
+      if (!res.ok) continue;
+      const json = await res.json();
+      if (!json.success || !json.data) continue;
+      
+      const stock = json.data;
+      const price = stock.price;
+      
+      // Calculate simple Fibonacci based on 52-week High/Low if available, or just mock some support levels if not in API.
+      // Usually fib levels are S1, S2, S3 or Fib 0.618, 0.5.
+      // Assuming stock object has highs/lows or we approximate a support level:
+      // Since we don't have historical high/low in this simple endpoint, we will mock a fibonacci check
+      // For real usage, we'd fetch chart data and calculate (High - Low) * 0.618 etc.
+      // Let's fetch chart data for High/Low
+      const chartRes = await fetch(`http://127.0.0.1:3000/api/chart?emiten=${emiten}&tf=1D`);
+      if (!chartRes.ok) continue;
+      const chartJson = await chartRes.json();
+      const chartData = chartJson.data?.chartData || chartJson.chartData || [];
+      
+      if (chartData.length > 0) {
+        let maxHigh = 0;
+        let minLow = 9999999;
+        chartData.slice(-60).forEach(d => {
+          if (d.high > maxHigh) maxHigh = d.high;
+          if (d.low < minLow) minLow = d.low;
+        });
+        
+        const diff = maxHigh - minLow;
+        const fib618 = maxHigh - (diff * 0.618); // Support 0.618
+        const fib786 = maxHigh - (diff * 0.786); // Support 0.786
+        
+        // If price is near (within 2%) of Fib 618 or Fib 786 support
+        if (price > fib618 * 0.98 && price < fib618 * 1.02) {
+          alerts.push(`⭐ *${emiten}* berada di area *Support Fibonacci 0.618* (Rp ${Math.round(fib618)}). Harga saat ini: Rp ${price}. Momentum untuk Rebound?`);
+        } else if (price > fib786 * 0.98 && price < fib786 * 1.02) {
+          alerts.push(`⭐ *${emiten}* berada di area *Support Fibonacci 0.786* (Rp ${Math.round(fib786)}). Harga saat ini: Rp ${price}. Peluang Buy on Weakness.`);
+        }
+      }
+    } catch (e) {
+      console.error('Watchlist check error for', emiten, e.message);
+    }
+  }
+
+  if (alerts.length > 0 && allowedChatId) {
+    const msg = `🔔 *Watchlist Alert (Fibonacci Support)*\n\n` + alerts.join('\n\n');
+    bot.sendMessage(allowedChatId, msg, { parse_mode: 'Markdown' });
+  }
+}
+
+cron.schedule('15 9 * * 1-5', runWatchlistCheck, { timezone: 'Asia/Jakarta' });
+cron.schedule('30 10 * * 1-5', runWatchlistCheck, { timezone: 'Asia/Jakarta' });
+cron.schedule('15 14 * * 1-5', runWatchlistCheck, { timezone: 'Asia/Jakarta' });
+
 
 // ══════════════════════════════════════════════════════════
 // ON-DEMAND COMMANDS (manual dari Telegram)
@@ -407,6 +495,17 @@ bot.on('message', async (msg) => {
     return;
   }
 
+  if (query.startsWith('/whale')) {
+    await fetchAndBroadcastSignal('Manual Whale Scan (Real Market)');
+    return;
+  }
+
+  if (query.startsWith('/watchlist')) {
+    bot.sendMessage(chatId, '⭐ Mengecek status saham di Watchlist...');
+    await runWatchlistCheck();
+    return;
+  }
+
   // General query → Oracle screener
   const waitMsg = await bot.sendMessage(chatId, '⏳ Oracle sedang memproses perintah...');
 
@@ -447,3 +546,4 @@ bot.on('message', async (msg) => {
     });
   }
 });
+module.exports = { runSignalAudit };

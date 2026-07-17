@@ -241,7 +241,8 @@ async function heartbeatTokenSync() {
   forcedRefreshCount = state.forced_refresh_count || forcedRefreshCount;
 
   if (!isTokenUsable(latestToken, latestExpiryMs)) {
-    console.warn('Dellmology Auth Helper: Stored token is expired. Waiting for a fresh token capture.');
+    console.warn('Dellmology Auth Helper: Stored token is expired. Triggering auto-refresh to get a fresh token.');
+    forceRefreshStockbitSession();
     return;
   }
 

@@ -278,13 +278,36 @@ export default function OracleScreen({ onSelectEmiten }: { onSelectEmiten: (code
                   </div>
                 </div>
 
-                {/* Entry Strategy */}
+                {/* Entry Strategy & Targets */}
                 {pick.entryStrategy && (
                   <div className="oracle-pick__strategy">
                     <div className="oracle-pick__section-label oracle-pick__section-label--cyan">
                       <Target size={11} /> Entry Strategy
                     </div>
                     <div className="oracle-pick__strategy-text">{pick.entryStrategy}</div>
+                    
+                    {(pick.entryPrice || pick.takeProfit || pick.stopLoss) && (
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', marginTop: '12px', paddingTop: '10px', borderTop: '1px dashed rgba(255,255,255,0.1)' }}>
+                        {pick.entryPrice && (
+                          <div>
+                            <div style={{fontSize: '9px', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '2px'}}>ENTRY</div>
+                            <div style={{fontSize: '12px', fontWeight: 800, color: 'var(--accent-cyan)'}}>{pick.entryPrice}</div>
+                          </div>
+                        )}
+                        {pick.takeProfit && (
+                          <div>
+                            <div style={{fontSize: '9px', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '2px'}}>TAKE PROFIT</div>
+                            <div style={{fontSize: '12px', fontWeight: 800, color: 'var(--color-bullish)'}}>{pick.takeProfit}</div>
+                          </div>
+                        )}
+                        {pick.stopLoss && (
+                          <div>
+                            <div style={{fontSize: '9px', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '2px'}}>STOP LOSS</div>
+                            <div style={{fontSize: '12px', fontWeight: 800, color: 'var(--color-bearish)'}}>{pick.stopLoss}</div>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
 

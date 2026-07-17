@@ -8,7 +8,7 @@ import { calculateUPS, calculateZScore } from '@/lib/analysis';
 import { getBrokerProfile } from '@/lib/broker-profiles';
 
 // The Oracle is expensive and AI takes time. Cache results adaptively.
-const CACHE_KEY = 'oracle_daily_picks';
+const CACHE_KEY = 'oracle_daily_picks_v2';
 
 // Adaptive TTL: 30 min during market hours (09:00–16:30 WIB = 02:00–09:30 UTC)
 // 4 hours during off-hours

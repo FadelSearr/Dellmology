@@ -18,10 +18,13 @@ export class TokenExpiredError extends Error {
   }
 }
 
+import fs from 'fs';
+import path from 'path';
+
 // ── Token Cache ──────────────────────────────────────────────
 let cachedToken: string | null = null;
 let tokenLastFetched = 0;
-const TOKEN_CACHE_DURATION = 10000; // 10 seconds (reduced from 60s to pick up fresh tokens faster)
+const TOKEN_CACHE_DURATION = 10000; // 10 seconds
 
 async function getAuthToken(): Promise<string> {
   const now = Date.now();
@@ -29,11 +32,28 @@ async function getAuthToken(): Promise<string> {
     return cachedToken;
   }
 
-  const token = await getSessionValue('stockbit_token');
+  let token = await getSessionValue('stockbit_token');
+  
   if (!token) {
-    const envToken = process.env.STOCKBIT_JWT_TOKEN;
-    if (!envToken) throw new Error('STOCKBIT_JWT_TOKEN not found');
-    return envToken;
+    // Dynamically read from .env.local to avoid needing server restarts
+    try {
+      const envPath = path.join(process.cwd(), '.env.local');
+      if (fs.existsSync(envPath)) {
+        const envContent = fs.readFileSync(envPath, 'utf8');
+        const match = envContent.match(/STOCKBIT_JWT_TOKEN=(.*)/);
+        if (match && match[1]) {
+          token = match[1].trim();
+        }
+      }
+    } catch (e) {
+      // Ignore file read errors
+    }
+    
+    if (!token) {
+      token = process.env.STOCKBIT_JWT_TOKEN;
+    }
+    
+    if (!token) throw new Error('STOCKBIT_JWT_TOKEN not found');
   }
 
   cachedToken = token;

@@ -551,7 +551,7 @@ function screenSwing(ticker: string, bars: OHLCVBar[], minPrice: number, maxPric
   let entry = currentPrice;
   let entry_strategy = "";
   if (fib && fib.isBouncing) {
-    entry = Math.round((currentPrice + Number(fib.nearestLevel)) / 2);
+    entry = Math.round((currentPrice + fib.nearestPrice) / 2);
     entry_strategy = `Buy on Weakness (Fibonacci Bounce) area Rp ${entry.toLocaleString('id-ID')}.\nSL ketat jika breakdown Rp ${Math.round(entry - atr14 * 1.5).toLocaleString('id-ID')} (-1.5 ATR).\nTarget Profit di area Rp ${Math.round(entry + atr14 * 3).toLocaleString('id-ID')} (3 ATR).`;
   } else if (distFromMA20pct > 0.5 && distFromMA20pct < 5) {
     entry = Math.round((currentPrice + ma20) / 2);
@@ -886,9 +886,9 @@ export async function GET(request: NextRequest) {
               const top3Acc = bd?.top3?.accdist?.toLowerCase() || '';
               const top1Acc = bd?.top1?.accdist?.toLowerCase() || '';
 
-              if (top3Acc.includes('accum')) bandarSignal = '🟢🟢 STRONG_BUY';
+              if (top3Acc.includes('accum')) bandarSignal = '🟢🟢 STRONG BUY';
               else if (top1Acc.includes('accum')) bandarSignal = '🟢 BUY';
-              else if (top3Acc.includes('dist')) bandarSignal = '🔴🔴 STRONG_SELL';
+              else if (top3Acc.includes('dist')) bandarSignal = '🔴🔴 STRONG SELL';
 
               const smartMoneyLot = (bd?.top3?.vol || 0);
               let foreignNetLot = 0;

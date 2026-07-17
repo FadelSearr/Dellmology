@@ -30,7 +30,7 @@ const CACHE_TTL = 30 * 1000; // 30 seconds
 // ── Fetch from Yahoo Finance ─────────────────────────────────
 export async function fetchYahooPrice(ticker: string): Promise<{ price: number; changePercent: number; change: number; volume: number, previousClose: number } | null> {
   try {
-    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}.JK?range=2d&interval=1d`;
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}.JK?range=1d&interval=1m`;
     const res = await fetch(url, {
       headers: { 'User-Agent': 'Mozilla/5.0' },
       signal: AbortSignal.timeout(5000),
@@ -42,32 +42,27 @@ export async function fetchYahooPrice(ticker: string): Promise<{ price: number; 
     const result = data.chart?.result?.[0];
     if (!result) return null;
     
-    const quote = result.indicators?.quote?.[0];
-    const closes = quote?.close?.filter((c: number | null) => c != null) || [];
-    const volumes = quote?.volume?.filter((v: number | null) => v != null) || [];
+    const meta = result.meta;
+    if (!meta) return null;
     
-    if (closes.length === 0) return null;
-    
-    const currentPrice = closes[closes.length - 1];
-    let previousClose = currentPrice;
-    
-    if (closes.length >= 2) {
-      previousClose = closes[closes.length - 2];
-    } else {
-      // Fallback to meta if we only have 1 close
-      previousClose = result.meta?.chartPreviousClose || result.meta?.previousClose || currentPrice;
-    }
+    const currentPrice = meta.regularMarketPrice;
+    const previousClose = meta.chartPreviousClose || meta.previousClose || currentPrice;
     
     const changePercent = previousClose > 0 
       ? ((currentPrice - previousClose) / previousClose) * 100 
       : 0;
     const change = currentPrice - previousClose;
       
+    // Try to get volume from the last bar or meta if available
+    const quote = result.indicators?.quote?.[0];
+    const volumes = quote?.volume?.filter((v: number | null) => v != null) || [];
+    const currentVolume = meta.regularMarketVolume || (volumes.length > 0 ? volumes[volumes.length - 1] : 0);
+      
     return {
       price: currentPrice,
       changePercent: parseFloat(changePercent.toFixed(2)),
       change,
-      volume: volumes[volumes.length - 1] || 0,
+      volume: currentVolume,
       previousClose,
     };
   } catch (error) {

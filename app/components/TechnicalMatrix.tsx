@@ -176,8 +176,52 @@ export default function TechnicalMatrix({ chartData }: TechnicalMatrixProps) {
 
     const totalSignal: Signal = total >= 60 ? 'bullish' : total <= 40 ? 'bearish' : 'neutral';
 
+    // ── DIVERGENCE DETECTION ──────────────────────────────────────────────────
+    let bearishDivergence = false;
+    let bullishDivergence = false;
+    
+    if (closes.length >= 30 && rsiVals.length >= 15) {
+      // Lookback windows: recent 5 days vs previous 10 days
+      const recentCloses = closes.slice(-5);
+      const prevCloses = closes.slice(-15, -5);
+      
+      const recentMax = Math.max(...recentCloses);
+      const prevMax = Math.max(...prevCloses);
+      
+      const recentMin = Math.min(...recentCloses);
+      const prevMin = Math.min(...prevCloses);
+      
+      const recentMaxIdx = closes.length - 5 + recentCloses.indexOf(recentMax);
+      const prevMaxIdx = closes.length - 15 + prevCloses.indexOf(prevMax);
+      
+      const recentMinIdx = closes.length - 5 + recentCloses.indexOf(recentMin);
+      const prevMinIdx = closes.length - 15 + prevCloses.indexOf(prevMin);
+      
+      // RSI indices (RSI array is shorter than closes array by period=14)
+      const rsiOffset = closes.length - rsiVals.length;
+      
+      const rsiRecentMax = rsiVals[recentMaxIdx - rsiOffset] || 50;
+      const rsiPrevMax = rsiVals[prevMaxIdx - rsiOffset] || 50;
+      
+      const rsiRecentMin = rsiVals[recentMinIdx - rsiOffset] || 50;
+      const rsiPrevMin = rsiVals[prevMinIdx - rsiOffset] || 50;
+      
+      // Bearish Divergence: Higher High in Price, Lower High in RSI
+      if (recentMax > prevMax && rsiRecentMax < rsiPrevMax && rsiRecentMax > 50) {
+        bearishDivergence = true;
+      }
+      
+      // Bullish Divergence: Lower Low in Price, Higher Low in RSI
+      if (recentMin < prevMin && rsiRecentMin > rsiPrevMin && rsiRecentMin < 50) {
+        bullishDivergence = true;
+      }
+    }
+
     // ── INSIGHT GENERATION ────────────────────────────────────────────────────
     const insights: string[] = [];
+    
+    if (bearishDivergence) insights.push('🚨 BEARISH DIVERGENCE (RSI): Harga mencetak New High tapi RSI lebih rendah. Waspada Reversal turun!');
+    if (bullishDivergence) insights.push('🚀 BULLISH DIVERGENCE (RSI): Harga mencetak New Low tapi RSI lebih tinggi. Potensi Reversal naik!');
     
     if (total >= 70) insights.push('Kondisi teknikal sangat kuat. Momentum dan tren mendukung kenaikan lebih lanjut.');
     else if (total >= 60) insights.push('Teknikal menunjukkan sinyal positif dengan peluang kenaikan.');

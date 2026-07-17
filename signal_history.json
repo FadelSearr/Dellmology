@@ -5,8 +5,8 @@
     "tp": 144,
     "sl": 126,
     "sentAt": "2026-07-09T01:30:06.070Z",
-    "status": "EXPIRED",
-    "dayHighChecked": null
+    "status": "TP_HIT",
+    "dayHighChecked": 160
   },
   {
     "emiten": "APLN",
@@ -14,8 +14,8 @@
     "tp": 134,
     "sl": 117,
     "sentAt": "2026-07-09T01:30:06.070Z",
-    "status": "EXPIRED",
-    "dayHighChecked": null
+    "status": "TP_HIT",
+    "dayHighChecked": 136
   },
   {
     "emiten": "PPGL",
@@ -23,8 +23,8 @@
     "tp": 229,
     "sl": 201,
     "sentAt": "2026-07-09T01:30:06.070Z",
-    "status": "EXPIRED",
-    "dayHighChecked": null
+    "status": "PENDING",
+    "dayHighChecked": 208
   },
   {
     "emiten": "ASRI",
@@ -32,8 +32,8 @@
     "tp": 124,
     "sl": 109,
     "sentAt": "2026-07-09T01:30:06.070Z",
-    "status": "EXPIRED",
-    "dayHighChecked": null
+    "status": "TP_HIT",
+    "dayHighChecked": 124
   },
   {
     "emiten": "FAST",
@@ -41,8 +41,8 @@
     "tp": 307,
     "sl": 270,
     "sentAt": "2026-07-09T01:30:06.070Z",
-    "status": "EXPIRED",
-    "dayHighChecked": null
+    "status": "SL_HIT",
+    "dayHighChecked": 268
   },
   {
     "emiten": "KAEF",
@@ -50,8 +50,8 @@
     "tp": 524,
     "sl": 399,
     "sentAt": "2026-07-10T01:30:02.419Z",
-    "status": "EXPIRED",
-    "dayHighChecked": null
+    "status": "PENDING",
+    "dayHighChecked": 456
   },
   {
     "emiten": "AISA",
@@ -59,8 +59,8 @@
     "tp": 112,
     "sl": 99,
     "sentAt": "2026-07-10T01:30:02.419Z",
-    "status": "EXPIRED",
-    "dayHighChecked": null
+    "status": "PENDING",
+    "dayHighChecked": 108
   },
   {
     "emiten": "SKLT",
@@ -68,8 +68,8 @@
     "tp": 220,
     "sl": 160,
     "sentAt": "2026-07-10T01:30:02.419Z",
-    "status": "EXPIRED",
-    "dayHighChecked": null
+    "status": "PENDING",
+    "dayHighChecked": 186
   },
   {
     "emiten": "ECII",
@@ -77,8 +77,8 @@
     "tp": 166,
     "sl": 106,
     "sentAt": "2026-07-10T01:30:02.419Z",
-    "status": "EXPIRED",
-    "dayHighChecked": null
+    "status": "PENDING",
+    "dayHighChecked": 160
   },
   {
     "emiten": "TRUK",
@@ -86,8 +86,8 @@
     "tp": 531,
     "sl": 336,
     "sentAt": "2026-07-10T01:30:02.419Z",
-    "status": "EXPIRED",
-    "dayHighChecked": null
+    "status": "PENDING",
+    "dayHighChecked": 426
   },
   {
     "emiten": "NELY",
@@ -95,8 +95,8 @@
     "tp": 233,
     "sl": 183,
     "sentAt": "2026-07-13T01:30:02.196Z",
-    "status": "EXPIRED",
-    "dayHighChecked": null
+    "status": "PENDING",
+    "dayHighChecked": 206
   },
   {
     "emiten": "PTPP",
@@ -104,8 +104,8 @@
     "tp": 218,
     "sl": 173,
     "sentAt": "2026-07-13T01:30:02.196Z",
-    "status": "EXPIRED",
-    "dayHighChecked": null
+    "status": "PENDING",
+    "dayHighChecked": 210
   },
   {
     "emiten": "SPMA",
@@ -113,8 +113,8 @@
     "tp": 192,
     "sl": 152,
     "sentAt": "2026-07-13T01:30:02.196Z",
-    "status": "EXPIRED",
-    "dayHighChecked": null
+    "status": "PENDING",
+    "dayHighChecked": 169
   },
   {
     "emiten": "ASRI",
@@ -122,8 +122,8 @@
     "tp": 124,
     "sl": 109,
     "sentAt": "2026-07-13T01:30:02.196Z",
-    "status": "EXPIRED",
-    "dayHighChecked": null
+    "status": "TP_HIT",
+    "dayHighChecked": 123
   },
   {
     "emiten": "SKLT",
@@ -131,8 +131,8 @@
     "tp": 201,
     "sl": 177,
     "sentAt": "2026-07-13T01:30:02.196Z",
-    "status": "EXPIRED",
-    "dayHighChecked": null
+    "status": "PENDING",
+    "dayHighChecked": 186
   },
   {
     "emiten": "IPCC",
@@ -141,7 +141,7 @@
     "sl": 1124,
     "sentAt": "2026-07-15T01:30:01.951Z",
     "status": "PENDING",
-    "dayHighChecked": null
+    "dayHighChecked": 1235
   },
   {
     "emiten": "TRUK",
@@ -150,7 +150,7 @@
     "sl": 349,
     "sentAt": "2026-07-15T01:30:01.951Z",
     "status": "PENDING",
-    "dayHighChecked": null
+    "dayHighChecked": 428
   },
   {
     "emiten": "NRCA",
@@ -159,7 +159,7 @@
     "sl": 402,
     "sentAt": "2026-07-15T01:30:01.951Z",
     "status": "PENDING",
-    "dayHighChecked": null
+    "dayHighChecked": 500
   },
   {
     "emiten": "MAPI",
@@ -167,8 +167,8 @@
     "tp": 1569,
     "sl": 1499,
     "sentAt": "2026-07-15T01:30:01.951Z",
-    "status": "PENDING",
-    "dayHighChecked": null
+    "status": "SL_HIT",
+    "dayHighChecked": 1490
   },
   {
     "emiten": "GPRA",
@@ -177,51 +177,66 @@
     "sl": 90,
     "sentAt": "2026-07-15T01:30:01.951Z",
     "status": "PENDING",
-    "dayHighChecked": null
+    "dayHighChecked": 103
+  },
+  {
+    "emiten": "CSAP",
+    "entry": 288,
+    "tp": 318,
+    "sl": 263,
+    "reasoning": "Buy on Pullback dekat MA20 area Rp 285.\nSL di Rp 263 (-2 ATR).\nTarget di Rp 318.",
+    "sentAt": "2026-07-17T01:30:02.467Z",
+    "status": "PENDING",
+    "dayHighChecked": 294
+  },
+  {
+    "emiten": "BBYB",
+    "entry": 260,
+    "tp": 290,
+    "sl": 245,
+    "reasoning": "Berita 'Aksi Penambahan Kepemilikan' secara langsung mengindikasikan adanya akumulasi signifikan oleh investor besar, yang merupakan sinyal Bandarmology kuat untuk potensi breakout. Meskipun data broker spesifik tidak tersedia, sentimen ini sangat positif.",
+    "sentAt": "2026-07-17T06:31:38.110Z",
+    "status": "PENDING",
+    "dayHighChecked": 262
+  },
+  {
+    "emiten": "ECII",
+    "entry": 136,
+    "tp": 175,
+    "sl": 150,
+    "reasoning": "Alokasi dana ekspansi sebesar Rp693,98 Miliar adalah katalis fundamental yang sangat kuat, menunjukkan komitmen perusahaan terhadap pertumbuhan. Ini dapat menarik minat institusi untuk akumulasi jangka panjang, mendorong harga ke atas.",
+    "sentAt": "2026-07-17T06:31:38.110Z",
+    "status": "PENDING",
+    "dayHighChecked": 157
   },
   {
     "emiten": "KBLV",
-    "entry": 0,
-    "tp": 0,
-    "sl": 0,
-    "sentAt": "2026-07-16T06:31:36.885Z",
+    "entry": 137,
+    "tp": 145,
+    "sl": 130,
+    "reasoning": "Berita 'Belum Pernah Melemah Sejak Awal Pekan' menunjukkan ketahanan harga yang signifikan dan kurangnya tekanan jual. Ini bisa menjadi indikasi stealth accumulation atau konsolidasi kuat yang mendahului breakout, didukung oleh momentum positif.",
+    "sentAt": "2026-07-17T06:31:38.110Z",
     "status": "PENDING",
-    "dayHighChecked": null
+    "dayHighChecked": 137
   },
   {
-    "emiten": "BUKA",
-    "entry": 0,
-    "tp": 0,
-    "sl": 0,
-    "sentAt": "2026-07-16T06:31:36.885Z",
+    "emiten": "BACA",
+    "entry": 114,
+    "tp": 125,
+    "sl": 110,
+    "reasoning": "Terungkapnya pemilik baru 14% saham Bank Capital merupakan perubahan signifikan dalam struktur kepemilikan. Ini bisa menjadi katalis positif jika investor baru membawa visi strategis yang kuat, meskipun detailnya masih perlu dikonfirmasi.",
+    "sentAt": "2026-07-17T06:31:38.110Z",
     "status": "PENDING",
-    "dayHighChecked": null
+    "dayHighChecked": 121
   },
   {
-    "emiten": "NRCA",
-    "entry": 0,
-    "tp": 0,
-    "sl": 0,
-    "sentAt": "2026-07-16T06:31:36.885Z",
+    "emiten": "INPC",
+    "entry": 145,
+    "tp": 155,
+    "sl": 140,
+    "reasoning": "Kenaikan harga sebesar 50% dalam sebulan terakhir menunjukkan momentum yang sangat kuat, namun juga meningkatkan risiko profit-taking. Tanpa indikasi akumulasi baru yang jelas, probabilitas breakout lanjutan mungkin lebih rendah dibandingkan emiten lain.",
+    "sentAt": "2026-07-17T06:31:38.110Z",
     "status": "PENDING",
-    "dayHighChecked": null
-  },
-  {
-    "emiten": "KIJA",
-    "entry": 0,
-    "tp": 0,
-    "sl": 0,
-    "sentAt": "2026-07-16T06:31:36.885Z",
-    "status": "PENDING",
-    "dayHighChecked": null
-  },
-  {
-    "emiten": "MTDL",
-    "entry": 0,
-    "tp": 0,
-    "sl": 0,
-    "sentAt": "2026-07-16T06:31:36.885Z",
-    "status": "PENDING",
-    "dayHighChecked": null
+    "dayHighChecked": 145
   }
 ]
